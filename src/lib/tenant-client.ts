@@ -1,15 +1,15 @@
 // Tenant-scoped data + PIN auth helpers for the school app.
-// All school data is loaded/saved via SECURITY DEFINER RPCs gated by school PIN hash.
+// PIN hashing happens SERVER-SIDE (bcrypt). Client sends plain PIN over HTTPS to SECURITY DEFINER RPCs.
+// After verification, the server returns a short-lived session token used for all subsequent calls.
 
 import { supabase } from "@/integrations/supabase/client";
-import { hashPin } from "./crypto-helpers";
 
-const SESSION_KEY = "schoolapp_tenant_session_v1";
+const SESSION_KEY = "schoolapp_tenant_session_v2";
 
 export interface TenantSession {
   tenantId: string;
   schoolName: string;
-  schoolPinHash: string;
+  sessionToken: string;
   status: "trial" | "active" | "expired" | "suspended";
   plan: "trial" | "termly" | "yearly";
   subscriptionEndsAt: string | null;
@@ -37,14 +37,13 @@ export function clearTenantSession() {
 
 /** Verify school PIN. Returns session info (without admin flag) or null. */
 export async function verifySchoolPin(pin: string): Promise<Omit<TenantSession, "isAdmin"> | null> {
-  const pinHash = await hashPin(pin);
-  const { data, error } = await supabase.rpc("verify_school_pin", { _pin_hash: pinHash });
+  const { data, error } = await supabase.rpc("verify_school_pin_v2", { _pin: pin });
   if (error || !data || data.length === 0) return null;
   const row = data[0];
   return {
     tenantId: row.tenant_id,
     schoolName: row.school_name,
-    schoolPinHash: pinHash,
+    sessionToken: row.session_token,
     status: row.status,
     plan: row.plan,
     subscriptionEndsAt: row.subscription_ends_at,
@@ -53,38 +52,34 @@ export async function verifySchoolPin(pin: string): Promise<Omit<TenantSession, 
   };
 }
 
-export async function verifyAdminPin(tenantId: string, pin: string): Promise<boolean> {
-  const pinHash = await hashPin(pin);
-  const { data, error } = await supabase.rpc("verify_admin_pin", {
-    _tenant_id: tenantId,
-    _pin_hash: pinHash,
+export async function verifyAdminPin(session: TenantSession, pin: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("verify_admin_pin_v2", {
+    _session_token: session.sessionToken,
+    _pin: pin,
   });
   return !error && data === true;
 }
 
 /** First-time admin PIN setup — only succeeds if no admin pin set yet. */
-export async function setAdminPin(tenantId: string, pin: string): Promise<boolean> {
-  const pinHash = await hashPin(pin);
-  const { data, error } = await supabase.rpc("set_admin_pin", {
-    _tenant_id: tenantId,
-    _pin_hash: pinHash,
+export async function setAdminPin(session: TenantSession, pin: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("set_admin_pin_v2", {
+    _session_token: session.sessionToken,
+    _pin: pin,
   });
   return !error && data === true;
 }
 
 export async function fetchTenantData(session: TenantSession): Promise<Record<string, unknown> | null> {
-  const { data, error } = await supabase.rpc("get_tenant_data", {
-    _tenant_id: session.tenantId,
-    _school_pin_hash: session.schoolPinHash,
+  const { data, error } = await supabase.rpc("get_tenant_data_v2", {
+    _session_token: session.sessionToken,
   });
   if (error) return null;
   return (data as Record<string, unknown>) ?? {};
 }
 
 export async function saveTenantData(session: TenantSession, data: unknown): Promise<boolean> {
-  const { data: ok, error } = await supabase.rpc("save_tenant_data", {
-    _tenant_id: session.tenantId,
-    _school_pin_hash: session.schoolPinHash,
+  const { data: ok, error } = await supabase.rpc("save_tenant_data_v2", {
+    _session_token: session.sessionToken,
     _data: data as never,
   });
   return !error && ok === true;
