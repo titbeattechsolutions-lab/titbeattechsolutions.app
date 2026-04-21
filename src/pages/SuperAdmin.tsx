@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
-import { hashPin } from "@/lib/crypto-helpers";
+// hashPin no longer needed — server-side bcrypt via create_tenant_v2 RPC
 import { Plus, LogOut, Copy, RefreshCw, ShieldCheck, ShieldOff, KeyRound, DollarSign } from "lucide-react";
 
 interface Tenant {
@@ -277,18 +277,13 @@ function CreateTenantDialog({ onCreated, newPin, onClose }: { onCreated: (pin: s
     e.preventDefault();
     setSaving(true);
     const pin = generatePin();
-    const pinHash = await hashPin(pin);
-    const now = new Date();
-    const { error } = await supabase.from("tenants").insert({
-      school_name: name,
-      contact_email: email || null,
-      contact_phone: phone || null,
-      notes: notes || null,
-      school_pin_hash: pinHash,
-      status: startTrial ? "trial" : "expired",
-      plan: "trial",
-      trial_started_at: startTrial ? now.toISOString() : null,
-      subscription_ends_at: startTrial ? new Date(now.getTime() + 7 * 86400_000).toISOString() : null,
+    const { error } = await supabase.rpc("create_tenant_v2", {
+      _school_name: name,
+      _school_pin: pin,
+      _contact_email: email || null,
+      _contact_phone: phone || null,
+      _notes: notes || null,
+      _start_trial: startTrial,
     });
     setSaving(false);
     if (error) {
