@@ -58,7 +58,7 @@ export default function SchoolLock() {
     e.preventDefault();
     if (!pending) return;
     setLoading(true);
-    const ok = await verifyAdminPin(pending.tenantId, adminPin.trim());
+    const ok = await verifyAdminPin({ ...pending, isAdmin: false }, adminPin.trim());
     setLoading(false);
     if (!ok) {
       toast({ title: "Wrong admin PIN", variant: "destructive" });
@@ -80,7 +80,7 @@ export default function SchoolLock() {
       return;
     }
     setLoading(true);
-    const ok = await setAdminPin(pending.tenantId, adminPin.trim());
+    const ok = await setAdminPin({ ...pending, isAdmin: false }, adminPin.trim());
     setLoading(false);
     if (!ok) {
       toast({ title: "Could not set PIN", description: "Already set — contact provider.", variant: "destructive" });

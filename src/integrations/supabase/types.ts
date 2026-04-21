@@ -90,6 +90,35 @@ export type Database = {
           },
         ]
       }
+      tenant_sessions: {
+        Row: {
+          created_at: string
+          expires_at: string
+          tenant_id: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          tenant_id: string
+          token: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          tenant_id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           admin_pin_hash: string | null
@@ -167,10 +196,28 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _is_bcrypt: { Args: { _hash: string }; Returns: boolean }
+      _verify_pin_any: {
+        Args: { _pin: string; _stored_hash: string }
+        Returns: boolean
+      }
+      cleanup_expired_sessions: { Args: never; Returns: undefined }
+      create_tenant_v2: {
+        Args: {
+          _contact_email?: string
+          _contact_phone?: string
+          _notes?: string
+          _school_name: string
+          _school_pin: string
+          _start_trial?: boolean
+        }
+        Returns: string
+      }
       get_tenant_data: {
         Args: { _school_pin_hash: string; _tenant_id: string }
         Returns: Json
       }
+      get_tenant_data_v2: { Args: { _session_token: string }; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -182,12 +229,24 @@ export type Database = {
         Args: { _data: Json; _school_pin_hash: string; _tenant_id: string }
         Returns: boolean
       }
+      save_tenant_data_v2: {
+        Args: { _data: Json; _session_token: string }
+        Returns: boolean
+      }
       set_admin_pin: {
         Args: { _pin_hash: string; _tenant_id: string }
         Returns: boolean
       }
+      set_admin_pin_v2: {
+        Args: { _pin: string; _session_token: string }
+        Returns: boolean
+      }
       verify_admin_pin: {
         Args: { _pin_hash: string; _tenant_id: string }
+        Returns: boolean
+      }
+      verify_admin_pin_v2: {
+        Args: { _pin: string; _session_token: string }
         Returns: boolean
       }
       verify_school_pin: {
@@ -196,6 +255,19 @@ export type Database = {
           has_admin_pin: boolean
           plan: Database["public"]["Enums"]["tenant_plan"]
           school_name: string
+          status: Database["public"]["Enums"]["tenant_status"]
+          subscription_ends_at: string
+          tenant_id: string
+          trial_started_at: string
+        }[]
+      }
+      verify_school_pin_v2: {
+        Args: { _pin: string }
+        Returns: {
+          has_admin_pin: boolean
+          plan: Database["public"]["Enums"]["tenant_plan"]
+          school_name: string
+          session_token: string
           status: Database["public"]["Enums"]["tenant_status"]
           subscription_ends_at: string
           tenant_id: string
