@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
@@ -301,7 +301,10 @@ function CreateTenantDialog({ onCreated, newPin, onClose }: { onCreated: (pin: s
   if (newPin) {
     return (
       <DialogContent>
-        <DialogHeader><DialogTitle>School PIN created</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>School PIN created</DialogTitle>
+          <DialogDescription>Copy and share this PIN with the school now — it won't be shown again.</DialogDescription>
+        </DialogHeader>
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">Share this PIN with the school. They'll use it to log in.</p>
           <div className="flex items-center gap-2 p-3 bg-muted rounded-md font-mono text-lg">
@@ -319,7 +322,10 @@ function CreateTenantDialog({ onCreated, newPin, onClose }: { onCreated: (pin: s
 
   return (
     <DialogContent>
-      <DialogHeader><DialogTitle>Onboard new school</DialogTitle></DialogHeader>
+      <DialogHeader>
+        <DialogTitle>Onboard new school</DialogTitle>
+        <DialogDescription>Create a new tenant and generate a unique School PIN.</DialogDescription>
+      </DialogHeader>
       <form onSubmit={submit} className="space-y-3">
         <div>
           <Label htmlFor="name">School name *</Label>
@@ -397,7 +403,10 @@ function PaymentDialog({ tenant, onClose, onRecorded }: { tenant: Tenant; onClos
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Record payment — {tenant.school_name}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Record payment — {tenant.school_name}</DialogTitle>
+          <DialogDescription>Log a manual bank transfer and extend this school's subscription.</DialogDescription>
+        </DialogHeader>
         <form onSubmit={submit} className="space-y-3">
           <div>
             <Label>Plan</Label>
