@@ -27,8 +27,11 @@ async function pbkdf2(pin: string, salt: Uint8Array, iterations: number): Promis
     false,
     ["deriveBits"]
   );
+  // Copy into a fresh ArrayBuffer-backed Uint8Array to satisfy strict BufferSource typing.
+  const saltBuf = new Uint8Array(salt.length);
+  saltBuf.set(salt);
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations },
+    { name: "PBKDF2", hash: "SHA-256", salt: saltBuf, iterations },
     keyMaterial,
     HASH_BITS
   );
