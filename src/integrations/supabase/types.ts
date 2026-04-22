@@ -97,6 +97,39 @@ export type Database = {
         }
         Relationships: []
       }
+      super_admin_token_audit: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          reason: string | null
+          success: boolean
+          target_user_id: string | null
+          token_id: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          reason?: string | null
+          success: boolean
+          target_user_id?: string | null
+          token_id?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          reason?: string | null
+          success?: boolean
+          target_user_id?: string | null
+          token_id?: string | null
+        }
+        Relationships: []
+      }
       tenant_data: {
         Row: {
           data: Json
