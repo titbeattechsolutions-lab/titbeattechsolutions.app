@@ -229,6 +229,22 @@ function TenantRow({ tenant, onChanged, onRecordPayment }: { tenant: Tenant; onC
     else { toast({ title: "Admin PIN reset" }); onChanged(); }
   };
 
+  const resetSchoolPin = async () => {
+    if (!confirm(`Reset school PIN for ${tenant.school_name}? A new PIN will be issued and all current sessions will be revoked.`)) return;
+    const newPin = generatePin();
+    const { error } = await supabase.rpc("reset_school_pin", { _tenant_id: tenant.id, _new_pin: newPin });
+    if (error) {
+      toast({ title: "Failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    await navigator.clipboard.writeText(newPin).catch(() => {});
+    toast({
+      title: "School PIN reset",
+      description: `New PIN: ${newPin} (copied to clipboard)`,
+    });
+    onChanged();
+  };
+
   return (
     <Card className="p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
