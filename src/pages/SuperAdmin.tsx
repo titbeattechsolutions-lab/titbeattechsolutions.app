@@ -269,6 +269,9 @@ function TenantRow({ tenant, onChanged, onRecordPayment }: { tenant: Tenant; onC
           <Button size="sm" variant="outline" onClick={onRecordPayment}>
             <DollarSign className="w-3 h-3 mr-1" /> Record payment
           </Button>
+          <Button size="sm" variant="ghost" onClick={resetSchoolPin} title="Reset school PIN (issues new PIN, revokes sessions)">
+            <RotateCcw className="w-3 h-3" />
+          </Button>
           <Button size="sm" variant="ghost" onClick={resetAdminPin} title="Reset admin PIN">
             <KeyRound className="w-3 h-3" />
           </Button>
