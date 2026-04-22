@@ -169,6 +169,8 @@ export default function SuperAdmin() {
           </Dialog>
         </div>
 
+        <DuplicatesBanner refreshKey={tenants.length} />
+
         <div className="space-y-2">
           {tenants.length === 0 && (
             <Card className="p-8 text-center text-muted-foreground text-sm">
@@ -181,6 +183,7 @@ export default function SuperAdmin() {
         </div>
 
         <TokenAuditSection />
+        <TenantAuthAuditSection />
       </div>
 
       {payOpen && (
