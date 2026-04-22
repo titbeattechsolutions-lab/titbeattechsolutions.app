@@ -545,3 +545,140 @@ function TokenAuditSection() {
     </div>
   );
 }
+
+interface DuplicateRow {
+  match_type: string;
+  match_value: string;
+  tenant_ids: string[];
+  school_names: string[];
+  occurrences: number;
+}
+
+function DuplicatesBanner({ refreshKey }: { refreshKey: number }) {
+  const [dups, setDups] = useState<DuplicateRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase.rpc("find_duplicate_tenants");
+    setLoading(false);
+    if (error) {
+      // silent — non-blocking informational scan
+      return;
+    }
+    setDups((data as unknown as DuplicateRow[]) ?? []);
+  }, []);
+
+  useEffect(() => { load(); }, [load, refreshKey]);
+
+  if (loading || dups.length === 0) return null;
+
+  return (
+    <Card className="p-3 border-amber-500/40 bg-amber-500/5">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+        <div className="text-sm space-y-1 flex-1">
+          <div className="font-semibold text-amber-700 dark:text-amber-300">
+            {dups.length} duplicate group{dups.length === 1 ? "" : "s"} detected
+          </div>
+          {dups.map((d, i) => (
+            <div key={i} className="text-xs text-muted-foreground">
+              <span className="font-mono">{d.match_type}</span> = "{d.match_value}" →{" "}
+              {d.school_names.join(", ")} ({d.occurrences})
+            </div>
+          ))}
+          <div className="text-xs text-muted-foreground italic pt-1">
+            Review and suspend or delete the older duplicates.
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+interface TenantAuditEntry {
+  id: string;
+  event_type: "school_pin_verify" | "admin_pin_verify" | "admin_pin_set";
+  tenant_id: string | null;
+  success: boolean;
+  reason: string | null;
+  session_ref: string | null;
+  created_at: string;
+}
+
+function TenantAuthAuditSection() {
+  const [entries, setEntries] = useState<TenantAuditEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("tenant_auth_audit" as never)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    setLoading(false);
+    if (error) {
+      toast({ title: "Tenant audit load failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    setEntries((data as unknown as TenantAuditEntry[]) ?? []);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div className="space-y-2 pt-4">
+      <div className="flex justify-between items-center">
+        <h2 className="font-semibold flex items-center gap-2">
+          <History className="w-4 h-4" /> Tenant authentication history
+        </h2>
+        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+        </Button>
+      </div>
+
+      {entries.length === 0 ? (
+        <Card className="p-6 text-center text-muted-foreground text-sm">
+          No tenant authentication activity yet.
+        </Card>
+      ) : (
+        <Card className="divide-y">
+          {entries.map((e) => (
+            <div key={e.id} className="p-3 flex items-start gap-3 text-sm">
+              <div className="mt-0.5">
+                {e.success ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-destructive" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary">{e.event_type}</Badge>
+                  <Badge variant={e.success ? "default" : "destructive"}>
+                    {e.success ? "success" : "failed"}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(e.created_at).toLocaleString()}
+                  </span>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1 font-mono break-all">
+                  tenant: {e.tenant_id ?? "—"}
+                </div>
+                {e.session_ref && (
+                  <div className="text-xs text-muted-foreground font-mono">
+                    session: {e.session_ref}
+                  </div>
+                )}
+                {e.reason && (
+                  <div className="text-xs mt-1 italic text-muted-foreground">{e.reason}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+    </div>
+  );
+}
