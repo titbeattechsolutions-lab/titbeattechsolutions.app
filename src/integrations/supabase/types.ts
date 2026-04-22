@@ -64,6 +64,39 @@ export type Database = {
           },
         ]
       }
+      super_admin_bootstrap_tokens: {
+        Row: {
+          consumed_at: string | null
+          consumed_by: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          issued_by: string
+          target_user_id: string
+          token_hash: string
+        }
+        Insert: {
+          consumed_at?: string | null
+          consumed_by?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          issued_by: string
+          target_user_id: string
+          token_hash: string
+        }
+        Update: {
+          consumed_at?: string | null
+          consumed_by?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          issued_by?: string
+          target_user_id?: string
+          token_hash?: string
+        }
+        Relationships: []
+      }
       tenant_data: {
         Row: {
           data: Json
@@ -225,6 +258,11 @@ export type Database = {
         }
         Returns: boolean
       }
+      issue_super_admin_token: {
+        Args: { _hours_valid?: number; _target_user_id: string }
+        Returns: string
+      }
+      redeem_super_admin_token: { Args: { _token: string }; Returns: boolean }
       save_tenant_data: {
         Args: { _data: Json; _school_pin_hash: string; _tenant_id: string }
         Returns: boolean
