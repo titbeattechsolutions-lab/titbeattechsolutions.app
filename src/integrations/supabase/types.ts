@@ -130,6 +130,36 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_auth_audit: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          reason: string | null
+          session_ref: string | null
+          success: boolean
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          reason?: string | null
+          session_ref?: string | null
+          success: boolean
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          reason?: string | null
+          session_ref?: string | null
+          success?: boolean
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       tenant_data: {
         Row: {
           data: Json
@@ -263,6 +293,7 @@ export type Database = {
     }
     Functions: {
       _is_bcrypt: { Args: { _hash: string }; Returns: boolean }
+      _session_ref: { Args: { _token: string }; Returns: string }
       _verify_pin_any: {
         Args: { _pin: string; _stored_hash: string }
         Returns: boolean
