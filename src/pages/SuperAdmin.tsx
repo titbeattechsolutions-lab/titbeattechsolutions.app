@@ -435,3 +435,91 @@ function PaymentDialog({ tenant, onClose, onRecorded }: { tenant: Tenant; onClos
     </Dialog>
   );
 }
+
+interface AuditEntry {
+  id: string;
+  event_type: "issued" | "redeemed";
+  actor_user_id: string | null;
+  target_user_id: string | null;
+  token_id: string | null;
+  success: boolean;
+  reason: string | null;
+  created_at: string;
+}
+
+function TokenAuditSection() {
+  const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("super_admin_token_audit" as never)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    setLoading(false);
+    if (error) {
+      toast({ title: "Audit load failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    setEntries((data as unknown as AuditEntry[]) ?? []);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div className="space-y-2 pt-4">
+      <div className="flex justify-between items-center">
+        <h2 className="font-semibold flex items-center gap-2">
+          <History className="w-4 h-4" /> Super-admin token history
+        </h2>
+        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+        </Button>
+      </div>
+
+      {entries.length === 0 ? (
+        <Card className="p-6 text-center text-muted-foreground text-sm">
+          No token activity yet.
+        </Card>
+      ) : (
+        <Card className="divide-y">
+          {entries.map((e) => (
+            <div key={e.id} className="p-3 flex items-start gap-3 text-sm">
+              <div className="mt-0.5">
+                {e.success ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-destructive" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={e.event_type === "issued" ? "secondary" : "outline"}>
+                    {e.event_type}
+                  </Badge>
+                  <Badge variant={e.success ? "default" : "destructive"}>
+                    {e.success ? "success" : "failed"}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(e.created_at).toLocaleString()}
+                  </span>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1 font-mono break-all">
+                  actor: {e.actor_user_id ?? "—"}
+                </div>
+                <div className="text-xs text-muted-foreground font-mono break-all">
+                  target: {e.target_user_id ?? "—"}
+                </div>
+                {e.reason && (
+                  <div className="text-xs mt-1 italic text-muted-foreground">{e.reason}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+    </div>
+  );
+}
