@@ -310,6 +310,16 @@ export type Database = {
         }
         Returns: string
       }
+      find_duplicate_tenants: {
+        Args: never
+        Returns: {
+          match_type: string
+          match_value: string
+          occurrences: number
+          school_names: string[]
+          tenant_ids: string[]
+        }[]
+      }
       get_tenant_data: {
         Args: { _school_pin_hash: string; _tenant_id: string }
         Returns: Json
@@ -327,6 +337,10 @@ export type Database = {
         Returns: string
       }
       redeem_super_admin_token: { Args: { _token: string }; Returns: boolean }
+      reset_school_pin: {
+        Args: { _new_pin: string; _tenant_id: string }
+        Returns: boolean
+      }
       save_tenant_data: {
         Args: { _data: Json; _school_pin_hash: string; _tenant_id: string }
         Returns: boolean
