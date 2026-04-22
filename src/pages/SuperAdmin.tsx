@@ -179,6 +179,8 @@ export default function SuperAdmin() {
             <TenantRow key={t.id} tenant={t} onChanged={loadTenants} onRecordPayment={() => setPayOpen(t)} />
           ))}
         </div>
+
+        <TokenAuditSection />
       </div>
 
       {payOpen && (
