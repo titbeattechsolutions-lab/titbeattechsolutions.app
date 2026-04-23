@@ -11,10 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 // hashPin no longer needed — server-side bcrypt via create_tenant_v2 RPC
-import { Plus, LogOut, Copy, RefreshCw, ShieldCheck, ShieldOff, KeyRound, DollarSign, History, CheckCircle2, XCircle, AlertTriangle, RotateCcw } from "lucide-react";
+import { Plus, LogOut, Copy, RefreshCw, ShieldCheck, ShieldOff, KeyRound, DollarSign, History, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Eye, EyeOff, Ban, ShieldAlert } from "lucide-react";
 
 interface Tenant {
   id: string;
+  tenant_code: string;
   school_name: string;
   contact_email: string | null;
   contact_phone: string | null;
@@ -84,7 +85,7 @@ export default function SuperAdmin() {
       toast({ title: "Load failed", description: error.message, variant: "destructive" });
       return;
     }
-    setTenants((data as Tenant[]) ?? []);
+    setTenants(((data ?? []) as unknown as Tenant[]));
   }, []);
 
   useEffect(() => {
@@ -169,7 +170,7 @@ export default function SuperAdmin() {
           </Dialog>
         </div>
 
-        <DuplicatesBanner refreshKey={tenants.length} />
+        <DuplicatesBanner refreshKey={tenants.length} onChanged={loadTenants} />
 
         <div className="space-y-2">
           {tenants.length === 0 && (
@@ -182,6 +183,7 @@ export default function SuperAdmin() {
           ))}
         </div>
 
+        <SecurityChecksSection />
         <TokenAuditSection />
         <TenantAuthAuditSection />
       </div>
@@ -253,6 +255,7 @@ function TenantRow({ tenant, onChanged, onRecordPayment }: { tenant: Tenant; onC
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="outline" className="font-mono text-[10px]">{tenant.tenant_code}</Badge>
             <span className="font-semibold">{tenant.school_name}</span>
             <Badge variant={statusColor}>{tenant.status}</Badge>
             <Badge variant="outline">{tenant.plan}</Badge>
@@ -318,25 +321,7 @@ function CreateTenantDialog({ onCreated, newPin, onClose }: { onCreated: (pin: s
   };
 
   if (newPin) {
-    return (
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>School PIN created</DialogTitle>
-          <DialogDescription>Copy and share this PIN with the school now — it won't be shown again.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">Share this PIN with the school. They'll use it to log in.</p>
-          <div className="flex items-center gap-2 p-3 bg-muted rounded-md font-mono text-lg">
-            <span className="flex-1">{newPin}</span>
-            <Button size="sm" variant="ghost" onClick={() => { navigator.clipboard.writeText(newPin); toast({ title: "Copied" }); }}>
-              <Copy className="w-4 h-4" />
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">⚠️ Save this PIN now — you won't see it again. (You can reset it later by creating a new tenant.)</p>
-          <Button onClick={onClose} className="w-full">Done</Button>
-        </div>
-      </DialogContent>
-    );
+    return <PinRevealDialog pin={newPin} onClose={onClose} />;
   }
 
   return (
@@ -490,24 +475,44 @@ function TokenAuditSection() {
 
   useEffect(() => { load(); }, [load]);
 
+  const [filter, setFilter] = useState<"all" | "success" | "failed" | "issued" | "redeemed">("all");
+  const filtered = entries.filter((e) => {
+    if (filter === "all") return true;
+    if (filter === "success") return e.success;
+    if (filter === "failed") return !e.success;
+    return e.event_type === filter;
+  });
+
   return (
     <div className="space-y-2 pt-4">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center flex-wrap gap-2">
         <h2 className="font-semibold flex items-center gap-2">
           <History className="w-4 h-4" /> Super-admin token history
         </h2>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-        </Button>
+        <div className="flex gap-2 items-center">
+          <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+            <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All events</SelectItem>
+              <SelectItem value="issued">Issued only</SelectItem>
+              <SelectItem value="redeemed">Redeemed only</SelectItem>
+              <SelectItem value="success">Success only</SelectItem>
+              <SelectItem value="failed">Failed only</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       </div>
 
-      {entries.length === 0 ? (
+      {filtered.length === 0 ? (
         <Card className="p-6 text-center text-muted-foreground text-sm">
-          No token activity yet.
+          {entries.length === 0 ? "No token activity yet." : "No events match this filter."}
         </Card>
       ) : (
         <Card className="divide-y">
-          {entries.map((e) => (
+          {filtered.map((e) => (
             <div key={e.id} className="p-3 flex items-start gap-3 text-sm">
               <div className="mt-0.5">
                 {e.success ? (
@@ -554,9 +559,10 @@ interface DuplicateRow {
   occurrences: number;
 }
 
-function DuplicatesBanner({ refreshKey }: { refreshKey: number }) {
+function DuplicatesBanner({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
   const [dups, setDups] = useState<DuplicateRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -571,24 +577,58 @@ function DuplicatesBanner({ refreshKey }: { refreshKey: number }) {
 
   useEffect(() => { load(); }, [load, refreshKey]);
 
+  const suspendOne = async (tenantId: string, schoolName: string, matchType: string) => {
+    if (!confirm(`Suspend "${schoolName}" as a duplicate? All active sessions will be revoked.`)) return;
+    setBusy(tenantId);
+    const { error } = await supabase.rpc("suspend_duplicate_tenant" as never, {
+      _tenant_id: tenantId,
+      _reason: `duplicate ${matchType}`,
+    } as never);
+    setBusy(null);
+    if (error) {
+      toast({ title: "Suspend failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Tenant suspended", description: schoolName });
+    await load();
+    onChanged();
+  };
+
   if (loading || dups.length === 0) return null;
 
   return (
     <Card className="p-3 border-amber-500/40 bg-amber-500/5">
       <div className="flex items-start gap-2">
         <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-        <div className="text-sm space-y-1 flex-1">
+        <div className="text-sm space-y-2 flex-1">
           <div className="font-semibold text-amber-700 dark:text-amber-300">
             {dups.length} duplicate group{dups.length === 1 ? "" : "s"} detected
           </div>
           {dups.map((d, i) => (
-            <div key={i} className="text-xs text-muted-foreground">
-              <span className="font-mono">{d.match_type}</span> = "{d.match_value}" →{" "}
-              {d.school_names.join(", ")} ({d.occurrences})
+            <div key={i} className="text-xs space-y-1 border-l-2 border-amber-500/40 pl-2">
+              <div className="text-muted-foreground">
+                <span className="font-mono">{d.match_type}</span> = "{d.match_value}" ({d.occurrences})
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {d.tenant_ids.map((id, idx) => (
+                  <Button
+                    key={id}
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[11px]"
+                    disabled={busy === id}
+                    onClick={() => suspendOne(id, d.school_names[idx], d.match_type)}
+                    title="Suspend this tenant"
+                  >
+                    <Ban className="w-3 h-3 mr-1" />
+                    {d.school_names[idx]}
+                  </Button>
+                ))}
+              </div>
             </div>
           ))}
           <div className="text-xs text-muted-foreground italic pt-1">
-            Review and suspend or delete the older duplicates.
+            Click a school name to suspend it. The earliest record is usually the one to keep.
           </div>
         </div>
       </div>
@@ -627,24 +667,45 @@ function TenantAuthAuditSection() {
 
   useEffect(() => { load(); }, [load]);
 
+  const [filter, setFilter] = useState<"all" | "success" | "failed" | "school_pin_verify" | "admin_pin_verify" | "admin_pin_set">("all");
+  const filtered = entries.filter((e) => {
+    if (filter === "all") return true;
+    if (filter === "success") return e.success;
+    if (filter === "failed") return !e.success;
+    return e.event_type === filter;
+  });
+
   return (
     <div className="space-y-2 pt-4">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center flex-wrap gap-2">
         <h2 className="font-semibold flex items-center gap-2">
           <History className="w-4 h-4" /> Tenant authentication history
         </h2>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-        </Button>
+        <div className="flex gap-2 items-center">
+          <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+            <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All events</SelectItem>
+              <SelectItem value="school_pin_verify">School PIN verify</SelectItem>
+              <SelectItem value="admin_pin_verify">Admin PIN verify</SelectItem>
+              <SelectItem value="admin_pin_set">Admin PIN set</SelectItem>
+              <SelectItem value="success">Success only</SelectItem>
+              <SelectItem value="failed">Failed only</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       </div>
 
-      {entries.length === 0 ? (
+      {filtered.length === 0 ? (
         <Card className="p-6 text-center text-muted-foreground text-sm">
-          No tenant authentication activity yet.
+          {entries.length === 0 ? "No tenant authentication activity yet." : "No events match this filter."}
         </Card>
       ) : (
         <Card className="divide-y">
-          {entries.map((e) => (
+          {filtered.map((e) => (
             <div key={e.id} className="p-3 flex items-start gap-3 text-sm">
               <div className="mt-0.5">
                 {e.success ? (
@@ -677,6 +738,148 @@ function TenantAuthAuditSection() {
               </div>
             </div>
           ))}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ===== PIN reveal dialog with safety controls =====
+function PinRevealDialog({ pin, onClose }: { pin: string; onClose: () => void }) {
+  const [revealed, setRevealed] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>School PIN created</DialogTitle>
+        <DialogDescription>
+          This PIN is shown only once. Reveal it, copy it, hand it off securely, then close.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-3">
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs text-amber-700 dark:text-amber-300 flex gap-2">
+          <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>Make sure no one is looking at your screen before revealing the PIN.</span>
+        </div>
+        <div className="flex items-center gap-2 p-3 bg-muted rounded-md font-mono text-lg">
+          <span className="flex-1 select-all">
+            {revealed ? pin : "•".repeat(pin.length)}
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setRevealed((v) => !v)}
+            title={revealed ? "Hide" : "Reveal"}
+          >
+            {revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!revealed}
+            onClick={async () => {
+              await navigator.clipboard.writeText(pin).catch(() => {});
+              setCopied(true);
+              toast({ title: "Copied" });
+            }}
+          >
+            <Copy className="w-4 h-4" />
+          </Button>
+        </div>
+        <label className="flex items-start gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={acknowledged}
+            onChange={(e) => setAcknowledged(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>I have securely transmitted this PIN to the school. I understand it cannot be retrieved later (only reset).</span>
+        </label>
+        <Button onClick={onClose} className="w-full" disabled={!acknowledged || !copied}>
+          Done
+        </Button>
+      </div>
+    </DialogContent>
+  );
+}
+
+// ===== RLS regression / security checks panel =====
+interface SecurityCheck {
+  check_name: string;
+  passed: boolean;
+  detail: string;
+}
+
+function SecurityChecksSection() {
+  const [checks, setChecks] = useState<SecurityCheck[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [ranAt, setRanAt] = useState<Date | null>(null);
+
+  const run = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase.rpc("security_regression_check" as never);
+    setLoading(false);
+    setRanAt(new Date());
+    if (error) {
+      toast({ title: "Security check failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    setChecks((data as unknown as SecurityCheck[]) ?? []);
+  }, []);
+
+  const passed = checks.filter((c) => c.passed).length;
+  const total = checks.length;
+  const allGreen = total > 0 && passed === total;
+
+  return (
+    <div className="space-y-2 pt-4">
+      <div className="flex justify-between items-center flex-wrap gap-2">
+        <h2 className="font-semibold flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4" /> Security regression checks
+        </h2>
+        <div className="flex items-center gap-2">
+          {total > 0 && (
+            <Badge variant={allGreen ? "default" : "destructive"}>
+              {passed}/{total} passing
+            </Badge>
+          )}
+          <Button variant="outline" size="sm" onClick={run} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-1 ${loading ? "animate-spin" : ""}`} />
+            Run checks
+          </Button>
+        </div>
+      </div>
+
+      {checks.length === 0 ? (
+        <Card className="p-6 text-center text-muted-foreground text-sm">
+          Click "Run checks" to verify RLS, audit-write locks, and role-assignment guards.
+        </Card>
+      ) : (
+        <Card className="divide-y">
+          {checks.map((c) => (
+            <div key={c.check_name} className="p-3 flex items-start gap-3 text-sm">
+              <div className="mt-0.5">
+                {c.passed ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-destructive" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-mono text-xs">{c.check_name}</div>
+                <div className={`text-xs mt-0.5 ${c.passed ? "text-muted-foreground" : "text-destructive"}`}>
+                  {c.detail}
+                </div>
+              </div>
+            </div>
+          ))}
+          {ranAt && (
+            <div className="p-2 text-[11px] text-muted-foreground text-center">
+              Last run: {ranAt.toLocaleTimeString()}
+            </div>
+          )}
         </Card>
       )}
     </div>
