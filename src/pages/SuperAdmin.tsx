@@ -321,25 +321,7 @@ function CreateTenantDialog({ onCreated, newPin, onClose }: { onCreated: (pin: s
   };
 
   if (newPin) {
-    return (
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>School PIN created</DialogTitle>
-          <DialogDescription>Copy and share this PIN with the school now — it won't be shown again.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">Share this PIN with the school. They'll use it to log in.</p>
-          <div className="flex items-center gap-2 p-3 bg-muted rounded-md font-mono text-lg">
-            <span className="flex-1">{newPin}</span>
-            <Button size="sm" variant="ghost" onClick={() => { navigator.clipboard.writeText(newPin); toast({ title: "Copied" }); }}>
-              <Copy className="w-4 h-4" />
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">⚠️ Save this PIN now — you won't see it again. (You can reset it later by creating a new tenant.)</p>
-          <Button onClick={onClose} className="w-full">Done</Button>
-        </div>
-      </DialogContent>
-    );
+    return <PinRevealDialog pin={newPin} onClose={onClose} />;
   }
 
   return (
