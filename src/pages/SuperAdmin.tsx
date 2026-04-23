@@ -170,7 +170,7 @@ export default function SuperAdmin() {
           </Dialog>
         </div>
 
-        <DuplicatesBanner refreshKey={tenants.length} />
+        <DuplicatesBanner refreshKey={tenants.length} onChanged={loadTenants} />
 
         <div className="space-y-2">
           {tenants.length === 0 && (
@@ -539,9 +539,10 @@ interface DuplicateRow {
   occurrences: number;
 }
 
-function DuplicatesBanner({ refreshKey }: { refreshKey: number }) {
+function DuplicatesBanner({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
   const [dups, setDups] = useState<DuplicateRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -556,24 +557,58 @@ function DuplicatesBanner({ refreshKey }: { refreshKey: number }) {
 
   useEffect(() => { load(); }, [load, refreshKey]);
 
+  const suspendOne = async (tenantId: string, schoolName: string, matchType: string) => {
+    if (!confirm(`Suspend "${schoolName}" as a duplicate? All active sessions will be revoked.`)) return;
+    setBusy(tenantId);
+    const { error } = await supabase.rpc("suspend_duplicate_tenant" as never, {
+      _tenant_id: tenantId,
+      _reason: `duplicate ${matchType}`,
+    } as never);
+    setBusy(null);
+    if (error) {
+      toast({ title: "Suspend failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Tenant suspended", description: schoolName });
+    await load();
+    onChanged();
+  };
+
   if (loading || dups.length === 0) return null;
 
   return (
     <Card className="p-3 border-amber-500/40 bg-amber-500/5">
       <div className="flex items-start gap-2">
         <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-        <div className="text-sm space-y-1 flex-1">
+        <div className="text-sm space-y-2 flex-1">
           <div className="font-semibold text-amber-700 dark:text-amber-300">
             {dups.length} duplicate group{dups.length === 1 ? "" : "s"} detected
           </div>
           {dups.map((d, i) => (
-            <div key={i} className="text-xs text-muted-foreground">
-              <span className="font-mono">{d.match_type}</span> = "{d.match_value}" →{" "}
-              {d.school_names.join(", ")} ({d.occurrences})
+            <div key={i} className="text-xs space-y-1 border-l-2 border-amber-500/40 pl-2">
+              <div className="text-muted-foreground">
+                <span className="font-mono">{d.match_type}</span> = "{d.match_value}" ({d.occurrences})
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {d.tenant_ids.map((id, idx) => (
+                  <Button
+                    key={id}
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[11px]"
+                    disabled={busy === id}
+                    onClick={() => suspendOne(id, d.school_names[idx], d.match_type)}
+                    title="Suspend this tenant"
+                  >
+                    <Ban className="w-3 h-3 mr-1" />
+                    {d.school_names[idx]}
+                  </Button>
+                ))}
+              </div>
             </div>
           ))}
           <div className="text-xs text-muted-foreground italic pt-1">
-            Review and suspend or delete the older duplicates.
+            Click a school name to suspend it. The earliest record is usually the one to keep.
           </div>
         </div>
       </div>
