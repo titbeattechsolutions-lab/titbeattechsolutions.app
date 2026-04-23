@@ -229,6 +229,7 @@ export type Database = {
           status: Database["public"]["Enums"]["tenant_status"]
           subscription_ends_at: string | null
           subscription_starts_at: string | null
+          tenant_code: string
           trial_started_at: string | null
           updated_at: string
         }
@@ -245,6 +246,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["tenant_status"]
           subscription_ends_at?: string | null
           subscription_starts_at?: string | null
+          tenant_code: string
           trial_started_at?: string | null
           updated_at?: string
         }
@@ -261,6 +263,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["tenant_status"]
           subscription_ends_at?: string | null
           subscription_starts_at?: string | null
+          tenant_code?: string
           trial_started_at?: string | null
           updated_at?: string
         }
@@ -349,12 +352,24 @@ export type Database = {
         Args: { _data: Json; _session_token: string }
         Returns: boolean
       }
+      security_regression_check: {
+        Args: never
+        Returns: {
+          check_name: string
+          detail: string
+          passed: boolean
+        }[]
+      }
       set_admin_pin: {
         Args: { _pin_hash: string; _tenant_id: string }
         Returns: boolean
       }
       set_admin_pin_v2: {
         Args: { _pin: string; _session_token: string }
+        Returns: boolean
+      }
+      suspend_duplicate_tenant: {
+        Args: { _reason?: string; _tenant_id: string }
         Returns: boolean
       }
       verify_admin_pin: {
