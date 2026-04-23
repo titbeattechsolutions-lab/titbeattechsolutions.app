@@ -85,7 +85,7 @@ export default function SuperAdmin() {
       toast({ title: "Load failed", description: error.message, variant: "destructive" });
       return;
     }
-    setTenants((data as Tenant[]) ?? []);
+    setTenants(((data ?? []) as unknown as Tenant[]));
   }, []);
 
   useEffect(() => {
@@ -183,6 +183,7 @@ export default function SuperAdmin() {
           ))}
         </div>
 
+        <SecurityChecksSection />
         <TokenAuditSection />
         <TenantAuthAuditSection />
       </div>
