@@ -475,24 +475,44 @@ function TokenAuditSection() {
 
   useEffect(() => { load(); }, [load]);
 
+  const [filter, setFilter] = useState<"all" | "success" | "failed" | "issued" | "redeemed">("all");
+  const filtered = entries.filter((e) => {
+    if (filter === "all") return true;
+    if (filter === "success") return e.success;
+    if (filter === "failed") return !e.success;
+    return e.event_type === filter;
+  });
+
   return (
     <div className="space-y-2 pt-4">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center flex-wrap gap-2">
         <h2 className="font-semibold flex items-center gap-2">
           <History className="w-4 h-4" /> Super-admin token history
         </h2>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-        </Button>
+        <div className="flex gap-2 items-center">
+          <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+            <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All events</SelectItem>
+              <SelectItem value="issued">Issued only</SelectItem>
+              <SelectItem value="redeemed">Redeemed only</SelectItem>
+              <SelectItem value="success">Success only</SelectItem>
+              <SelectItem value="failed">Failed only</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       </div>
 
-      {entries.length === 0 ? (
+      {filtered.length === 0 ? (
         <Card className="p-6 text-center text-muted-foreground text-sm">
-          No token activity yet.
+          {entries.length === 0 ? "No token activity yet." : "No events match this filter."}
         </Card>
       ) : (
         <Card className="divide-y">
-          {entries.map((e) => (
+          {filtered.map((e) => (
             <div key={e.id} className="p-3 flex items-start gap-3 text-sm">
               <div className="mt-0.5">
                 {e.success ? (
