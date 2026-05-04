@@ -1276,6 +1276,85 @@ export default function SchoolManagementApp() {
               {/* SETTINGS */}
               {activeTab==="settings"&&isAdmin&&<SettingsTab logoUrl={schoolLogo} setSchoolLogo={setSchoolLogo} logoRef={logoRef} showToast={showToast} adminPinRef={adminPinRef}/>}
 
+              {/* ACTIVITY */}
+              {activeTab==="activity" && (() => {
+                const scoped = isAdmin ? logs : logs.filter((l: any) => l.actorId === auth.user?.id);
+                const filtered = scoped.filter((l: any) =>
+                  (!actSearch || (l.student||"").toLowerCase().includes(actSearch.toLowerCase()) || (l.actorName||"").toLowerCase().includes(actSearch.toLowerCase())) &&
+                  (actStaffFilter==="All" || l.actorId===actStaffFilter) &&
+                  (actAction==="All" || l.action===actAction)
+                );
+                const uniqueActions = Array.from(new Set(logs.map((l: any) => l.action))).sort();
+                return (
+                  <>
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <div>
+                        <h1 className="text-2xl font-black text-slate-900 uppercase">{isAdmin ? "Activity Log" : "My Activity"}</h1>
+                        <p className="text-sm text-slate-400">
+                          {isAdmin ? `${filtered.length} of ${logs.length} actions across all staff` : `${filtered.length} actions performed by you`}
+                        </p>
+                      </div>
+                    </div>
+                    <Card className="p-4 space-y-3">
+                      <div className={`grid grid-cols-1 ${isAdmin ? "md:grid-cols-3" : "md:grid-cols-2"} gap-3`}>
+                        <div className="relative">
+                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                          <input value={actSearch} onChange={(e: any)=>setActSearch(e.target.value)} placeholder="Search student or staff…" className="w-full pl-9 pr-3 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none"/>
+                        </div>
+                        {isAdmin && (
+                          <select value={actStaffFilter} onChange={(e: any)=>setActStaffFilter(e.target.value)} className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none">
+                            <option value="All">All Staff</option>
+                            <option value="admin">School Admin</option>
+                            {staffList.map((s: any)=> <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        )}
+                        <select value={actAction} onChange={(e: any)=>setActAction(e.target.value)} className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none">
+                          <option value="All">All Actions</option>
+                          {uniqueActions.map((a: any)=> <option key={a} value={a}>{a}</option>)}
+                        </select>
+                      </div>
+                    </Card>
+                    {filtered.length===0
+                      ? <EmptyState icon={Activity} title="No activity yet" subtitle={isAdmin ? "Staff actions will show up here with timestamps." : "Your actions will appear here."}/>
+                      : <Card className="overflow-hidden"><div className="divide-y divide-slate-50">
+                          {filtered.map((log: any) => {
+                            const { date, time } = fmtTs(log.ts);
+                            const ac = log.action==="Deleted" ? "bg-red-100 text-red-600"
+                              : log.action==="Restored" ? "bg-emerald-100 text-emerald-700"
+                              : log.action.includes("Revok") ? "bg-orange-100 text-orange-700"
+                              : "bg-blue-100 text-blue-700";
+                            const actor = log.actorName || "—";
+                            const isAdminActor = log.actorRole === "admin" || log.actorId === "admin";
+                            return (
+                              <div key={log.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <span className={`text-xs font-black px-2 py-0.5 rounded-md flex-shrink-0 ${ac}`}>{log.action}</span>
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-black text-slate-900 truncate">{log.student}</p>
+                                    <p className="text-xs text-slate-500 truncate">
+                                      {log.subject}{log.detail && ` · ${log.detail}`}
+                                    </p>
+                                    {isAdmin && (
+                                      <p className="text-[10px] font-bold text-slate-400 mt-0.5 flex items-center gap-1">
+                                        {isAdminActor ? <Shield size={10} className="text-primary"/> : <UserCog size={10} className="text-indigo-500"/>}
+                                        <span className={isAdminActor ? "text-primary" : "text-indigo-600"}>{actor}</span>
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                  <p className="text-xs font-bold text-slate-500">{time}</p>
+                                  <p className="text-xs text-slate-400">{date}</p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div></Card>
+                    }
+                  </>
+                );
+              })()}
+
             </div>
           </main>
 
