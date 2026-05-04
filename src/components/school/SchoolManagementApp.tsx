@@ -950,12 +950,14 @@ export default function SchoolManagementApp() {
   const [dlg,setDlg] = useState<any>(null);
   const [showBin,setShowBin] = useState(false);
   const [auth,setAuth] = useState<any>({loggedIn:false,user:null});
-  const [loginId,setLoginId] = useState("admin");
+  const [loginRole,setLoginRole] = useState<"" | "admin" | "staff">("");
+  const [loginStaffId,setLoginStaffId] = useState("");
   const [loginPass,setLoginPass] = useState("");
   const [loginErr,setLoginErr] = useState("");
   const [forgotOpen,setForgotOpen] = useState(false);
   const [forgotStep,setForgotStep] = useState(1);
   const [forgotInput,setForgotInput] = useState("");
+  const [actSearch,setActSearch] = useState(""); const [actStaffFilter,setActStaffFilter] = useState("All"); const [actAction,setActAction] = useState("All");
   const [dbSearch,setDbSearch] = useState(""); const [dbClass,setDbClass] = useState(""); const [dbDate,setDbDate] = useState(""); const [dbTerm,setDbTerm] = useState("current"); const [dbSession,setDbSession] = useState("current");
   const [rpSearch,setRpSearch] = useState(""); const [rpClass,setRpClass] = useState("All"); const [rpTerm,setRpTerm] = useState("current"); const [rpSession,setRpSession] = useState("current");
   const [activeReport,setActiveReport] = useState<any>(null);
