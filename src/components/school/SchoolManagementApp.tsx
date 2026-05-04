@@ -71,7 +71,15 @@ const initialState: any = {
   schoolSettings:{name:"Greatmind Academy",motto:"Excellence in every child",session:"2024/2025",term:"First Term",resumptionDate:"January 8th, 2025"},
 };
 
-const mkLog = (action: string, student: string, subject: string, detail="") => ({id:uid(),action,student,subject,detail,ts:new Date().toISOString()});
+// Module-level actor tracker — set by the app shell after login so reducer
+// can stamp every log entry with who performed the action.
+const _actor: { id: string; name: string; role: "admin" | "staff" } = { id: "system", name: "System", role: "admin" };
+const setLogActor = (a: { id: string; name: string; role: "admin" | "staff" }) => { _actor.id = a.id; _actor.name = a.name; _actor.role = a.role; };
+const mkLog = (action: string, student: string, subject: string, detail="") => ({
+  id: uid(), action, student, subject, detail,
+  ts: new Date().toISOString(),
+  actorId: _actor.id, actorName: _actor.name, actorRole: _actor.role,
+});
 
 function appReducer(state: any, action: any) {
   switch(action.type) {
