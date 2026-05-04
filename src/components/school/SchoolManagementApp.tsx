@@ -1109,22 +1109,68 @@ export default function SchoolManagementApp() {
     </div>
   );
 
-  // Login
+  // Login — role picker + PIN
   if(!auth.loggedIn) return(
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
       <Card className="w-full max-w-sm p-8 border-t-4 border-t-primary">
-        <div className="text-center mb-8"><SchoolLogo logoUrl={schoolLogo} size="lg" className="mx-auto mb-4"/><h1 className="text-xl font-black text-slate-900">{schoolSettings.name}</h1><p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Staff Authentication</p></div>
-        <div className="space-y-4">
-          <Inp label="Name / Username" value={loginId} onChange={(e: any)=>{setLoginId(e.target.value);setLoginErr("");}} placeholder="admin or staff full name"/>
-          <Field label="Password / PIN" error={loginErr}><input type="password" value={loginPass} onChange={(e: any)=>{setLoginPass(e.target.value);setLoginErr("");}} onKeyDown={(e: any)=>e.key==="Enter"&&doLogin()} placeholder="••••••••" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-semibold text-sm focus:border-primary focus:bg-white outline-none transition-all"/></Field>
-          <div className="text-right -mt-1"><button onClick={()=>setForgotOpen(true)} className="text-xs font-black uppercase text-primary hover:opacity-80">Forgot Password?</button></div>
-          <Btn variant="primary" size="lg" className="w-full" onClick={doLogin}>Launch Portal</Btn>
-          <p className="text-xs text-slate-400 text-center">Admin: <code className="font-black bg-slate-100 px-1 rounded">admin</code> + any password · Staff: full name + PIN</p>
+        <div className="text-center mb-6">
+          <SchoolLogo logoUrl={schoolLogo} size="lg" className="mx-auto mb-4"/>
+          <h1 className="text-xl font-black text-slate-900">{schoolSettings.name}</h1>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Sign in to continue</p>
         </div>
+
+        {!loginRole && (
+          <div className="space-y-3">
+            <p className="text-xs font-black uppercase text-slate-400 tracking-widest text-center mb-2">Continue as</p>
+            <button onClick={()=>{setLoginRole("admin");setLoginErr("");setLoginPass("");}} className="w-full p-4 rounded-2xl border-2 border-slate-100 hover:border-primary hover:bg-blue-50 transition-all flex items-center gap-3 text-left group">
+              <div className="w-11 h-11 rounded-xl bg-primary text-white flex items-center justify-center flex-shrink-0"><Shield size={20}/></div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-black text-slate-900">School Admin</p>
+                <p className="text-xs text-slate-500">Full access · oversee staff activities</p>
+              </div>
+              <ChevronRight size={18} className="text-slate-300 group-hover:text-primary"/>
+            </button>
+            <button onClick={()=>{setLoginRole("staff");setLoginErr("");setLoginPass("");setLoginStaffId("");}} className="w-full p-4 rounded-2xl border-2 border-slate-100 hover:border-indigo-400 hover:bg-indigo-50 transition-all flex items-center gap-3 text-left group">
+              <div className="w-11 h-11 rounded-xl bg-indigo-500 text-white flex items-center justify-center flex-shrink-0"><UserCog size={20}/></div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-black text-slate-900">Staff</p>
+                <p className="text-xs text-slate-500">Teacher portal · view your activity</p>
+              </div>
+              <ChevronRight size={18} className="text-slate-300 group-hover:text-indigo-500"/>
+            </button>
+          </div>
+        )}
+
+        {loginRole==="admin" && (
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex items-center gap-2"><Shield size={14} className="text-primary"/><p className="text-xs font-bold text-primary">Admin sign-in</p></div>
+            <Field label="Admin PIN" error={loginErr}><input type="password" inputMode="numeric" autoFocus value={loginPass} onChange={(e: any)=>{setLoginPass(e.target.value);setLoginErr("");}} onKeyDown={(e: any)=>e.key==="Enter"&&doLogin()} placeholder="••••" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-semibold text-sm focus:border-primary focus:bg-white outline-none transition-all"/></Field>
+            <div className="text-right -mt-1"><button onClick={()=>setForgotOpen(true)} className="text-xs font-black uppercase text-primary hover:opacity-80">Forgot PIN?</button></div>
+            <Btn variant="primary" size="lg" className="w-full" onClick={doLogin}><Shield size={15}/>Enter Admin Portal</Btn>
+            <button onClick={()=>{setLoginRole("");setLoginErr("");setLoginPass("");}} className="w-full text-xs font-black uppercase text-slate-400 hover:text-slate-600 py-1">← Back</button>
+          </div>
+        )}
+
+        {loginRole==="staff" && (
+          <div className="space-y-4">
+            <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 flex items-center gap-2"><UserCog size={14} className="text-indigo-500"/><p className="text-xs font-bold text-indigo-700">Staff sign-in</p></div>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-black uppercase text-slate-400 tracking-wide">Staff Member</label>
+              <select autoFocus value={loginStaffId} onChange={(e: any)=>{setLoginStaffId(e.target.value);setLoginErr("");}} className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-semibold text-sm focus:border-indigo-400 focus:bg-white outline-none transition-all">
+                <option value="">Select your name…</option>
+                {staffList.filter((s: any)=>s.status!=="revoked").map((s: any)=> <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
+              </select>
+            </div>
+            <Field label="Your PIN" error={loginErr}><input type="password" inputMode="numeric" value={loginPass} onChange={(e: any)=>{setLoginPass(e.target.value);setLoginErr("");}} onKeyDown={(e: any)=>e.key==="Enter"&&doLogin()} placeholder="••••" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-semibold text-sm focus:border-indigo-400 focus:bg-white outline-none transition-all"/></Field>
+            <Btn variant="primary" size="lg" className="w-full" onClick={doLogin}><UserCog size={15}/>Enter Staff Portal</Btn>
+            <button onClick={()=>{setLoginRole("");setLoginErr("");setLoginPass("");setLoginStaffId("");}} className="w-full text-xs font-black uppercase text-slate-400 hover:text-slate-600 py-1">← Back</button>
+          </div>
+        )}
       </Card>
       {toast&&<Toast toast={toast}/>}
     </div>
   );
+
 
   return(
     <AppCtx.Provider value={ctxValue}>
