@@ -1021,21 +1021,29 @@ export default function SchoolManagementApp() {
 
   const doLogin = useCallback(async()=>{
     setLoginErr("");
-    if(loginId.toLowerCase()==="admin"){if(!loginPass)return setLoginErr("Enter a password");setAuth({loggedIn:true,user:null});return;}
-    // Check staff with async PIN verification
-    for(const st of staffList){
-      if(st.name.toLowerCase()===loginId.toLowerCase()){
-        const pinMatch=await verifyPin(loginPass,st.pin);
-        if(pinMatch){
-          if(st.status==="revoked")return setLoginErr("Your access has been revoked.");
-          setAuth({loggedIn:true,user:st});
-          if(st.status==="restricted")showToast("Account restricted — limited access.","warning");
-          return;
-        }
-      }
+    if(loginRole==="admin"){
+      if(!loginPass) return setLoginErr("Enter the admin PIN");
+      const ok = await verifyPin(loginPass, adminPinRef.current);
+      if(!ok) return setLoginErr("Incorrect admin PIN");
+      setLogActor({ id: "admin", name: "School Admin", role: "admin" });
+      setAuth({loggedIn:true,user:null});
+      return;
     }
-    setLoginErr("Invalid name or PIN");
-  },[loginId,loginPass,staffList,showToast]);
+    if(loginRole==="staff"){
+      if(!loginStaffId) return setLoginErr("Choose your staff name");
+      const st = staffList.find((s: any)=> s.id===loginStaffId);
+      if(!st) return setLoginErr("Staff not found");
+      if(!loginPass) return setLoginErr("Enter your PIN");
+      const pinMatch = await verifyPin(loginPass, st.pin);
+      if(!pinMatch) return setLoginErr("Wrong PIN");
+      if(st.status==="revoked") return setLoginErr("Your access has been revoked.");
+      setLogActor({ id: st.id, name: st.name, role: "staff" });
+      setAuth({loggedIn:true,user:st});
+      if(st.status==="restricted") showToast("Account restricted — limited access.","warning");
+      return;
+    }
+    setLoginErr("Pick a role first");
+  },[loginRole,loginStaffId,loginPass,staffList,showToast]);
 
   const submitScore = useCallback(()=>{
     const{studentName,studentClass,subject,caScore,examScore}=scoreForm;
