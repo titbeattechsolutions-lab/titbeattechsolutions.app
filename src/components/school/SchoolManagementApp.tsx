@@ -1013,6 +1013,7 @@ export default function SchoolManagementApp() {
     {id:"database",label:"Records",icon:Database,show:isAdmin||can("manageRecords")||can("scoreEntry"),primary:true},
     {id:"reports",label:"Reports",icon:FileText,show:can("viewReports"),primary:true},
     {id:"attendance",label:"Attendance",icon:CalendarDays,show:can("scoreEntry")||isAdmin,primary:false},
+    {id:"activity",label:isAdmin?"Activity":"My Activity",icon:Activity,show:true,primary:false},
     {id:"staff",label:"Staff",icon:Users,show:isAdmin,primary:false},
     {id:"settings",label:"Settings",icon:Settings,show:isAdmin,primary:false},
   ].filter(t=>t.show),[can,isAdmin]);
