@@ -7,7 +7,8 @@ import {
   UserX, UserCheck, Eye, EyeOff, KeyRound, Shield,
   Menu, BookOpen, MoreVertical, ChevronRight,
   CalendarDays, ClipboardList, Database, Edit2,
-  Download, FileSpreadsheet, UploadCloud, HardDrive
+  Download, FileSpreadsheet, UploadCloud, HardDrive,
+  Activity, UserCog
 } from "lucide-react";
 import { exportToPDF, exportToExcel } from "@/lib/report-export";
 import { parseCSV, readFileAsText } from "@/lib/csv-import";
