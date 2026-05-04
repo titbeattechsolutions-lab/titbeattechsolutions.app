@@ -7,7 +7,8 @@ import {
   UserX, UserCheck, Eye, EyeOff, KeyRound, Shield,
   Menu, BookOpen, MoreVertical, ChevronRight,
   CalendarDays, ClipboardList, Database, Edit2,
-  Download, FileSpreadsheet, UploadCloud, HardDrive
+  Download, FileSpreadsheet, UploadCloud, HardDrive,
+  Activity, UserCog
 } from "lucide-react";
 import { exportToPDF, exportToExcel } from "@/lib/report-export";
 import { parseCSV, readFileAsText } from "@/lib/csv-import";
@@ -70,7 +71,15 @@ const initialState: any = {
   schoolSettings:{name:"Greatmind Academy",motto:"Excellence in every child",session:"2024/2025",term:"First Term",resumptionDate:"January 8th, 2025"},
 };
 
-const mkLog = (action: string, student: string, subject: string, detail="") => ({id:uid(),action,student,subject,detail,ts:new Date().toISOString()});
+// Module-level actor tracker — set by the app shell after login so reducer
+// can stamp every log entry with who performed the action.
+const _actor: { id: string; name: string; role: "admin" | "staff" } = { id: "system", name: "System", role: "admin" };
+const setLogActor = (a: { id: string; name: string; role: "admin" | "staff" }) => { _actor.id = a.id; _actor.name = a.name; _actor.role = a.role; };
+const mkLog = (action: string, student: string, subject: string, detail="") => ({
+  id: uid(), action, student, subject, detail,
+  ts: new Date().toISOString(),
+  actorId: _actor.id, actorName: _actor.name, actorRole: _actor.role,
+});
 
 function appReducer(state: any, action: any) {
   switch(action.type) {
@@ -941,12 +950,14 @@ export default function SchoolManagementApp() {
   const [dlg,setDlg] = useState<any>(null);
   const [showBin,setShowBin] = useState(false);
   const [auth,setAuth] = useState<any>({loggedIn:false,user:null});
-  const [loginId,setLoginId] = useState("admin");
+  const [loginRole,setLoginRole] = useState<"" | "admin" | "staff">("");
+  const [loginStaffId,setLoginStaffId] = useState("");
   const [loginPass,setLoginPass] = useState("");
   const [loginErr,setLoginErr] = useState("");
   const [forgotOpen,setForgotOpen] = useState(false);
   const [forgotStep,setForgotStep] = useState(1);
   const [forgotInput,setForgotInput] = useState("");
+  const [actSearch,setActSearch] = useState(""); const [actStaffFilter,setActStaffFilter] = useState("All"); const [actAction,setActAction] = useState("All");
   const [dbSearch,setDbSearch] = useState(""); const [dbClass,setDbClass] = useState(""); const [dbDate,setDbDate] = useState(""); const [dbTerm,setDbTerm] = useState("current"); const [dbSession,setDbSession] = useState("current");
   const [rpSearch,setRpSearch] = useState(""); const [rpClass,setRpClass] = useState("All"); const [rpTerm,setRpTerm] = useState("current"); const [rpSession,setRpSession] = useState("current");
   const [activeReport,setActiveReport] = useState<any>(null);
@@ -1002,6 +1013,7 @@ export default function SchoolManagementApp() {
     {id:"database",label:"Records",icon:Database,show:isAdmin||can("manageRecords")||can("scoreEntry"),primary:true},
     {id:"reports",label:"Reports",icon:FileText,show:can("viewReports"),primary:true},
     {id:"attendance",label:"Attendance",icon:CalendarDays,show:can("scoreEntry")||isAdmin,primary:false},
+    {id:"activity",label:isAdmin?"Activity":"My Activity",icon:Activity,show:true,primary:false},
     {id:"staff",label:"Staff",icon:Users,show:isAdmin,primary:false},
     {id:"settings",label:"Settings",icon:Settings,show:isAdmin,primary:false},
   ].filter(t=>t.show),[can,isAdmin]);
@@ -1010,21 +1022,29 @@ export default function SchoolManagementApp() {
 
   const doLogin = useCallback(async()=>{
     setLoginErr("");
-    if(loginId.toLowerCase()==="admin"){if(!loginPass)return setLoginErr("Enter a password");setAuth({loggedIn:true,user:null});return;}
-    // Check staff with async PIN verification
-    for(const st of staffList){
-      if(st.name.toLowerCase()===loginId.toLowerCase()){
-        const pinMatch=await verifyPin(loginPass,st.pin);
-        if(pinMatch){
-          if(st.status==="revoked")return setLoginErr("Your access has been revoked.");
-          setAuth({loggedIn:true,user:st});
-          if(st.status==="restricted")showToast("Account restricted — limited access.","warning");
-          return;
-        }
-      }
+    if(loginRole==="admin"){
+      if(!loginPass) return setLoginErr("Enter the admin PIN");
+      const ok = await verifyPin(loginPass, adminPinRef.current);
+      if(!ok) return setLoginErr("Incorrect admin PIN");
+      setLogActor({ id: "admin", name: "School Admin", role: "admin" });
+      setAuth({loggedIn:true,user:null});
+      return;
     }
-    setLoginErr("Invalid name or PIN");
-  },[loginId,loginPass,staffList,showToast]);
+    if(loginRole==="staff"){
+      if(!loginStaffId) return setLoginErr("Choose your staff name");
+      const st = staffList.find((s: any)=> s.id===loginStaffId);
+      if(!st) return setLoginErr("Staff not found");
+      if(!loginPass) return setLoginErr("Enter your PIN");
+      const pinMatch = await verifyPin(loginPass, st.pin);
+      if(!pinMatch) return setLoginErr("Wrong PIN");
+      if(st.status==="revoked") return setLoginErr("Your access has been revoked.");
+      setLogActor({ id: st.id, name: st.name, role: "staff" });
+      setAuth({loggedIn:true,user:st});
+      if(st.status==="restricted") showToast("Account restricted — limited access.","warning");
+      return;
+    }
+    setLoginErr("Pick a role first");
+  },[loginRole,loginStaffId,loginPass,staffList,showToast]);
 
   const submitScore = useCallback(()=>{
     const{studentName,studentClass,subject,caScore,examScore}=scoreForm;
@@ -1090,22 +1110,68 @@ export default function SchoolManagementApp() {
     </div>
   );
 
-  // Login
+  // Login — role picker + PIN
   if(!auth.loggedIn) return(
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
       <Card className="w-full max-w-sm p-8 border-t-4 border-t-primary">
-        <div className="text-center mb-8"><SchoolLogo logoUrl={schoolLogo} size="lg" className="mx-auto mb-4"/><h1 className="text-xl font-black text-slate-900">{schoolSettings.name}</h1><p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Staff Authentication</p></div>
-        <div className="space-y-4">
-          <Inp label="Name / Username" value={loginId} onChange={(e: any)=>{setLoginId(e.target.value);setLoginErr("");}} placeholder="admin or staff full name"/>
-          <Field label="Password / PIN" error={loginErr}><input type="password" value={loginPass} onChange={(e: any)=>{setLoginPass(e.target.value);setLoginErr("");}} onKeyDown={(e: any)=>e.key==="Enter"&&doLogin()} placeholder="••••••••" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-semibold text-sm focus:border-primary focus:bg-white outline-none transition-all"/></Field>
-          <div className="text-right -mt-1"><button onClick={()=>setForgotOpen(true)} className="text-xs font-black uppercase text-primary hover:opacity-80">Forgot Password?</button></div>
-          <Btn variant="primary" size="lg" className="w-full" onClick={doLogin}>Launch Portal</Btn>
-          <p className="text-xs text-slate-400 text-center">Admin: <code className="font-black bg-slate-100 px-1 rounded">admin</code> + any password · Staff: full name + PIN</p>
+        <div className="text-center mb-6">
+          <SchoolLogo logoUrl={schoolLogo} size="lg" className="mx-auto mb-4"/>
+          <h1 className="text-xl font-black text-slate-900">{schoolSettings.name}</h1>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Sign in to continue</p>
         </div>
+
+        {!loginRole && (
+          <div className="space-y-3">
+            <p className="text-xs font-black uppercase text-slate-400 tracking-widest text-center mb-2">Continue as</p>
+            <button onClick={()=>{setLoginRole("admin");setLoginErr("");setLoginPass("");}} className="w-full p-4 rounded-2xl border-2 border-slate-100 hover:border-primary hover:bg-blue-50 transition-all flex items-center gap-3 text-left group">
+              <div className="w-11 h-11 rounded-xl bg-primary text-white flex items-center justify-center flex-shrink-0"><Shield size={20}/></div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-black text-slate-900">School Admin</p>
+                <p className="text-xs text-slate-500">Full access · oversee staff activities</p>
+              </div>
+              <ChevronRight size={18} className="text-slate-300 group-hover:text-primary"/>
+            </button>
+            <button onClick={()=>{setLoginRole("staff");setLoginErr("");setLoginPass("");setLoginStaffId("");}} className="w-full p-4 rounded-2xl border-2 border-slate-100 hover:border-indigo-400 hover:bg-indigo-50 transition-all flex items-center gap-3 text-left group">
+              <div className="w-11 h-11 rounded-xl bg-indigo-500 text-white flex items-center justify-center flex-shrink-0"><UserCog size={20}/></div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-black text-slate-900">Staff</p>
+                <p className="text-xs text-slate-500">Teacher portal · view your activity</p>
+              </div>
+              <ChevronRight size={18} className="text-slate-300 group-hover:text-indigo-500"/>
+            </button>
+          </div>
+        )}
+
+        {loginRole==="admin" && (
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex items-center gap-2"><Shield size={14} className="text-primary"/><p className="text-xs font-bold text-primary">Admin sign-in</p></div>
+            <Field label="Admin PIN" error={loginErr}><input type="password" inputMode="numeric" autoFocus value={loginPass} onChange={(e: any)=>{setLoginPass(e.target.value);setLoginErr("");}} onKeyDown={(e: any)=>e.key==="Enter"&&doLogin()} placeholder="••••" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-semibold text-sm focus:border-primary focus:bg-white outline-none transition-all"/></Field>
+            <div className="text-right -mt-1"><button onClick={()=>setForgotOpen(true)} className="text-xs font-black uppercase text-primary hover:opacity-80">Forgot PIN?</button></div>
+            <Btn variant="primary" size="lg" className="w-full" onClick={doLogin}><Shield size={15}/>Enter Admin Portal</Btn>
+            <button onClick={()=>{setLoginRole("");setLoginErr("");setLoginPass("");}} className="w-full text-xs font-black uppercase text-slate-400 hover:text-slate-600 py-1">← Back</button>
+          </div>
+        )}
+
+        {loginRole==="staff" && (
+          <div className="space-y-4">
+            <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 flex items-center gap-2"><UserCog size={14} className="text-indigo-500"/><p className="text-xs font-bold text-indigo-700">Staff sign-in</p></div>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-black uppercase text-slate-400 tracking-wide">Staff Member</label>
+              <select autoFocus value={loginStaffId} onChange={(e: any)=>{setLoginStaffId(e.target.value);setLoginErr("");}} className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-semibold text-sm focus:border-indigo-400 focus:bg-white outline-none transition-all">
+                <option value="">Select your name…</option>
+                {staffList.filter((s: any)=>s.status!=="revoked").map((s: any)=> <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
+              </select>
+            </div>
+            <Field label="Your PIN" error={loginErr}><input type="password" inputMode="numeric" value={loginPass} onChange={(e: any)=>{setLoginPass(e.target.value);setLoginErr("");}} onKeyDown={(e: any)=>e.key==="Enter"&&doLogin()} placeholder="••••" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-semibold text-sm focus:border-indigo-400 focus:bg-white outline-none transition-all"/></Field>
+            <Btn variant="primary" size="lg" className="w-full" onClick={doLogin}><UserCog size={15}/>Enter Staff Portal</Btn>
+            <button onClick={()=>{setLoginRole("");setLoginErr("");setLoginPass("");setLoginStaffId("");}} className="w-full text-xs font-black uppercase text-slate-400 hover:text-slate-600 py-1">← Back</button>
+          </div>
+        )}
       </Card>
       {toast&&<Toast toast={toast}/>}
     </div>
   );
+
 
   return(
     <AppCtx.Provider value={ctxValue}>
@@ -1149,7 +1215,7 @@ export default function SchoolManagementApp() {
                   {([["Students (Term)",activeTermEntries.length>0?studentList.length:0,"border-l-blue-500"],["Records (Term)",activeTermEntries.length,"border-l-emerald-500"],["Active Staff",`${staffList.filter((s: any)=>s.status==="active").length}/${staffList.length}`,"border-l-indigo-500"]] as const).map(([l,v,a])=><Card key={l} className={`p-5 border-l-4 ${a}`}><p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-1">{l}</p><p className="text-2xl font-black text-slate-900">{v}</p></Card>)}
                   <Card className="p-5 bg-slate-900 border-slate-900 col-span-2 md:col-span-1"><p className="text-xs font-black uppercase text-blue-400 tracking-wide mb-1">Session</p><p className="text-lg font-black text-white leading-tight">{schoolSettings.session||"—"}</p><p className="text-xs text-slate-400 mt-1 font-bold">{schoolSettings.term||"—"}</p></Card>
                 </div>
-                {logs.length>0&&<Card><div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2"><Clock size={14} className="text-slate-400"/><p className="text-sm font-black uppercase text-slate-600">Activity Log</p></div><div className="divide-y divide-slate-50">{logs.slice(0,8).map((log: any)=>{const{date,time}=fmtTs(log.ts);const ac=log.action==="Deleted"?"bg-red-100 text-red-600":log.action==="Restored"?"bg-emerald-100 text-emerald-700":log.action.includes("Revok")?"bg-orange-100 text-orange-700":"bg-blue-100 text-blue-700";return<div key={log.id} className="flex items-center justify-between gap-3 px-5 py-3"><div className="flex items-center gap-3 min-w-0"><span className={`text-xs font-black px-2 py-0.5 rounded-md flex-shrink-0 ${ac}`}>{log.action}</span><div className="min-w-0"><p className="text-xs font-black text-slate-900 truncate">{log.student}</p><p className="text-xs text-slate-500 truncate">{log.subject}{log.detail&&` · ${log.detail}`}</p></div></div><div className="text-right flex-shrink-0"><p className="text-xs font-bold text-slate-500">{time}</p><p className="text-xs text-slate-400">{date}</p></div></div>; })}</div></Card>}
+                {(() => { const dashLogs = (isAdmin ? logs : logs.filter((l: any)=> l.actorId===auth.user?.id)); return dashLogs.length>0 && <Card><div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2"><Clock size={14} className="text-slate-400"/><p className="text-sm font-black uppercase text-slate-600">{isAdmin?"Activity Log · All Staff":"My Recent Activity"}</p><button onClick={()=>setActiveTab("activity")} className="ml-auto text-xs font-black uppercase text-primary hover:opacity-80">View all →</button></div><div className="divide-y divide-slate-50">{dashLogs.slice(0,8).map((log: any)=>{const{date,time}=fmtTs(log.ts);const ac=log.action==="Deleted"?"bg-red-100 text-red-600":log.action==="Restored"?"bg-emerald-100 text-emerald-700":log.action.includes("Revok")?"bg-orange-100 text-orange-700":"bg-blue-100 text-blue-700";const isAdminActor=log.actorRole==="admin"||log.actorId==="admin";return<div key={log.id} className="flex items-center justify-between gap-3 px-5 py-3"><div className="flex items-center gap-3 min-w-0"><span className={`text-xs font-black px-2 py-0.5 rounded-md flex-shrink-0 ${ac}`}>{log.action}</span><div className="min-w-0"><p className="text-xs font-black text-slate-900 truncate">{log.student}</p><p className="text-xs text-slate-500 truncate">{log.subject}{log.detail&&` · ${log.detail}`}</p>{isAdmin&&log.actorName&&<p className="text-[10px] font-bold mt-0.5 flex items-center gap-1">{isAdminActor?<Shield size={10} className="text-primary"/>:<UserCog size={10} className="text-indigo-500"/>}<span className={isAdminActor?"text-primary":"text-indigo-600"}>{log.actorName}</span></p>}</div></div><div className="text-right flex-shrink-0"><p className="text-xs font-bold text-slate-500">{time}</p><p className="text-xs text-slate-400">{date}</p></div></div>; })}</div></Card>; })()}
               </>}
 
               {/* SCORE ENTRY */}
@@ -1210,6 +1276,85 @@ export default function SchoolManagementApp() {
               {/* SETTINGS */}
               {activeTab==="settings"&&isAdmin&&<SettingsTab logoUrl={schoolLogo} setSchoolLogo={setSchoolLogo} logoRef={logoRef} showToast={showToast} adminPinRef={adminPinRef}/>}
 
+              {/* ACTIVITY */}
+              {activeTab==="activity" && (() => {
+                const scoped = isAdmin ? logs : logs.filter((l: any) => l.actorId === auth.user?.id);
+                const filtered = scoped.filter((l: any) =>
+                  (!actSearch || (l.student||"").toLowerCase().includes(actSearch.toLowerCase()) || (l.actorName||"").toLowerCase().includes(actSearch.toLowerCase())) &&
+                  (actStaffFilter==="All" || l.actorId===actStaffFilter) &&
+                  (actAction==="All" || l.action===actAction)
+                );
+                const uniqueActions = Array.from(new Set(logs.map((l: any) => l.action))).sort();
+                return (
+                  <>
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <div>
+                        <h1 className="text-2xl font-black text-slate-900 uppercase">{isAdmin ? "Activity Log" : "My Activity"}</h1>
+                        <p className="text-sm text-slate-400">
+                          {isAdmin ? `${filtered.length} of ${logs.length} actions across all staff` : `${filtered.length} actions performed by you`}
+                        </p>
+                      </div>
+                    </div>
+                    <Card className="p-4 space-y-3">
+                      <div className={`grid grid-cols-1 ${isAdmin ? "md:grid-cols-3" : "md:grid-cols-2"} gap-3`}>
+                        <div className="relative">
+                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                          <input value={actSearch} onChange={(e: any)=>setActSearch(e.target.value)} placeholder="Search student or staff…" className="w-full pl-9 pr-3 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none"/>
+                        </div>
+                        {isAdmin && (
+                          <select value={actStaffFilter} onChange={(e: any)=>setActStaffFilter(e.target.value)} className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none">
+                            <option value="All">All Staff</option>
+                            <option value="admin">School Admin</option>
+                            {staffList.map((s: any)=> <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        )}
+                        <select value={actAction} onChange={(e: any)=>setActAction(e.target.value)} className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none">
+                          <option value="All">All Actions</option>
+                          {uniqueActions.map((a: any)=> <option key={a} value={a}>{a}</option>)}
+                        </select>
+                      </div>
+                    </Card>
+                    {filtered.length===0
+                      ? <EmptyState icon={Activity} title="No activity yet" subtitle={isAdmin ? "Staff actions will show up here with timestamps." : "Your actions will appear here."}/>
+                      : <Card className="overflow-hidden"><div className="divide-y divide-slate-50">
+                          {filtered.map((log: any) => {
+                            const { date, time } = fmtTs(log.ts);
+                            const ac = log.action==="Deleted" ? "bg-red-100 text-red-600"
+                              : log.action==="Restored" ? "bg-emerald-100 text-emerald-700"
+                              : log.action.includes("Revok") ? "bg-orange-100 text-orange-700"
+                              : "bg-blue-100 text-blue-700";
+                            const actor = log.actorName || "—";
+                            const isAdminActor = log.actorRole === "admin" || log.actorId === "admin";
+                            return (
+                              <div key={log.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <span className={`text-xs font-black px-2 py-0.5 rounded-md flex-shrink-0 ${ac}`}>{log.action}</span>
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-black text-slate-900 truncate">{log.student}</p>
+                                    <p className="text-xs text-slate-500 truncate">
+                                      {log.subject}{log.detail && ` · ${log.detail}`}
+                                    </p>
+                                    {isAdmin && (
+                                      <p className="text-[10px] font-bold text-slate-400 mt-0.5 flex items-center gap-1">
+                                        {isAdminActor ? <Shield size={10} className="text-primary"/> : <UserCog size={10} className="text-indigo-500"/>}
+                                        <span className={isAdminActor ? "text-primary" : "text-indigo-600"}>{actor}</span>
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                  <p className="text-xs font-bold text-slate-500">{time}</p>
+                                  <p className="text-xs text-slate-400">{date}</p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div></Card>
+                    }
+                  </>
+                );
+              })()}
+
             </div>
           </main>
 
@@ -1230,7 +1375,7 @@ export default function SchoolManagementApp() {
       {dlg?.type==="delete"&&<PinAuth title="Delete Record" subtitle={`${dlg.data.subject} — ${dlg.data.studentName}`} headerColor="bg-destructive" icon={Trash2} confirmLabel={<><Trash2 size={13}/>Delete</>} confirmVariant="danger" correctPin={adminPinRef.current} onConfirm={()=>{dispatch({type:"DELETE_ENTRY",id:dlg.data.id});showToast("Moved to bin");setDlg(null);}} onCancel={()=>setDlg(null)}><div className="bg-red-50 border border-red-100 rounded-xl p-4 flex gap-3"><AlertTriangle size={15} className="text-red-500 flex-shrink-0 mt-0.5"/><div className="text-xs text-red-700"><p className="font-black uppercase mb-1">Deleting:</p><p className="font-bold">{dlg.data.subject} — {dlg.data.studentName}</p><p className="text-red-400">Score: {dlg.data.caScore}+{dlg.data.examScore}={dlg.data.total}</p></div></div></PinAuth>}
       {dlg?.type==="restore"&&<PinAuth title="Restore Record" subtitle={`${dlg.data.subject} — ${dlg.data.studentName}`} headerColor="bg-emerald-600" icon={RotateCcw} confirmLabel={<><RotateCcw size={13}/>Restore</>} confirmVariant="success" correctPin={adminPinRef.current} onConfirm={()=>{dispatch({type:"RESTORE_ENTRY",id:dlg.data.id});showToast("Restored");setDlg(null);}} onCancel={()=>setDlg(null)}><div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex gap-3"><RotateCcw size={15} className="text-emerald-500 flex-shrink-0 mt-0.5"/><p className="text-xs text-emerald-700"><strong>{dlg.data.subject}</strong> — {dlg.data.studentName} will be restored.</p></div></PinAuth>}
       {dlg?.type==="revoke"&&<PinAuth title="Revoke Access" subtitle={dlg.data.name} headerColor="bg-destructive" icon={UserX} confirmLabel={<><UserX size={13}/>Revoke</>} confirmVariant="danger" correctPin={adminPinRef.current} onConfirm={()=>{dispatch({type:"SET_STAFF_STATUS",id:dlg.data.id,status:"revoked"});showToast(`${dlg.data.name}'s access revoked`);setDlg(null);}} onCancel={()=>setDlg(null)}><div className="bg-red-50 border border-red-100 rounded-xl p-4 flex gap-3"><AlertTriangle size={15} className="text-red-500 flex-shrink-0 mt-0.5"/><p className="text-xs text-red-700 font-medium"><strong>{dlg.data.name}</strong> will lose access immediately.</p></div></PinAuth>}
-      {showLogout&&<Sheet onClose={()=>setShowLogout(false)}><MHead icon={LogOut} title="Sign Out" subtitle="You are about to leave the portal" color="bg-slate-900" onClose={()=>setShowLogout(false)}/><div className="p-5 space-y-4"><div className="bg-slate-50 border border-slate-100 rounded-xl p-4 flex gap-3"><AlertTriangle size={15} className="text-amber-500 flex-shrink-0 mt-0.5"/><p className="text-sm text-slate-600 font-medium">Unsaved changes will be lost. Are you sure?</p></div><div className="grid grid-cols-2 gap-3"><Btn variant="ghost" size="lg" onClick={()=>setShowLogout(false)}>Stay</Btn><Btn variant="danger" size="lg" onClick={()=>{setAuth({loggedIn:false,user:null});setLoginId("admin");setLoginPass("");setShowLogout(false);setActiveTab("dashboard");setActiveReport(null);setMenuOpen(false);}}><LogOut size={15}/>Sign Out</Btn></div></div></Sheet>}
+      {showLogout&&<Sheet onClose={()=>setShowLogout(false)}><MHead icon={LogOut} title="Sign Out" subtitle="You are about to leave the portal" color="bg-slate-900" onClose={()=>setShowLogout(false)}/><div className="p-5 space-y-4"><div className="bg-slate-50 border border-slate-100 rounded-xl p-4 flex gap-3"><AlertTriangle size={15} className="text-amber-500 flex-shrink-0 mt-0.5"/><p className="text-sm text-slate-600 font-medium">Unsaved changes will be lost. Are you sure?</p></div><div className="grid grid-cols-2 gap-3"><Btn variant="ghost" size="lg" onClick={()=>setShowLogout(false)}>Stay</Btn><Btn variant="danger" size="lg" onClick={()=>{setAuth({loggedIn:false,user:null});setLoginRole("");setLoginStaffId("");setLoginPass("");setLogActor({id:"system",name:"System",role:"admin"});setShowLogout(false);setActiveTab("dashboard");setActiveReport(null);setMenuOpen(false);}}><LogOut size={15}/>Sign Out</Btn></div></div></Sheet>}
 
       {toast&&<Toast toast={toast}/>}
       <style>{`@media print{aside,nav,header{display:none!important;}main{padding:0!important;overflow:visible!important;height:auto!important;}#printable-report{box-shadow:none!important;border-radius:0!important;}@page{size:A4 portrait;margin:12mm;}}`}</style>
