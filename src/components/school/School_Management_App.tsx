@@ -675,7 +675,7 @@ function appReducer(state: AppState, action: any): AppState {
       return {
         ...state,
         entries: [...state.entries, action.payload],
-        logs: [mkLog("Added", action.payload.studentName, action.payload.subject, `Total: ${action.payload.total}`), ...state.logs].slice(0, 100),
+        logs: [mkLog("Added", action.payload.studentName, action.payload.subject, `Total: ${action.payload.total}`, action.payload.enteredBy || ""), ...state.logs].slice(0, 200),
       };
     case "DELETE_ENTRY": {
       const e = state.entries.find(x => x.id === action.id);
