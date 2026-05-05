@@ -58,6 +58,9 @@ interface Entry {
   total: number;
   createdAt: string;
   restoredAt?: string;
+  term?: string;
+  session?: string;
+  enteredBy?: string;
 }
 interface BinEntry extends Entry {
   deletedAt: string;
@@ -121,6 +124,13 @@ interface AppState {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const today = () => new Date().toISOString().slice(0, 10);
+const timeGreeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  if (h < 21) return "Good evening";
+  return "Good night";
+};
 
 // ─── UPGRADE 1: PIN Security (SHA-256 via Web Crypto API) ────────────────────
 // Strategy: Store SHA-256 hashes. Always accept plain-text PINs during login
@@ -662,8 +672,8 @@ const initialState: AppState = {
   schoolSettings: _saved.schoolSettings ?? { name:"Greatmind Academy", motto:"Excellence in every child", session:"2024/2025", term:"First Term", resumptionDate:"January 8th, 2025" },
 };
 
-function mkLog(action: string, student: string, subject: string, detail = "") {
-  return { id:uid(), action, student, subject, detail, ts:new Date().toISOString() };
+function mkLog(action: string, student: string, subject: string, detail = "", actor = "") {
+  return { id:uid(), action, student, subject, detail, ts:new Date().toISOString(), actor };
 }
 
 function appReducer(state: AppState, action: any): AppState {
@@ -672,7 +682,7 @@ function appReducer(state: AppState, action: any): AppState {
       return {
         ...state,
         entries: [...state.entries, action.payload],
-        logs: [mkLog("Added", action.payload.studentName, action.payload.subject, `Total: ${action.payload.total}`), ...state.logs].slice(0, 100),
+        logs: [mkLog("Added", action.payload.studentName, action.payload.subject, `Total: ${action.payload.total}`, action.payload.enteredBy || ""), ...state.logs].slice(0, 200),
       };
     case "DELETE_ENTRY": {
       const e = state.entries.find(x => x.id === action.id);
@@ -2992,14 +3002,21 @@ export default function App() {
     return allKnownStudents.filter(s => s.class === scoreForm.studentClass).map(s => s.name).sort();
   }, [allKnownStudents, scoreForm.studentClass]);
 
+  // Term-scoped entries: records/reports/score-list show only the active term+session.
+  // Older terms remain saved; switching the Current Term in Settings reveals their data.
+  const termEntries = useMemo(() => entries.filter(e =>
+    (!e.term || e.term === schoolSettings.term) &&
+    (!e.session || e.session === schoolSettings.session)
+  ), [entries, schoolSettings.term, schoolSettings.session]);
+
   const studentList = useMemo(() => {
     const m: Record<string, { name: string; class: string; id: string }> = {};
-    entries.forEach(e => {
+    termEntries.forEach(e => {
       const k = `${e.studentName}||${e.studentClass}`;
       if (!m[k]) m[k] = { name: e.studentName, class: e.studentClass, id: k };
     });
     return Object.values(m);
-  }, [entries]);
+  }, [termEntries]);
 
   const filteredStudents = useMemo(() =>
     studentList.filter(s =>
@@ -3009,12 +3026,12 @@ export default function App() {
   [studentList, rpSearch, rpClass]);
 
   const filteredEntries = useMemo(() =>
-    entries.filter(e =>
+    termEntries.filter(e =>
       (!dbSearch || e.studentName.toLowerCase().includes(dbSearch.toLowerCase())) &&
       (!dbClass  || e.studentClass === dbClass) &&
       (!dbDate   || e.createdAt.slice(0, 10) === dbDate)
     ),
-  [entries, dbSearch, dbClass, dbDate]);
+  [termEntries, dbSearch, dbClass, dbDate]);
 
   const curC = useMemo(() =>
     activeReport
@@ -3092,20 +3109,32 @@ export default function App() {
     if (ex < 0 || ex > 60) return showToast("Exam score must be 0–60", "error");
     dispatch({
       type: "ADD_ENTRY",
-      payload: { studentName: studentName.trim(), studentClass, subject, caScore: ca, examScore: ex, id: uid(), total: ca + ex, createdAt: new Date().toISOString() },
+      payload: {
+        studentName: studentName.trim(), studentClass, subject,
+        caScore: ca, examScore: ex, id: uid(), total: ca + ex,
+        createdAt: new Date().toISOString(),
+        term: schoolSettings.term,
+        session: schoolSettings.session,
+        enteredBy: isAdmin ? "Admin" : (auth.user?.name || "Staff"),
+      },
     });
     showToast("Score saved");
-    setScoreForm(f => ({ ...f, caScore: "", examScore: "" }));
-  }, [scoreForm, entries, showToast]);
+    // Keep name & class — only clear scores so user can quickly add next subject
+    setScoreForm(f => ({ ...f, subject: "", caScore: "", examScore: "" }));
+  }, [scoreForm, entries, showToast, schoolSettings.term, schoolSettings.session, isAdmin, auth.user]);
 
   const openReport = useCallback((student: { name: string; class: string; id: string }) => {
-    const records = entries.filter(e =>
+    const inTerm = (e: Entry) =>
+      (!e.term || e.term === schoolSettings.term) &&
+      (!e.session || e.session === schoolSettings.session);
+    const scoped = entries.filter(inTerm);
+    const records = scoped.filter(e =>
       e.studentName.toLowerCase() === student.name.toLowerCase() && e.studentClass === student.class
     );
-    if (!records.length) return showToast("No records found", "error");
-    const names = [...new Set(entries.filter(e => e.studentClass === student.class).map(e => e.studentName.toLowerCase().trim()))];
+    if (!records.length) return showToast("No records found for current term", "error");
+    const names = [...new Set(scoped.filter(e => e.studentClass === student.class).map(e => e.studentName.toLowerCase().trim()))];
     const standings = names
-      .map(n => ({ name: n, total: entries.filter(e => e.studentName.toLowerCase().trim() === n && e.studentClass === student.class).reduce((a, c) => a + c.total, 0) }))
+      .map(n => ({ name: n, total: scoped.filter(e => e.studentName.toLowerCase().trim() === n && e.studentClass === student.class).reduce((a, c) => a + c.total, 0) }))
       .sort((a, b) => b.total - a.total);
     const pos = standings.findIndex(s => s.name === student.name.toLowerCase().trim()) + 1;
     const total = records.reduce((a, c) => a + c.total, 0);
@@ -3119,7 +3148,7 @@ export default function App() {
       summary: { total, obtainable: records.length * 100, avg: records.length ? (total / records.length).toFixed(1) : "0.0" },
     });
     setActiveTab("reports");
-  }, [entries, showToast]);
+  }, [entries, showToast, schoolSettings.term, schoolSettings.session]);
 
   const saveStaff = useCallback(async (sd: StaffMember) => {
     const isEdit = appState.staffList.some(s => s.id === sd.id);
@@ -3379,18 +3408,28 @@ export default function App() {
             <div className="max-w-5xl mx-auto space-y-6 pb-8">
 
               {/* DASHBOARD */}
-              {activeTab === "dashboard" && (
+              {activeTab === "dashboard" && (() => {
+                const who = isAdmin ? "Admin" : (auth.user?.name || "Staff");
+                const visibleLogs = isAdmin
+                  ? logs
+                  : logs.filter((l: any) => (l.actor || "") === (auth.user?.name || ""));
+                return (
                 <>
-                  <div>
-                    <h1 className="text-2xl font-black text-slate-900 uppercase">Dashboard</h1>
-                    <p className="text-sm text-slate-400 mt-0.5">{schoolSettings.term} · {schoolSettings.session}</p>
+                  <div className={`rounded-2xl p-5 ${isAdmin ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white" : "bg-gradient-to-r from-emerald-500 to-teal-500 text-white"}`}>
+                    <p className="text-xs font-black uppercase tracking-widest opacity-80">{isAdmin ? "Administrator Console" : "Staff Workspace"}</p>
+                    <h1 className="text-2xl md:text-3xl font-black mt-1">{timeGreeting()}, {who}!</h1>
+                    <p className="text-xs md:text-sm opacity-90 mt-1">{schoolSettings.term} · {schoolSettings.session}</p>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {([
+                    {(isAdmin ? ([
                       ["Students",     studentList.length,                                                          "border-l-blue-500"],
-                      ["Records",      entries.length,                                                              "border-l-emerald-500"],
+                      ["Records (Term)", termEntries.length,                                                         "border-l-emerald-500"],
                       ["Active Staff", `${staffList.filter(s => s.status === "active").length}/${staffList.length}`,"border-l-indigo-500"],
-                    ] as const).map(([l, v, a]) => (
+                    ] as const) : ([
+                      ["My Entries (Term)", termEntries.filter(e => (e.enteredBy || "") === (auth.user?.name || "")).length, "border-l-emerald-500"],
+                      ["Classes", (auth.user?.assignedClasses?.length || 0), "border-l-blue-500"],
+                      ["My Actions", visibleLogs.length, "border-l-indigo-500"],
+                    ] as const)).map(([l, v, a]) => (
                       <Card key={l} className={`p-5 border-l-4 ${a}`}>
                         <p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-1">{l}</p>
                         <p className="text-2xl font-black text-slate-900">{v}</p>
@@ -3402,14 +3441,15 @@ export default function App() {
                       <p className="text-xs text-slate-400 mt-1 font-bold">{schoolSettings.term || "—"}</p>
                     </Card>
                   </div>
-                  {logs.length > 0 && (
+                  {visibleLogs.length > 0 && (
                     <Card>
                       <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
                         <Clock size={14} className="text-slate-400" />
-                        <p className="text-sm font-black uppercase text-slate-600">Activity Log</p>
+                        <p className="text-sm font-black uppercase text-slate-600">{isAdmin ? "Live Staff Activity" : "My Recent Activity"}</p>
+                        {isAdmin && <span className="ml-auto text-xs font-bold text-emerald-600 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Real-time</span>}
                       </div>
-                      <div className="divide-y divide-slate-50">
-                        {logs.slice(0, 8).map((log: any) => {
+                      <div className="divide-y divide-slate-50 max-h-[420px] overflow-y-auto">
+                        {visibleLogs.slice(0, isAdmin ? 30 : 15).map((log: any) => {
                           const { date, time } = fmtTs(log.ts);
                           const ac = log.action === "Deleted" ? "bg-red-100 text-red-600" : log.action === "Restored" ? "bg-emerald-100 text-emerald-700" : log.action.includes("Revok") ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700";
                           return (
@@ -3417,7 +3457,12 @@ export default function App() {
                               <div className="flex items-center gap-3 min-w-0">
                                 <span className={`text-xs font-black px-2 py-0.5 rounded-md flex-shrink-0 ${ac}`}>{log.action}</span>
                                 <div className="min-w-0">
-                                  <p className="text-xs font-black text-slate-900 truncate">{log.student}</p>
+                                  <p className="text-xs font-black text-slate-900 truncate">
+                                    {log.student}
+                                    {isAdmin && log.actor && (
+                                      <span className="ml-2 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">by {log.actor}</span>
+                                    )}
+                                  </p>
                                   <p className="text-xs text-slate-500 truncate">{log.subject}{log.detail && ` · ${log.detail}`}</p>
                                 </div>
                               </div>
@@ -3432,7 +3477,8 @@ export default function App() {
                     </Card>
                   )}
                 </>
-              )}
+                );
+              })()}
 
               {/* SCORE ENTRY */}
               {activeTab === "entry" && can("scoreEntry") && (
@@ -3463,7 +3509,7 @@ export default function App() {
                         <Sel
                           label="Class"
                           value={scoreForm.studentClass}
-                          onChange={(e: any) => setScoreForm(f => ({ ...f, studentClass: e.target.value, subject: "", studentName: "" }))}
+                          onChange={(e: any) => setScoreForm(f => ({ ...f, studentClass: e.target.value, subject: "" }))}
                         >
                           <option value="">Select class</option>
                           {(auth.user?.assignedClasses?.length ? auth.user.assignedClasses : ALL_CLASSES).map(c => <option key={c}>{c}</option>)}
@@ -3534,7 +3580,7 @@ export default function App() {
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <div>
                       <h1 className="text-2xl font-black text-slate-900 uppercase">Records</h1>
-                      <p className="text-sm text-slate-400">{entries.length} active · {bin.length} in bin</p>
+                      <p className="text-sm text-slate-400">{termEntries.length} in {schoolSettings.term} · {bin.length} in bin</p>
                     </div>
                     {(isAdmin || can("manageRecords")) && (
                       <Btn variant={showBin ? "primary" : "outline"} onClick={() => setShowBin(b => !b)}>
