@@ -3408,18 +3408,28 @@ export default function App() {
             <div className="max-w-5xl mx-auto space-y-6 pb-8">
 
               {/* DASHBOARD */}
-              {activeTab === "dashboard" && (
+              {activeTab === "dashboard" && (() => {
+                const who = isAdmin ? "Admin" : (auth.user?.name || "Staff");
+                const visibleLogs = isAdmin
+                  ? logs
+                  : logs.filter((l: any) => (l.actor || "") === (auth.user?.name || ""));
+                return (
                 <>
-                  <div>
-                    <h1 className="text-2xl font-black text-slate-900 uppercase">Dashboard</h1>
-                    <p className="text-sm text-slate-400 mt-0.5">{schoolSettings.term} · {schoolSettings.session}</p>
+                  <div className={`rounded-2xl p-5 ${isAdmin ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white" : "bg-gradient-to-r from-emerald-500 to-teal-500 text-white"}`}>
+                    <p className="text-xs font-black uppercase tracking-widest opacity-80">{isAdmin ? "Administrator Console" : "Staff Workspace"}</p>
+                    <h1 className="text-2xl md:text-3xl font-black mt-1">{timeGreeting()}, {who}!</h1>
+                    <p className="text-xs md:text-sm opacity-90 mt-1">{schoolSettings.term} · {schoolSettings.session}</p>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {([
+                    {(isAdmin ? ([
                       ["Students",     studentList.length,                                                          "border-l-blue-500"],
-                      ["Records",      entries.length,                                                              "border-l-emerald-500"],
+                      ["Records (Term)", termEntries.length,                                                         "border-l-emerald-500"],
                       ["Active Staff", `${staffList.filter(s => s.status === "active").length}/${staffList.length}`,"border-l-indigo-500"],
-                    ] as const).map(([l, v, a]) => (
+                    ] as const) : ([
+                      ["My Entries (Term)", termEntries.filter(e => (e.enteredBy || "") === (auth.user?.name || "")).length, "border-l-emerald-500"],
+                      ["Classes", (auth.user?.assignedClasses?.length || 0), "border-l-blue-500"],
+                      ["My Actions", visibleLogs.length, "border-l-indigo-500"],
+                    ] as const)).map(([l, v, a]) => (
                       <Card key={l} className={`p-5 border-l-4 ${a}`}>
                         <p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-1">{l}</p>
                         <p className="text-2xl font-black text-slate-900">{v}</p>
@@ -3431,14 +3441,15 @@ export default function App() {
                       <p className="text-xs text-slate-400 mt-1 font-bold">{schoolSettings.term || "—"}</p>
                     </Card>
                   </div>
-                  {logs.length > 0 && (
+                  {visibleLogs.length > 0 && (
                     <Card>
                       <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
                         <Clock size={14} className="text-slate-400" />
-                        <p className="text-sm font-black uppercase text-slate-600">Activity Log</p>
+                        <p className="text-sm font-black uppercase text-slate-600">{isAdmin ? "Live Staff Activity" : "My Recent Activity"}</p>
+                        {isAdmin && <span className="ml-auto text-xs font-bold text-emerald-600 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Real-time</span>}
                       </div>
-                      <div className="divide-y divide-slate-50">
-                        {logs.slice(0, 8).map((log: any) => {
+                      <div className="divide-y divide-slate-50 max-h-[420px] overflow-y-auto">
+                        {visibleLogs.slice(0, isAdmin ? 30 : 15).map((log: any) => {
                           const { date, time } = fmtTs(log.ts);
                           const ac = log.action === "Deleted" ? "bg-red-100 text-red-600" : log.action === "Restored" ? "bg-emerald-100 text-emerald-700" : log.action.includes("Revok") ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700";
                           return (
@@ -3446,7 +3457,12 @@ export default function App() {
                               <div className="flex items-center gap-3 min-w-0">
                                 <span className={`text-xs font-black px-2 py-0.5 rounded-md flex-shrink-0 ${ac}`}>{log.action}</span>
                                 <div className="min-w-0">
-                                  <p className="text-xs font-black text-slate-900 truncate">{log.student}</p>
+                                  <p className="text-xs font-black text-slate-900 truncate">
+                                    {log.student}
+                                    {isAdmin && log.actor && (
+                                      <span className="ml-2 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">by {log.actor}</span>
+                                    )}
+                                  </p>
                                   <p className="text-xs text-slate-500 truncate">{log.subject}{log.detail && ` · ${log.detail}`}</p>
                                 </div>
                               </div>
@@ -3461,7 +3477,8 @@ export default function App() {
                     </Card>
                   )}
                 </>
-              )}
+                );
+              })()}
 
               {/* SCORE ENTRY */}
               {activeTab === "entry" && can("scoreEntry") && (
