@@ -748,18 +748,12 @@ const PrintDialog=memo(({student,schoolName,schoolSettings:ss,curC,attRate,onClo
 
 // ─── Settings Tab ─────────────────────────────────────────────────────────────
 const SettingsTab=memo(({logoUrl,setSchoolLogo,logoRef,showToast,adminPinRef,onPinChanged}: any)=>{
-  // ... keep existing code (state hooks setup) ... not applicable, inline below
-  const [pinF,setPinF]=useState({cur:"",nxt:"",cnf:""});
-  const [pinErr,setPinErr]=useState("");
-  const [pinSh,setPinSh]=useState({cur:false,nxt:false,cnf:false});
-  const [sec,setSec]=useState("school");
-  const changePin=async()=>{setPinErr("");const curMatch=await verifyPin(pinF.cur,adminPinRef.current);if(!curMatch)return setPinErr("Current PIN incorrect.");if(pinF.nxt.length<4)return setPinErr("New PIN must be ≥ 4 digits.");if(pinF.nxt!==pinF.cnf)return setPinErr("PINs don't match.");const hashed=await hashPin(pinF.nxt);adminPinRef.current=hashed;onPinChanged?.(hashed);setPinF({cur:"",nxt:"",cnf:""});showToast("Admin PIN updated & encrypted");};
   const{state,dispatch}=useApp();const{schoolSettings}=state;
   const[sec,setSec]=useState("info");const[draft,setDraft]=useState({...schoolSettings});const[pinF,setPinF]=useState<any>({cur:"",nxt:"",cnf:""});const[pinErr,setPinErr]=useState("");const[pinSh,setPinSh]=useState<any>({cur:false,nxt:false,cnf:false});const[saved,setSaved]=useState(false);
   useEffect(()=>setDraft({...schoolSettings}),[schoolSettings]);
   const saveInfo=()=>{dispatch({type:"SET_SCHOOL_SETTINGS",payload:draft});setSaved(true);showToast("Settings saved");setTimeout(()=>setSaved(false),2000);};
   const handleLogo=(e: any)=>{const f=e.target.files[0];if(!f)return;if(!f.type.startsWith("image/"))return showToast("Invalid image","error");if(f.size>2097152)return showToast("Max 2MB","error");const r=new FileReader();r.onload=(ev: any)=>{setSchoolLogo(ev.target.result);showToast("Logo uploaded");};r.readAsDataURL(f);};
-  const changePin=async()=>{setPinErr("");const curMatch=await verifyPin(pinF.cur,adminPinRef.current);if(!curMatch)return setPinErr("Current PIN incorrect.");if(pinF.nxt.length<4)return setPinErr("New PIN must be ≥ 4 digits.");if(pinF.nxt!==pinF.cnf)return setPinErr("PINs don't match.");const hashed=await hashPin(pinF.nxt);adminPinRef.current=hashed;setPinF({cur:"",nxt:"",cnf:""});showToast("Admin PIN updated & encrypted");};
+  const changePin=async()=>{setPinErr("");const curMatch=await verifyPin(pinF.cur,adminPinRef.current);if(!curMatch)return setPinErr("Current PIN incorrect.");if(pinF.nxt.length<4)return setPinErr("New PIN must be ≥ 4 digits.");if(pinF.nxt!==pinF.cnf)return setPinErr("PINs don't match.");const hashed=await hashPin(pinF.nxt);adminPinRef.current=hashed;onPinChanged?.(hashed);setPinF({cur:"",nxt:"",cnf:""});showToast("Admin PIN updated & encrypted");};
   const[emailDraft,setEmailDraft]=useState<any>(schoolSettings.emailjs||{serviceId:"",templateId:"",publicKey:""});
   const SECS=[{id:"logo",label:"Logo",icon:"🖼️"},{id:"info",label:"School Info",icon:"🏫"},{id:"session",label:"Session",icon:"📅"},{id:"email",label:"Email",icon:"📧"},{id:"data",label:"Data",icon:"💾"},{id:"security",label:"Security",icon:"🔒"}];
   return(
