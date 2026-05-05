@@ -124,6 +124,13 @@ interface AppState {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const today = () => new Date().toISOString().slice(0, 10);
+const timeGreeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  if (h < 21) return "Good evening";
+  return "Good night";
+};
 
 // ─── UPGRADE 1: PIN Security (SHA-256 via Web Crypto API) ────────────────────
 // Strategy: Store SHA-256 hashes. Always accept plain-text PINs during login
