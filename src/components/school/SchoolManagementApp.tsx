@@ -1102,13 +1102,46 @@ export default function SchoolManagementApp() {
     </div>
   );
 
-  // Forgot password
+  // First-time admin PIN setup (no default PIN — must be set before any login)
+  if(!auth.loggedIn && !adminPinSet) return(
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
+      <Card className="w-full max-w-sm p-8 border-t-4 border-t-primary">
+        <div className="text-center mb-6">
+          <div className="inline-flex p-3 bg-blue-100 rounded-2xl mb-3"><Shield size={28} className="text-primary"/></div>
+          <h2 className="text-xl font-black text-slate-900">Set Admin PIN</h2>
+          <p className="text-xs text-slate-500 mt-2">Choose a private PIN (4–8 digits) before you can sign in. This PIN unlocks the admin portal and authorises destructive actions.</p>
+        </div>
+        <div className="space-y-4">
+          <Field label="New Admin PIN"><input type="password" inputMode="numeric" autoFocus value={setupPin.a} maxLength={8} onChange={(e: any)=>{setSetupPin(p=>({...p,a:e.target.value.replace(/\D/g,"")}));setSetupErr("");}} placeholder="••••" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-primary outline-none transition-all"/></Field>
+          <Field label="Confirm PIN" error={setupErr}><input type="password" inputMode="numeric" value={setupPin.b} maxLength={8} onChange={(e: any)=>{setSetupPin(p=>({...p,b:e.target.value.replace(/\D/g,"")}));setSetupErr("");}} placeholder="••••" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-primary outline-none transition-all"/></Field>
+          <Btn variant="primary" size="lg" className="w-full" onClick={async()=>{
+            if(setupPin.a.length<4) return setSetupErr("PIN must be at least 4 digits");
+            if(setupPin.a!==setupPin.b) return setSetupErr("PINs don't match");
+            const hashed = await hashPin(setupPin.a);
+            adminPinRef.current = hashed;
+            setAdminPinSet(true);
+            saveDB(appState, hashed);
+            setSetupPin({a:"",b:""});
+            showToast("Admin PIN set — please sign in");
+          }}><Shield size={15}/>Save & Continue</Btn>
+        </div>
+      </Card>
+      {toast&&<Toast toast={toast}/>}
+    </div>
+  );
+
+  // Forgot PIN — instruct user to recover via local data restore (no secret leakage)
   if(!auth.loggedIn&&forgotOpen) return(
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
       <Card className="w-full max-w-sm p-8 border-t-4 border-t-amber-500">
-        <div className="text-center mb-6"><div className="inline-flex p-3 bg-amber-100 rounded-2xl mb-3"><ShieldAlert size={28} className="text-amber-600"/></div><h2 className="text-xl font-black text-slate-900">Password Recovery</h2></div>
-        {forgotStep===1?<div className="space-y-4"><div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700 font-medium">Enter the school name to verify identity.</div><Inp label="Registered School Name" value={forgotInput} onChange={(e: any)=>setForgotInput(e.target.value)} placeholder={schoolSettings.name} onKeyDown={(e: any)=>e.key==="Enter"&&(forgotInput.toLowerCase()===schoolSettings.name.toLowerCase()?setForgotStep(2):showToast("Name doesn't match","error"))}/><Btn variant="primary" size="lg" className="w-full" onClick={()=>forgotInput.toLowerCase()===schoolSettings.name.toLowerCase()?setForgotStep(2):showToast("Name doesn't match","error")}>Verify</Btn><button onClick={()=>{setForgotOpen(false);setForgotStep(1);setForgotInput("");}} className="w-full text-xs font-black uppercase text-slate-400 hover:text-slate-600 py-2">← Back to Login</button></div>:
-        <div className="space-y-4"><div className="bg-emerald-50 border border-emerald-100 rounded-xl p-5 text-center space-y-3"><Check size={28} className="text-emerald-500 mx-auto"/><p className="text-xs font-black uppercase text-emerald-700">Verified</p><p className="text-xs text-slate-500">Admin accepts any non-empty password. Staff: full name + PIN.</p><div className="bg-white border border-emerald-200 rounded-lg p-3"><p className="text-xs text-slate-400 font-bold uppercase mb-1">Admin Action PIN</p><p className="text-3xl font-black text-slate-900 tracking-widest">1234</p></div></div><Btn variant="ghost" size="lg" className="w-full" onClick={()=>{setForgotOpen(false);setForgotStep(1);setForgotInput("");}}>Back to Login</Btn></div>}
+        <div className="text-center mb-6"><div className="inline-flex p-3 bg-amber-100 rounded-2xl mb-3"><ShieldAlert size={28} className="text-amber-600"/></div><h2 className="text-xl font-black text-slate-900">Forgot Admin PIN</h2></div>
+        <div className="space-y-4">
+          <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-xs text-amber-800 leading-relaxed">
+            <p className="font-black uppercase mb-2">PIN cannot be revealed</p>
+            <p>For your school's safety the Admin PIN is stored as an encrypted hash and cannot be recovered. To reset it, restore a previous JSON backup from <strong>Settings → Data</strong>, or clear browser data for this site to start fresh (this will erase all unsynced records).</p>
+          </div>
+          <Btn variant="ghost" size="lg" className="w-full" onClick={()=>{setForgotOpen(false);setForgotStep(1);setForgotInput("");}}>← Back to Login</Btn>
+        </div>
       </Card>
       {toast&&<Toast toast={toast}/>}
     </div>
