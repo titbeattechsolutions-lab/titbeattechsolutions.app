@@ -977,6 +977,7 @@ export default function SchoolManagementApp() {
       dispatch({type:"HYDRATE",payload:saved}); 
       if(saved.adminPin) {
         adminPinRef.current=saved.adminPin;
+        setAdminPinSet(true);
         // Auto-migrate plain-text PIN to hashed
         if(saved.adminPin.length<=8 && /^\d+$/.test(saved.adminPin)){
           hashPin(saved.adminPin).then(h=>{adminPinRef.current=h;});
@@ -987,7 +988,7 @@ export default function SchoolManagementApp() {
   },[]);
 
   // DB save
-  useEffect(()=>{ if(dbReady) saveDB(appState,adminPinRef.current); },[appState,dbReady]);
+  useEffect(()=>{ if(dbReady && adminPinSet) saveDB(appState,adminPinRef.current); },[appState,dbReady,adminPinSet]);
 
   const subjectList = useMemo(()=>{ const cat=Object.values(CURRICULUM).find(c=>c.classes.includes(scoreForm.studentClass)); return cat?cat.subjects:[]; },[scoreForm.studentClass]);
   const allKnownStudents = useMemo(()=>{ const fromRolls=Object.entries(classRolls).flatMap(([cls,students]: any)=>students.filter((s: any)=>!s.suggested).map((s: any)=>({name:s.name,class:cls}))); const fromEntries=entries.map((e: any)=>({name:e.studentName,class:e.studentClass})); const map: any={}; [...fromRolls,...fromEntries].forEach((s: any)=>{map[`${s.name}||${s.class}`]=s;}); return Object.values(map); },[classRolls,entries]);
