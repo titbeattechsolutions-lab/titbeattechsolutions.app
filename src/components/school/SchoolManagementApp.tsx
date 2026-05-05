@@ -1278,7 +1278,7 @@ export default function SchoolManagementApp() {
               {activeTab==="staff"&&isAdmin&&<StaffTab dispatch={dispatch} showToast={showToast} setDlg={setDlg} staffList={staffList}/>}
 
               {/* SETTINGS */}
-              {activeTab==="settings"&&isAdmin&&<SettingsTab logoUrl={schoolLogo} setSchoolLogo={setSchoolLogo} logoRef={logoRef} showToast={showToast} adminPinRef={adminPinRef}/>}
+              {activeTab==="settings"&&isAdmin&&<SettingsTab logoUrl={schoolLogo} setSchoolLogo={setSchoolLogo} logoRef={logoRef} showToast={showToast} adminPinRef={adminPinRef} onPinChanged={(h: string)=>{ setAdminPinSet(true); saveDB(appState,h); }}/>}
 
               {/* ACTIVITY */}
               {activeTab==="activity" && (() => {
