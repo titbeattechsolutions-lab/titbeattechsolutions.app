@@ -28,7 +28,7 @@ const CURRICULUM: Record<string, { classes: string[]; subjects: string[] }> = {
 const ALL_CLASSES = Object.values(CURRICULUM).flatMap(c => c.classes);
 const TERMS = ["First Term","Second Term","Third Term"];
 const ROLES = ["Teacher","Class Teacher","Subject Teacher","Head of Dept","Vice Principal","Principal"];
-const DEFAULT_PIN = "1234";
+// No default PIN — admin must set one on first use.
 const PERMS_META = [
   { key:"scoreEntry",    label:"Score Entry",    desc:"Enter CA & exam scores" },
   { key:"viewReports",   label:"View Reports",   desc:"Access student reports" },
