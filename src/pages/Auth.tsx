@@ -10,7 +10,6 @@ import { ShieldCheck } from "lucide-react";
 
 export default function Auth() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,22 +24,11 @@ export default function Auth() {
     e.preventDefault();
     setLoading(true);
     try {
-      if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { emailRedirectTo: `${window.location.origin}/admin` },
-        });
-        if (error) throw error;
-        toast({ title: "Account created", description: "You can now sign in." });
-        setMode("signin");
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        navigate("/admin", { replace: true });
-      }
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      navigate("/admin", { replace: true });
     } catch (err) {
-      toast({ title: "Error", description: (err as Error).message, variant: "destructive" });
+      toast({ title: "Sign-in failed", description: (err as Error).message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -54,7 +42,7 @@ export default function Auth() {
           <h1 className="text-2xl font-bold">Provider Console</h1>
         </div>
         <p className="text-sm text-muted-foreground">
-          Sign in to manage school subscriptions. Schools should use the{" "}
+          Restricted sign-in for the service provider. Schools should use the{" "}
           <button onClick={() => navigate("/")} className="underline text-primary">
             school login
           </button>{" "}
@@ -67,18 +55,15 @@ export default function Auth() {
           </div>
           <div>
             <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoComplete={mode === "signup" ? "new-password" : "current-password"} />
+            <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoComplete="current-password" />
           </div>
           <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Please wait..." : mode === "signin" ? "Sign in" : "Create account"}
+            {loading ? "Please wait..." : "Sign in"}
           </Button>
         </form>
-        <button
-          onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
-          className="text-sm text-muted-foreground hover:text-foreground w-full"
-        >
-          {mode === "signin" ? "Need an account? Sign up" : "Have an account? Sign in"}
-        </button>
+        <p className="text-xs text-muted-foreground text-center">
+          New super-admin accounts are provisioned by invitation only — no public sign-up.
+        </p>
       </Card>
     </div>
   );

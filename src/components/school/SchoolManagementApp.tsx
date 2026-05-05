@@ -28,7 +28,7 @@ const CURRICULUM: Record<string, { classes: string[]; subjects: string[] }> = {
 const ALL_CLASSES = Object.values(CURRICULUM).flatMap(c => c.classes);
 const TERMS = ["First Term","Second Term","Third Term"];
 const ROLES = ["Teacher","Class Teacher","Subject Teacher","Head of Dept","Vice Principal","Principal"];
-const DEFAULT_PIN = "1234";
+// No default PIN — admin must set one on first use.
 const PERMS_META = [
   { key:"scoreEntry",    label:"Score Entry",    desc:"Enter CA & exam scores" },
   { key:"viewReports",   label:"View Reports",   desc:"Access student reports" },
@@ -193,7 +193,7 @@ const PinAuth = ({title,subtitle,headerColor="bg-primary",icon:Icon,children,con
             <button type="button" onClick={()=>setShow(s=>!s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">{show?<EyeOff size={16}/>:<Eye size={16}/>}</button>
           </div>
         </Field>
-        <p className="text-xs text-slate-400 text-center">Default PIN: <span className="font-black text-slate-600">1234</span></p>
+        
       </div>
       <div className="px-5 pb-5 grid grid-cols-2 gap-3 flex-shrink-0">
         <Btn variant="ghost" onClick={onCancel}>Cancel</Btn>
@@ -747,13 +747,13 @@ const PrintDialog=memo(({student,schoolName,schoolSettings:ss,curC,attRate,onClo
 });
 
 // ─── Settings Tab ─────────────────────────────────────────────────────────────
-const SettingsTab=memo(({logoUrl,setSchoolLogo,logoRef,showToast,adminPinRef}: any)=>{
+const SettingsTab=memo(({logoUrl,setSchoolLogo,logoRef,showToast,adminPinRef,onPinChanged}: any)=>{
   const{state,dispatch}=useApp();const{schoolSettings}=state;
   const[sec,setSec]=useState("info");const[draft,setDraft]=useState({...schoolSettings});const[pinF,setPinF]=useState<any>({cur:"",nxt:"",cnf:""});const[pinErr,setPinErr]=useState("");const[pinSh,setPinSh]=useState<any>({cur:false,nxt:false,cnf:false});const[saved,setSaved]=useState(false);
   useEffect(()=>setDraft({...schoolSettings}),[schoolSettings]);
   const saveInfo=()=>{dispatch({type:"SET_SCHOOL_SETTINGS",payload:draft});setSaved(true);showToast("Settings saved");setTimeout(()=>setSaved(false),2000);};
   const handleLogo=(e: any)=>{const f=e.target.files[0];if(!f)return;if(!f.type.startsWith("image/"))return showToast("Invalid image","error");if(f.size>2097152)return showToast("Max 2MB","error");const r=new FileReader();r.onload=(ev: any)=>{setSchoolLogo(ev.target.result);showToast("Logo uploaded");};r.readAsDataURL(f);};
-  const changePin=async()=>{setPinErr("");const curMatch=await verifyPin(pinF.cur,adminPinRef.current);if(!curMatch)return setPinErr("Current PIN incorrect.");if(pinF.nxt.length<4)return setPinErr("New PIN must be ≥ 4 digits.");if(pinF.nxt!==pinF.cnf)return setPinErr("PINs don't match.");const hashed=await hashPin(pinF.nxt);adminPinRef.current=hashed;setPinF({cur:"",nxt:"",cnf:""});showToast("Admin PIN updated & encrypted");};
+  const changePin=async()=>{setPinErr("");const curMatch=await verifyPin(pinF.cur,adminPinRef.current);if(!curMatch)return setPinErr("Current PIN incorrect.");if(pinF.nxt.length<4)return setPinErr("New PIN must be ≥ 4 digits.");if(pinF.nxt!==pinF.cnf)return setPinErr("PINs don't match.");const hashed=await hashPin(pinF.nxt);adminPinRef.current=hashed;onPinChanged?.(hashed);setPinF({cur:"",nxt:"",cnf:""});showToast("Admin PIN updated & encrypted");};
   const[emailDraft,setEmailDraft]=useState<any>(schoolSettings.emailjs||{serviceId:"",templateId:"",publicKey:""});
   const SECS=[{id:"logo",label:"Logo",icon:"🖼️"},{id:"info",label:"School Info",icon:"🏫"},{id:"session",label:"Session",icon:"📅"},{id:"email",label:"Email",icon:"📧"},{id:"data",label:"Data",icon:"💾"},{id:"security",label:"Security",icon:"🔒"}];
   return(
@@ -831,7 +831,7 @@ const SettingsTab=memo(({logoUrl,setSchoolLogo,logoRef,showToast,adminPinRef}: a
               </div>
             </div>
           </Card>}
-          {sec==="security"&&<Card className="p-6 space-y-4"><p className="text-sm font-black uppercase text-slate-700">Security & PIN</p><div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2"><AlertTriangle size={15} className="text-amber-500 flex-shrink-0 mt-0.5"/><p className="text-xs text-amber-700 font-medium">Keep Admin PIN private. Default: <strong>1234</strong></p></div>{([["cur","Current PIN"],["nxt","New PIN (min 4 digits)"],["cnf","Confirm New PIN"]] as const).map(([fk,fl])=><Field key={fk} label={fl}><div className="relative"><input type={pinSh[fk]?"text":"password"} value={pinF[fk]} maxLength={8} placeholder="••••••" onChange={(e: any)=>setPinF((p: any)=>({...p,[fk]:e.target.value.replace(/\D/g,"")}))} className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-primary outline-none transition-all pr-11"/><button type="button" onClick={()=>setPinSh((s: any)=>({...s,[fk]:!s[fk]}))} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">{pinSh[fk]?<EyeOff size={16}/>:<Eye size={16}/>}</button></div></Field>)}{pinErr&&<p className="text-red-500 text-xs font-bold flex items-center gap-1"><AlertTriangle size={12}/>{pinErr}</p>}<Btn variant="primary" size="lg" className="w-full" onClick={changePin}><Shield size={15}/>Update Admin PIN</Btn></Card>}
+          {sec==="security"&&<Card className="p-6 space-y-4"><p className="text-sm font-black uppercase text-slate-700">Security & PIN</p><div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2"><AlertTriangle size={15} className="text-amber-500 flex-shrink-0 mt-0.5"/><p className="text-xs text-amber-700 font-medium">Keep your Admin PIN private. Never share it with anyone.</p></div>{([["cur","Current PIN"],["nxt","New PIN (min 4 digits)"],["cnf","Confirm New PIN"]] as const).map(([fk,fl])=><Field key={fk} label={fl}><div className="relative"><input type={pinSh[fk]?"text":"password"} value={pinF[fk]} maxLength={8} placeholder="••••••" onChange={(e: any)=>setPinF((p: any)=>({...p,[fk]:e.target.value.replace(/\D/g,"")}))} className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-primary outline-none transition-all pr-11"/><button type="button" onClick={()=>setPinSh((s: any)=>({...s,[fk]:!s[fk]}))} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">{pinSh[fk]?<EyeOff size={16}/>:<Eye size={16}/>}</button></div></Field>)}{pinErr&&<p className="text-red-500 text-xs font-bold flex items-center gap-1"><AlertTriangle size={12}/>{pinErr}</p>}<Btn variant="primary" size="lg" className="w-full" onClick={changePin}><Shield size={15}/>Update Admin PIN</Btn></Card>}
         </div>
       </div>
     </div>
@@ -940,7 +940,10 @@ export default function SchoolManagementApp() {
   const [appState,dispatch] = useReducer(appReducer,initialState);
   const [dbReady,setDbReady] = useState(false);
   const {toast,showToast} = useToastHook();
-  const adminPinRef = useRef(DEFAULT_PIN);
+  const adminPinRef = useRef<string>("");
+  const [adminPinSet, setAdminPinSet] = useState(false);
+  const [setupPin, setSetupPin] = useState({ a: "", b: "" });
+  const [setupErr, setSetupErr] = useState("");
   const logoRef = useRef<HTMLInputElement>(null);
   const [schoolLogo,setSchoolLogo] = useState<string|null>(null);
   const [activeTab,setActiveTab] = useState("dashboard");
@@ -974,6 +977,7 @@ export default function SchoolManagementApp() {
       dispatch({type:"HYDRATE",payload:saved}); 
       if(saved.adminPin) {
         adminPinRef.current=saved.adminPin;
+        setAdminPinSet(true);
         // Auto-migrate plain-text PIN to hashed
         if(saved.adminPin.length<=8 && /^\d+$/.test(saved.adminPin)){
           hashPin(saved.adminPin).then(h=>{adminPinRef.current=h;});
@@ -984,7 +988,7 @@ export default function SchoolManagementApp() {
   },[]);
 
   // DB save
-  useEffect(()=>{ if(dbReady) saveDB(appState,adminPinRef.current); },[appState,dbReady]);
+  useEffect(()=>{ if(dbReady && adminPinSet) saveDB(appState,adminPinRef.current); },[appState,dbReady,adminPinSet]);
 
   const subjectList = useMemo(()=>{ const cat=Object.values(CURRICULUM).find(c=>c.classes.includes(scoreForm.studentClass)); return cat?cat.subjects:[]; },[scoreForm.studentClass]);
   const allKnownStudents = useMemo(()=>{ const fromRolls=Object.entries(classRolls).flatMap(([cls,students]: any)=>students.filter((s: any)=>!s.suggested).map((s: any)=>({name:s.name,class:cls}))); const fromEntries=entries.map((e: any)=>({name:e.studentName,class:e.studentClass})); const map: any={}; [...fromRolls,...fromEntries].forEach((s: any)=>{map[`${s.name}||${s.class}`]=s;}); return Object.values(map); },[classRolls,entries]);
@@ -1098,13 +1102,46 @@ export default function SchoolManagementApp() {
     </div>
   );
 
-  // Forgot password
+  // First-time admin PIN setup (no default PIN — must be set before any login)
+  if(!auth.loggedIn && !adminPinSet) return(
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
+      <Card className="w-full max-w-sm p-8 border-t-4 border-t-primary">
+        <div className="text-center mb-6">
+          <div className="inline-flex p-3 bg-blue-100 rounded-2xl mb-3"><Shield size={28} className="text-primary"/></div>
+          <h2 className="text-xl font-black text-slate-900">Set Admin PIN</h2>
+          <p className="text-xs text-slate-500 mt-2">Choose a private PIN (4–8 digits) before you can sign in. This PIN unlocks the admin portal and authorises destructive actions.</p>
+        </div>
+        <div className="space-y-4">
+          <Field label="New Admin PIN"><input type="password" inputMode="numeric" autoFocus value={setupPin.a} maxLength={8} onChange={(e: any)=>{setSetupPin(p=>({...p,a:e.target.value.replace(/\D/g,"")}));setSetupErr("");}} placeholder="••••" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-primary outline-none transition-all"/></Field>
+          <Field label="Confirm PIN" error={setupErr}><input type="password" inputMode="numeric" value={setupPin.b} maxLength={8} onChange={(e: any)=>{setSetupPin(p=>({...p,b:e.target.value.replace(/\D/g,"")}));setSetupErr("");}} placeholder="••••" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-primary outline-none transition-all"/></Field>
+          <Btn variant="primary" size="lg" className="w-full" onClick={async()=>{
+            if(setupPin.a.length<4) return setSetupErr("PIN must be at least 4 digits");
+            if(setupPin.a!==setupPin.b) return setSetupErr("PINs don't match");
+            const hashed = await hashPin(setupPin.a);
+            adminPinRef.current = hashed;
+            setAdminPinSet(true);
+            saveDB(appState, hashed);
+            setSetupPin({a:"",b:""});
+            showToast("Admin PIN set — please sign in");
+          }}><Shield size={15}/>Save & Continue</Btn>
+        </div>
+      </Card>
+      {toast&&<Toast toast={toast}/>}
+    </div>
+  );
+
+  // Forgot PIN — instruct user to recover via local data restore (no secret leakage)
   if(!auth.loggedIn&&forgotOpen) return(
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
       <Card className="w-full max-w-sm p-8 border-t-4 border-t-amber-500">
-        <div className="text-center mb-6"><div className="inline-flex p-3 bg-amber-100 rounded-2xl mb-3"><ShieldAlert size={28} className="text-amber-600"/></div><h2 className="text-xl font-black text-slate-900">Password Recovery</h2></div>
-        {forgotStep===1?<div className="space-y-4"><div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700 font-medium">Enter the school name to verify identity.</div><Inp label="Registered School Name" value={forgotInput} onChange={(e: any)=>setForgotInput(e.target.value)} placeholder={schoolSettings.name} onKeyDown={(e: any)=>e.key==="Enter"&&(forgotInput.toLowerCase()===schoolSettings.name.toLowerCase()?setForgotStep(2):showToast("Name doesn't match","error"))}/><Btn variant="primary" size="lg" className="w-full" onClick={()=>forgotInput.toLowerCase()===schoolSettings.name.toLowerCase()?setForgotStep(2):showToast("Name doesn't match","error")}>Verify</Btn><button onClick={()=>{setForgotOpen(false);setForgotStep(1);setForgotInput("");}} className="w-full text-xs font-black uppercase text-slate-400 hover:text-slate-600 py-2">← Back to Login</button></div>:
-        <div className="space-y-4"><div className="bg-emerald-50 border border-emerald-100 rounded-xl p-5 text-center space-y-3"><Check size={28} className="text-emerald-500 mx-auto"/><p className="text-xs font-black uppercase text-emerald-700">Verified</p><p className="text-xs text-slate-500">Admin accepts any non-empty password. Staff: full name + PIN.</p><div className="bg-white border border-emerald-200 rounded-lg p-3"><p className="text-xs text-slate-400 font-bold uppercase mb-1">Admin Action PIN</p><p className="text-3xl font-black text-slate-900 tracking-widest">1234</p></div></div><Btn variant="ghost" size="lg" className="w-full" onClick={()=>{setForgotOpen(false);setForgotStep(1);setForgotInput("");}}>Back to Login</Btn></div>}
+        <div className="text-center mb-6"><div className="inline-flex p-3 bg-amber-100 rounded-2xl mb-3"><ShieldAlert size={28} className="text-amber-600"/></div><h2 className="text-xl font-black text-slate-900">Forgot Admin PIN</h2></div>
+        <div className="space-y-4">
+          <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-xs text-amber-800 leading-relaxed">
+            <p className="font-black uppercase mb-2">PIN cannot be revealed</p>
+            <p>For your school's safety the Admin PIN is stored as an encrypted hash and cannot be recovered. To reset it, restore a previous JSON backup from <strong>Settings → Data</strong>, or clear browser data for this site to start fresh (this will erase all unsynced records).</p>
+          </div>
+          <Btn variant="ghost" size="lg" className="w-full" onClick={()=>{setForgotOpen(false);setForgotStep(1);setForgotInput("");}}>← Back to Login</Btn>
+        </div>
       </Card>
       {toast&&<Toast toast={toast}/>}
     </div>
@@ -1274,7 +1311,7 @@ export default function SchoolManagementApp() {
               {activeTab==="staff"&&isAdmin&&<StaffTab dispatch={dispatch} showToast={showToast} setDlg={setDlg} staffList={staffList}/>}
 
               {/* SETTINGS */}
-              {activeTab==="settings"&&isAdmin&&<SettingsTab logoUrl={schoolLogo} setSchoolLogo={setSchoolLogo} logoRef={logoRef} showToast={showToast} adminPinRef={adminPinRef}/>}
+              {activeTab==="settings"&&isAdmin&&<SettingsTab logoUrl={schoolLogo} setSchoolLogo={setSchoolLogo} logoRef={logoRef} showToast={showToast} adminPinRef={adminPinRef} onPinChanged={(h: string)=>{ setAdminPinSet(true); saveDB(appState,h); }}/>}
 
               {/* ACTIVITY */}
               {activeTab==="activity" && (() => {
