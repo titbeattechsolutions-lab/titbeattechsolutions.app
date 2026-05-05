@@ -3117,13 +3117,17 @@ export default function App() {
   }, [scoreForm, entries, showToast, schoolSettings.term, schoolSettings.session, isAdmin, auth.user]);
 
   const openReport = useCallback((student: { name: string; class: string; id: string }) => {
-    const records = entries.filter(e =>
+    const inTerm = (e: Entry) =>
+      (!e.term || e.term === schoolSettings.term) &&
+      (!e.session || e.session === schoolSettings.session);
+    const scoped = entries.filter(inTerm);
+    const records = scoped.filter(e =>
       e.studentName.toLowerCase() === student.name.toLowerCase() && e.studentClass === student.class
     );
-    if (!records.length) return showToast("No records found", "error");
-    const names = [...new Set(entries.filter(e => e.studentClass === student.class).map(e => e.studentName.toLowerCase().trim()))];
+    if (!records.length) return showToast("No records found for current term", "error");
+    const names = [...new Set(scoped.filter(e => e.studentClass === student.class).map(e => e.studentName.toLowerCase().trim()))];
     const standings = names
-      .map(n => ({ name: n, total: entries.filter(e => e.studentName.toLowerCase().trim() === n && e.studentClass === student.class).reduce((a, c) => a + c.total, 0) }))
+      .map(n => ({ name: n, total: scoped.filter(e => e.studentName.toLowerCase().trim() === n && e.studentClass === student.class).reduce((a, c) => a + c.total, 0) }))
       .sort((a, b) => b.total - a.total);
     const pos = standings.findIndex(s => s.name === student.name.toLowerCase().trim()) + 1;
     const total = records.reduce((a, c) => a + c.total, 0);
@@ -3137,7 +3141,7 @@ export default function App() {
       summary: { total, obtainable: records.length * 100, avg: records.length ? (total / records.length).toFixed(1) : "0.0" },
     });
     setActiveTab("reports");
-  }, [entries, showToast]);
+  }, [entries, showToast, schoolSettings.term, schoolSettings.session]);
 
   const saveStaff = useCallback(async (sd: StaffMember) => {
     const isEdit = appState.staffList.some(s => s.id === sd.id);
