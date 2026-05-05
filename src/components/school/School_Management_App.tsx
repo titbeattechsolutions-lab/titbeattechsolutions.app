@@ -3580,7 +3580,7 @@ export default function App() {
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <div>
                       <h1 className="text-2xl font-black text-slate-900 uppercase">Records</h1>
-                      <p className="text-sm text-slate-400">{entries.length} active · {bin.length} in bin</p>
+                      <p className="text-sm text-slate-400">{termEntries.length} in {schoolSettings.term} · {bin.length} in bin</p>
                     </div>
                     {(isAdmin || can("manageRecords")) && (
                       <Btn variant={showBin ? "primary" : "outline"} onClick={() => setShowBin(b => !b)}>
