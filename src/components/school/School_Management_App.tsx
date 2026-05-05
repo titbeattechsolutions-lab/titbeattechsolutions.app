@@ -665,8 +665,8 @@ const initialState: AppState = {
   schoolSettings: _saved.schoolSettings ?? { name:"Greatmind Academy", motto:"Excellence in every child", session:"2024/2025", term:"First Term", resumptionDate:"January 8th, 2025" },
 };
 
-function mkLog(action: string, student: string, subject: string, detail = "") {
-  return { id:uid(), action, student, subject, detail, ts:new Date().toISOString() };
+function mkLog(action: string, student: string, subject: string, detail = "", actor = "") {
+  return { id:uid(), action, student, subject, detail, ts:new Date().toISOString(), actor };
 }
 
 function appReducer(state: AppState, action: any): AppState {
