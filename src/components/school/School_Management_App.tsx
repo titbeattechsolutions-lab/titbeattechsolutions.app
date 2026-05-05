@@ -3474,7 +3474,7 @@ export default function App() {
                         <Sel
                           label="Class"
                           value={scoreForm.studentClass}
-                          onChange={(e: any) => setScoreForm(f => ({ ...f, studentClass: e.target.value, subject: "", studentName: "" }))}
+                          onChange={(e: any) => setScoreForm(f => ({ ...f, studentClass: e.target.value, subject: "" }))}
                         >
                           <option value="">Select class</option>
                           {(auth.user?.assignedClasses?.length ? auth.user.assignedClasses : ALL_CLASSES).map(c => <option key={c}>{c}</option>)}
