@@ -2995,14 +2995,21 @@ export default function App() {
     return allKnownStudents.filter(s => s.class === scoreForm.studentClass).map(s => s.name).sort();
   }, [allKnownStudents, scoreForm.studentClass]);
 
+  // Term-scoped entries: records/reports/score-list show only the active term+session.
+  // Older terms remain saved; switching the Current Term in Settings reveals their data.
+  const termEntries = useMemo(() => entries.filter(e =>
+    (!e.term || e.term === schoolSettings.term) &&
+    (!e.session || e.session === schoolSettings.session)
+  ), [entries, schoolSettings.term, schoolSettings.session]);
+
   const studentList = useMemo(() => {
     const m: Record<string, { name: string; class: string; id: string }> = {};
-    entries.forEach(e => {
+    termEntries.forEach(e => {
       const k = `${e.studentName}||${e.studentClass}`;
       if (!m[k]) m[k] = { name: e.studentName, class: e.studentClass, id: k };
     });
     return Object.values(m);
-  }, [entries]);
+  }, [termEntries]);
 
   const filteredStudents = useMemo(() =>
     studentList.filter(s =>
@@ -3012,12 +3019,12 @@ export default function App() {
   [studentList, rpSearch, rpClass]);
 
   const filteredEntries = useMemo(() =>
-    entries.filter(e =>
+    termEntries.filter(e =>
       (!dbSearch || e.studentName.toLowerCase().includes(dbSearch.toLowerCase())) &&
       (!dbClass  || e.studentClass === dbClass) &&
       (!dbDate   || e.createdAt.slice(0, 10) === dbDate)
     ),
-  [entries, dbSearch, dbClass, dbDate]);
+  [termEntries, dbSearch, dbClass, dbDate]);
 
   const curC = useMemo(() =>
     activeReport
