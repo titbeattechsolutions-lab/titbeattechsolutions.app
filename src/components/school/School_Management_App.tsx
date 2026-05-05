@@ -3095,11 +3095,19 @@ export default function App() {
     if (ex < 0 || ex > 60) return showToast("Exam score must be 0–60", "error");
     dispatch({
       type: "ADD_ENTRY",
-      payload: { studentName: studentName.trim(), studentClass, subject, caScore: ca, examScore: ex, id: uid(), total: ca + ex, createdAt: new Date().toISOString() },
+      payload: {
+        studentName: studentName.trim(), studentClass, subject,
+        caScore: ca, examScore: ex, id: uid(), total: ca + ex,
+        createdAt: new Date().toISOString(),
+        term: schoolSettings.term,
+        session: schoolSettings.session,
+        enteredBy: isAdmin ? "Admin" : (auth.user?.name || "Staff"),
+      },
     });
     showToast("Score saved");
-    setScoreForm(f => ({ ...f, caScore: "", examScore: "" }));
-  }, [scoreForm, entries, showToast]);
+    // Keep name & class — only clear scores so user can quickly add next subject
+    setScoreForm(f => ({ ...f, subject: "", caScore: "", examScore: "" }));
+  }, [scoreForm, entries, showToast, schoolSettings.term, schoolSettings.session, isAdmin, auth.user]);
 
   const openReport = useCallback((student: { name: string; class: string; id: string }) => {
     const records = entries.filter(e =>
