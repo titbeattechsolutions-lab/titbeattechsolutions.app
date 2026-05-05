@@ -58,6 +58,9 @@ interface Entry {
   total: number;
   createdAt: string;
   restoredAt?: string;
+  term?: string;
+  session?: string;
+  enteredBy?: string;
 }
 interface BinEntry extends Entry {
   deletedAt: string;
