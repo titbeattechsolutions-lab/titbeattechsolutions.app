@@ -940,7 +940,10 @@ export default function SchoolManagementApp() {
   const [appState,dispatch] = useReducer(appReducer,initialState);
   const [dbReady,setDbReady] = useState(false);
   const {toast,showToast} = useToastHook();
-  const adminPinRef = useRef(DEFAULT_PIN);
+  const adminPinRef = useRef<string>("");
+  const [adminPinSet, setAdminPinSet] = useState(false);
+  const [setupPin, setSetupPin] = useState({ a: "", b: "" });
+  const [setupErr, setSetupErr] = useState("");
   const logoRef = useRef<HTMLInputElement>(null);
   const [schoolLogo,setSchoolLogo] = useState<string|null>(null);
   const [activeTab,setActiveTab] = useState("dashboard");
