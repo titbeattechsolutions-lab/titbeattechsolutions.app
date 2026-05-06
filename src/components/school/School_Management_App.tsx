@@ -2978,6 +2978,14 @@ export default function App() {
   const [activeReport, setActiveReport] = useState<any>(null);
   const [scoreForm, setScoreForm] = useState({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" });
 
+  // CA-only drafts: stored separately until exam scores are ready, then promoted to entries.
+  type CADraft = { id: string; studentName: string; studentClass: string; subject: string; caScore: number; term: string; session: string; enteredBy: string; createdAt: string };
+  const DRAFTS_KEY = "gm_score_drafts_v1";
+  const [caDrafts, setCaDrafts] = useState<CADraft[]>(() => {
+    try { return JSON.parse(localStorage.getItem(DRAFTS_KEY) || "[]"); } catch { return []; }
+  });
+  useEffect(() => { try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(caDrafts)); } catch {} }, [caDrafts]);
+
   const { entries, bin, logs, attendance, classRolls, staffList, schoolSettings } = appState;
   const isAdmin = !auth.user;
   const can = useCallback((p: string) => isAdmin || (auth.user?.permissions?.[p] ?? false), [isAdmin, auth.user]);
