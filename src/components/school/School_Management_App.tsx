@@ -3131,6 +3131,74 @@ export default function App() {
     setScoreForm(f => ({ ...f, subject: "", caScore: "", examScore: "" }));
   }, [scoreForm, entries, showToast, schoolSettings.term, schoolSettings.session, isAdmin, auth.user]);
 
+  // Save CA-only draft (exam pending). Drafts are scoped to the current term/session.
+  const saveCADraft = useCallback(() => {
+    const { studentName, studentClass, subject, caScore } = scoreForm;
+    if (!studentName.trim() || !studentClass || !subject || caScore === "")
+      return showToast("Enter name, class, subject and CA.", "error");
+    const ca = parseFloat(caScore) || 0;
+    if (ca < 0 || ca > 40) return showToast("CA score must be 0–40", "error");
+    if (entries.some(e =>
+      e.studentName.toLowerCase().trim() === studentName.toLowerCase().trim() &&
+      e.studentClass === studentClass && e.subject === subject &&
+      (!e.term || e.term === schoolSettings.term) &&
+      (!e.session || e.session === schoolSettings.session)
+    )) return showToast(`${subject} already finalized for ${studentName}.`, "error");
+    setCaDrafts(prev => {
+      const filtered = prev.filter(d =>
+        !(d.studentName.toLowerCase().trim() === studentName.toLowerCase().trim() &&
+          d.studentClass === studentClass && d.subject === subject &&
+          d.term === schoolSettings.term && d.session === schoolSettings.session)
+      );
+      return [...filtered, {
+        id: uid(),
+        studentName: studentName.trim(),
+        studentClass, subject, caScore: ca,
+        term: schoolSettings.term, session: schoolSettings.session,
+        enteredBy: isAdmin ? "Admin" : (auth.user?.name || "Staff"),
+        createdAt: new Date().toISOString(),
+      }];
+    });
+    showToast("CA draft saved — exam pending");
+    setScoreForm(f => ({ ...f, subject: "", caScore: "", examScore: "" }));
+  }, [scoreForm, entries, showToast, schoolSettings.term, schoolSettings.session, isAdmin, auth.user]);
+
+  // Promote a CA draft to a finalized entry by adding the exam score.
+  const finalizeDraft = useCallback((draftId: string, examStr: string) => {
+    const d = caDrafts.find(x => x.id === draftId);
+    if (!d) return;
+    const ex = parseFloat(examStr);
+    if (isNaN(ex) || ex < 0 || ex > 60) return showToast("Exam score must be 0–60", "error");
+    if (entries.some(e =>
+      e.studentName.toLowerCase().trim() === d.studentName.toLowerCase().trim() &&
+      e.studentClass === d.studentClass && e.subject === d.subject &&
+      (!e.term || e.term === d.term) && (!e.session || e.session === d.session)
+    )) { setCaDrafts(p => p.filter(x => x.id !== draftId)); return showToast("Already finalized — draft removed.", "warning"); }
+    dispatch({
+      type: "ADD_ENTRY",
+      payload: {
+        id: uid(),
+        studentName: d.studentName, studentClass: d.studentClass, subject: d.subject,
+        caScore: d.caScore, examScore: ex, total: d.caScore + ex,
+        createdAt: new Date().toISOString(),
+        term: d.term, session: d.session,
+        enteredBy: isAdmin ? "Admin" : (auth.user?.name || d.enteredBy || "Staff"),
+      },
+    });
+    setCaDrafts(p => p.filter(x => x.id !== draftId));
+    showToast(`${d.subject} finalized for ${d.studentName}`);
+  }, [caDrafts, entries, showToast, isAdmin, auth.user]);
+
+  const deleteDraft = useCallback((draftId: string) => {
+    setCaDrafts(p => p.filter(x => x.id !== draftId));
+    showToast("Draft removed");
+  }, [showToast]);
+
+  // Drafts visible in current term/session only.
+  const termDrafts = useMemo(() => caDrafts.filter(d =>
+    d.term === schoolSettings.term && d.session === schoolSettings.session
+  ), [caDrafts, schoolSettings.term, schoolSettings.session]);
+
   const openReport = useCallback((student: { name: string; class: string; id: string }) => {
     const inTerm = (e: Entry) =>
       (!e.term || e.term === schoolSettings.term) &&
