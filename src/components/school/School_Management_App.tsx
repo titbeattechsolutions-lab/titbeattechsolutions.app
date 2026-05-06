@@ -3557,8 +3557,34 @@ export default function App() {
               })()}
 
               {/* SCORE ENTRY */}
-              {activeTab === "entry" && can("scoreEntry") && (
-                <div className="max-w-xl mx-auto">
+              {activeTab === "entry" && can("scoreEntry") && (() => {
+                const draftMatch = termDrafts.find(d =>
+                  d.studentName.toLowerCase().trim() === scoreForm.studentName.toLowerCase().trim() &&
+                  d.studentClass === scoreForm.studentClass && d.subject === scoreForm.subject
+                );
+                return (
+                <div className="max-w-xl mx-auto space-y-4">
+                  {/* Term/Session banner — clarifies which period this entry belongs to */}
+                  <div className="rounded-xl bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-200 px-4 py-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CalendarDays size={16} className="text-amber-600 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase text-amber-700 tracking-wider">Saving to</p>
+                        <p className="text-sm font-black text-amber-900 truncate">{schoolSettings.term} · {schoolSettings.session}</p>
+                      </div>
+                    </div>
+                    {isAdmin && (
+                      <select
+                        value={schoolSettings.term}
+                        onChange={(e) => { dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { term: e.target.value } }); showToast(`Switched to ${e.target.value}`); }}
+                        className="px-3 py-1.5 bg-white border-2 border-amber-200 rounded-lg text-xs font-black text-amber-800 outline-none"
+                        title="Switch term"
+                      >
+                        {TERMS.map(t => <option key={t}>{t}</option>)}
+                      </select>
+                    )}
+                  </div>
+
                   <Card className="overflow-hidden">
                     <div className="bg-blue-600 px-6 py-4 flex items-center gap-3">
                       <BookOpen size={18} className="text-white/80" />
@@ -3600,6 +3626,16 @@ export default function App() {
                           {subjectList.map(s => <option key={s}>{s}</option>)}
                         </Sel>
                       </div>
+
+                      {draftMatch && (
+                        <div className="rounded-xl bg-emerald-50 border-2 border-emerald-200 px-4 py-3 flex items-center gap-3">
+                          <Check size={14} className="text-emerald-600 flex-shrink-0" />
+                          <p className="text-xs font-bold text-emerald-800">
+                            CA already saved as draft (<span className="font-black">{draftMatch.caScore}</span>). Add the exam score below to finalize.
+                          </p>
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-2 gap-4">
                         {([
                           ["caScore",   "CA Score (max 40)",   40],
@@ -3612,7 +3648,7 @@ export default function App() {
                               min="0"
                               max={max}
                               step="0.5"
-                              value={scoreForm[field]}
+                              value={field === "caScore" && draftMatch && scoreForm.caScore === "" ? String(draftMatch.caScore) : scoreForm[field]}
                               placeholder={`0–${max}`}
                               onChange={e => {
                                 const v = e.target.value;
@@ -3639,16 +3675,42 @@ export default function App() {
                           </div>
                         );
                       })()}
-                      <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div className="grid grid-cols-3 gap-2 pt-1">
                         <Btn variant="ghost" onClick={() => { setScoreForm({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" }); showToast("Form cleared"); }}>
                           Clear
                         </Btn>
-                        <Btn variant="primary" onClick={submitScore}><Check size={14} />Save Grade</Btn>
+                        <Btn variant="outline" onClick={saveCADraft} title="Save CA only — finalize when exam is ready">
+                          <Save size={13} />Save CA
+                        </Btn>
+                        <Btn variant="primary" onClick={() => {
+                          if (draftMatch && scoreForm.caScore === "" && scoreForm.examScore !== "") {
+                            finalizeDraft(draftMatch.id, scoreForm.examScore);
+                            setScoreForm(f => ({ ...f, subject: "", caScore: "", examScore: "" }));
+                          } else {
+                            submitScore();
+                          }
+                        }}><Check size={14} />Save Full</Btn>
                       </div>
                     </div>
                   </Card>
+
+                  {/* Pending CA drafts — finalize when exam is ready */}
+                  {termDrafts.length > 0 && (
+                    <Card className="overflow-hidden">
+                      <div className="bg-amber-500 px-5 py-3 flex items-center gap-2">
+                        <Clock size={14} className="text-white" />
+                        <p className="text-white font-black uppercase tracking-widest text-xs">Pending Exam Score ({termDrafts.length})</p>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {termDrafts.map(d => (
+                          <PendingDraftRow key={d.id} draft={d} onFinalize={finalizeDraft} onDelete={deleteDraft} />
+                        ))}
+                      </div>
+                    </Card>
+                  )}
                 </div>
-              )}
+                );
+              })()}
 
               {/* RECORDS */}
               {activeTab === "database" && (
