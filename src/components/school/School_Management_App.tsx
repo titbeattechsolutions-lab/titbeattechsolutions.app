@@ -2948,6 +2948,50 @@ const AttendanceTab = memo(() => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Pending CA draft row — exam input + finalize
+// ─────────────────────────────────────────────────────────────────────────────
+function PendingDraftRow({ draft, onFinalize, onDelete }: {
+  draft: { id: string; studentName: string; studentClass: string; subject: string; caScore: number; createdAt: string };
+  onFinalize: (id: string, exam: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [exam, setExam] = useState("");
+  const { date, time } = fmtTs(draft.createdAt);
+  return (
+    <div className="px-4 py-3 flex items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-black text-slate-900 truncate">{draft.studentName}</p>
+        <p className="text-xs text-slate-500 truncate">
+          {draft.studentClass} · {draft.subject} · CA <span className="font-black text-amber-700">{draft.caScore}</span>
+          <span className="text-slate-300"> · {date} {time}</span>
+        </p>
+      </div>
+      <input
+        type="number" min="0" max="60" step="0.5" placeholder="Exam"
+        value={exam}
+        onChange={e => { const v = e.target.value; if (v === "" || (+v >= 0 && +v <= 60)) setExam(v); }}
+        onKeyDown={e => ["-","e","E","+"].includes(e.key) && e.preventDefault()}
+        className="w-20 px-2 py-2 bg-slate-50 border-2 border-slate-100 rounded-lg text-sm font-black text-center focus:border-amber-500 focus:bg-white outline-none"
+      />
+      <button
+        onClick={() => { if (exam === "") return; onFinalize(draft.id, exam); setExam(""); }}
+        disabled={exam === ""}
+        className="px-3 py-2 rounded-lg bg-emerald-500 text-white text-xs font-black uppercase disabled:opacity-40 disabled:cursor-not-allowed hover:bg-emerald-600 transition-colors flex items-center gap-1"
+      >
+        <Check size={12} />Finalize
+      </button>
+      <button
+        onClick={() => onDelete(draft.id)}
+        className="p-2 rounded-lg text-red-400 hover:text-white hover:bg-red-500 transition-all"
+        title="Discard draft"
+      >
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main App
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
@@ -2977,6 +3021,14 @@ export default function App() {
   const [rpClass,  setRpClass]  = useState("All");
   const [activeReport, setActiveReport] = useState<any>(null);
   const [scoreForm, setScoreForm] = useState({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" });
+
+  // CA-only drafts: stored separately until exam scores are ready, then promoted to entries.
+  type CADraft = { id: string; studentName: string; studentClass: string; subject: string; caScore: number; term: string; session: string; enteredBy: string; createdAt: string };
+  const DRAFTS_KEY = "gm_score_drafts_v1";
+  const [caDrafts, setCaDrafts] = useState<CADraft[]>(() => {
+    try { return JSON.parse(localStorage.getItem(DRAFTS_KEY) || "[]"); } catch { return []; }
+  });
+  useEffect(() => { try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(caDrafts)); } catch {} }, [caDrafts]);
 
   const { entries, bin, logs, attendance, classRolls, staffList, schoolSettings } = appState;
   const isAdmin = !auth.user;
@@ -3122,6 +3174,74 @@ export default function App() {
     // Keep name & class — only clear scores so user can quickly add next subject
     setScoreForm(f => ({ ...f, subject: "", caScore: "", examScore: "" }));
   }, [scoreForm, entries, showToast, schoolSettings.term, schoolSettings.session, isAdmin, auth.user]);
+
+  // Save CA-only draft (exam pending). Drafts are scoped to the current term/session.
+  const saveCADraft = useCallback(() => {
+    const { studentName, studentClass, subject, caScore } = scoreForm;
+    if (!studentName.trim() || !studentClass || !subject || caScore === "")
+      return showToast("Enter name, class, subject and CA.", "error");
+    const ca = parseFloat(caScore) || 0;
+    if (ca < 0 || ca > 40) return showToast("CA score must be 0–40", "error");
+    if (entries.some(e =>
+      e.studentName.toLowerCase().trim() === studentName.toLowerCase().trim() &&
+      e.studentClass === studentClass && e.subject === subject &&
+      (!e.term || e.term === schoolSettings.term) &&
+      (!e.session || e.session === schoolSettings.session)
+    )) return showToast(`${subject} already finalized for ${studentName}.`, "error");
+    setCaDrafts(prev => {
+      const filtered = prev.filter(d =>
+        !(d.studentName.toLowerCase().trim() === studentName.toLowerCase().trim() &&
+          d.studentClass === studentClass && d.subject === subject &&
+          d.term === schoolSettings.term && d.session === schoolSettings.session)
+      );
+      return [...filtered, {
+        id: uid(),
+        studentName: studentName.trim(),
+        studentClass, subject, caScore: ca,
+        term: schoolSettings.term, session: schoolSettings.session,
+        enteredBy: isAdmin ? "Admin" : (auth.user?.name || "Staff"),
+        createdAt: new Date().toISOString(),
+      }];
+    });
+    showToast("CA draft saved — exam pending");
+    setScoreForm(f => ({ ...f, subject: "", caScore: "", examScore: "" }));
+  }, [scoreForm, entries, showToast, schoolSettings.term, schoolSettings.session, isAdmin, auth.user]);
+
+  // Promote a CA draft to a finalized entry by adding the exam score.
+  const finalizeDraft = useCallback((draftId: string, examStr: string) => {
+    const d = caDrafts.find(x => x.id === draftId);
+    if (!d) return;
+    const ex = parseFloat(examStr);
+    if (isNaN(ex) || ex < 0 || ex > 60) return showToast("Exam score must be 0–60", "error");
+    if (entries.some(e =>
+      e.studentName.toLowerCase().trim() === d.studentName.toLowerCase().trim() &&
+      e.studentClass === d.studentClass && e.subject === d.subject &&
+      (!e.term || e.term === d.term) && (!e.session || e.session === d.session)
+    )) { setCaDrafts(p => p.filter(x => x.id !== draftId)); return showToast("Already finalized — draft removed.", "warning"); }
+    dispatch({
+      type: "ADD_ENTRY",
+      payload: {
+        id: uid(),
+        studentName: d.studentName, studentClass: d.studentClass, subject: d.subject,
+        caScore: d.caScore, examScore: ex, total: d.caScore + ex,
+        createdAt: new Date().toISOString(),
+        term: d.term, session: d.session,
+        enteredBy: isAdmin ? "Admin" : (auth.user?.name || d.enteredBy || "Staff"),
+      },
+    });
+    setCaDrafts(p => p.filter(x => x.id !== draftId));
+    showToast(`${d.subject} finalized for ${d.studentName}`);
+  }, [caDrafts, entries, showToast, isAdmin, auth.user]);
+
+  const deleteDraft = useCallback((draftId: string) => {
+    setCaDrafts(p => p.filter(x => x.id !== draftId));
+    showToast("Draft removed");
+  }, [showToast]);
+
+  // Drafts visible in current term/session only.
+  const termDrafts = useMemo(() => caDrafts.filter(d =>
+    d.term === schoolSettings.term && d.session === schoolSettings.session
+  ), [caDrafts, schoolSettings.term, schoolSettings.session]);
 
   const openReport = useCallback((student: { name: string; class: string; id: string }) => {
     const inTerm = (e: Entry) =>
@@ -3481,8 +3601,34 @@ export default function App() {
               })()}
 
               {/* SCORE ENTRY */}
-              {activeTab === "entry" && can("scoreEntry") && (
-                <div className="max-w-xl mx-auto">
+              {activeTab === "entry" && can("scoreEntry") && (() => {
+                const draftMatch = termDrafts.find(d =>
+                  d.studentName.toLowerCase().trim() === scoreForm.studentName.toLowerCase().trim() &&
+                  d.studentClass === scoreForm.studentClass && d.subject === scoreForm.subject
+                );
+                return (
+                <div className="max-w-xl mx-auto space-y-4">
+                  {/* Term/Session banner — clarifies which period this entry belongs to */}
+                  <div className="rounded-xl bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-200 px-4 py-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CalendarDays size={16} className="text-amber-600 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase text-amber-700 tracking-wider">Saving to</p>
+                        <p className="text-sm font-black text-amber-900 truncate">{schoolSettings.term} · {schoolSettings.session}</p>
+                      </div>
+                    </div>
+                    {isAdmin && (
+                      <select
+                        value={schoolSettings.term}
+                        onChange={(e) => { dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { term: e.target.value } }); showToast(`Switched to ${e.target.value}`); }}
+                        className="px-3 py-1.5 bg-white border-2 border-amber-200 rounded-lg text-xs font-black text-amber-800 outline-none"
+                        title="Switch term"
+                      >
+                        {TERMS.map(t => <option key={t}>{t}</option>)}
+                      </select>
+                    )}
+                  </div>
+
                   <Card className="overflow-hidden">
                     <div className="bg-blue-600 px-6 py-4 flex items-center gap-3">
                       <BookOpen size={18} className="text-white/80" />
@@ -3524,6 +3670,16 @@ export default function App() {
                           {subjectList.map(s => <option key={s}>{s}</option>)}
                         </Sel>
                       </div>
+
+                      {draftMatch && (
+                        <div className="rounded-xl bg-emerald-50 border-2 border-emerald-200 px-4 py-3 flex items-center gap-3">
+                          <Check size={14} className="text-emerald-600 flex-shrink-0" />
+                          <p className="text-xs font-bold text-emerald-800">
+                            CA already saved as draft (<span className="font-black">{draftMatch.caScore}</span>). Add the exam score below to finalize.
+                          </p>
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-2 gap-4">
                         {([
                           ["caScore",   "CA Score (max 40)",   40],
@@ -3536,7 +3692,7 @@ export default function App() {
                               min="0"
                               max={max}
                               step="0.5"
-                              value={scoreForm[field]}
+                              value={field === "caScore" && draftMatch && scoreForm.caScore === "" ? String(draftMatch.caScore) : scoreForm[field]}
                               placeholder={`0–${max}`}
                               onChange={e => {
                                 const v = e.target.value;
@@ -3563,16 +3719,42 @@ export default function App() {
                           </div>
                         );
                       })()}
-                      <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div className="grid grid-cols-3 gap-2 pt-1">
                         <Btn variant="ghost" onClick={() => { setScoreForm({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" }); showToast("Form cleared"); }}>
                           Clear
                         </Btn>
-                        <Btn variant="primary" onClick={submitScore}><Check size={14} />Save Grade</Btn>
+                        <Btn variant="outline" onClick={saveCADraft} title="Save CA only — finalize when exam is ready">
+                          <Save size={13} />Save CA
+                        </Btn>
+                        <Btn variant="primary" onClick={() => {
+                          if (draftMatch && scoreForm.caScore === "" && scoreForm.examScore !== "") {
+                            finalizeDraft(draftMatch.id, scoreForm.examScore);
+                            setScoreForm(f => ({ ...f, subject: "", caScore: "", examScore: "" }));
+                          } else {
+                            submitScore();
+                          }
+                        }}><Check size={14} />Save Full</Btn>
                       </div>
                     </div>
                   </Card>
+
+                  {/* Pending CA drafts — finalize when exam is ready */}
+                  {termDrafts.length > 0 && (
+                    <Card className="overflow-hidden">
+                      <div className="bg-amber-500 px-5 py-3 flex items-center gap-2">
+                        <Clock size={14} className="text-white" />
+                        <p className="text-white font-black uppercase tracking-widest text-xs">Pending Exam Score ({termDrafts.length})</p>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {termDrafts.map(d => (
+                          <PendingDraftRow key={d.id} draft={d} onFinalize={finalizeDraft} onDelete={deleteDraft} />
+                        ))}
+                      </div>
+                    </Card>
+                  )}
                 </div>
-              )}
+                );
+              })()}
 
               {/* RECORDS */}
               {activeTab === "database" && (
