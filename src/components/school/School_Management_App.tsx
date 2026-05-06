@@ -2948,6 +2948,50 @@ const AttendanceTab = memo(() => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Pending CA draft row — exam input + finalize
+// ─────────────────────────────────────────────────────────────────────────────
+function PendingDraftRow({ draft, onFinalize, onDelete }: {
+  draft: { id: string; studentName: string; studentClass: string; subject: string; caScore: number; createdAt: string };
+  onFinalize: (id: string, exam: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [exam, setExam] = useState("");
+  const { date, time } = fmtTs(draft.createdAt);
+  return (
+    <div className="px-4 py-3 flex items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-black text-slate-900 truncate">{draft.studentName}</p>
+        <p className="text-xs text-slate-500 truncate">
+          {draft.studentClass} · {draft.subject} · CA <span className="font-black text-amber-700">{draft.caScore}</span>
+          <span className="text-slate-300"> · {date} {time}</span>
+        </p>
+      </div>
+      <input
+        type="number" min="0" max="60" step="0.5" placeholder="Exam"
+        value={exam}
+        onChange={e => { const v = e.target.value; if (v === "" || (+v >= 0 && +v <= 60)) setExam(v); }}
+        onKeyDown={e => ["-","e","E","+"].includes(e.key) && e.preventDefault()}
+        className="w-20 px-2 py-2 bg-slate-50 border-2 border-slate-100 rounded-lg text-sm font-black text-center focus:border-amber-500 focus:bg-white outline-none"
+      />
+      <button
+        onClick={() => { if (exam === "") return; onFinalize(draft.id, exam); setExam(""); }}
+        disabled={exam === ""}
+        className="px-3 py-2 rounded-lg bg-emerald-500 text-white text-xs font-black uppercase disabled:opacity-40 disabled:cursor-not-allowed hover:bg-emerald-600 transition-colors flex items-center gap-1"
+      >
+        <Check size={12} />Finalize
+      </button>
+      <button
+        onClick={() => onDelete(draft.id)}
+        className="p-2 rounded-lg text-red-400 hover:text-white hover:bg-red-500 transition-all"
+        title="Discard draft"
+      >
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main App
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
