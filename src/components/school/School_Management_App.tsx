@@ -3794,7 +3794,7 @@ export default function App() {
                   </div>
                   {!showBin && (
                     <Card className="p-4 space-y-3">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                         <div className="relative">
                           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                           <input value={dbSearch} onChange={e => setDbSearch(e.target.value)} placeholder="Search by name…"
@@ -3805,16 +3805,23 @@ export default function App() {
                           <option value="">All Classes</option>
                           {ALL_CLASSES.map(c => <option key={c}>{c}</option>)}
                         </select>
+                        <select value={dbTerm} onChange={e => setDbTerm(e.target.value)}
+                          className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-blue-500 outline-none">
+                          <option value="Current">Current Term ({schoolSettings.term})</option>
+                          <option value="All">All Terms</option>
+                          {TERMS.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
                         <input type="date" value={dbDate} onChange={e => setDbDate(e.target.value)}
                           className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-blue-500 outline-none" />
                       </div>
-                      {(dbSearch || dbClass || dbDate) && (
+                      {(dbSearch || dbClass || dbDate || dbTerm !== "Current") && (
                         <div className="flex items-center gap-2 flex-wrap">
                           {dbSearch && <Pill color="blue">Name: "{dbSearch}"</Pill>}
                           {dbClass  && <Pill color="indigo">{dbClass}</Pill>}
+                          {dbTerm !== "Current" && <Pill color="amber">{dbTerm === "All" ? "All Terms" : dbTerm}</Pill>}
                           {dbDate   && <Pill color="green">{new Date(dbDate + "T00:00:00").toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })}</Pill>}
                           <span className="text-xs text-slate-400 font-bold">{filteredEntries.length} result{filteredEntries.length !== 1 ? "s" : ""}</span>
-                          <button onClick={() => { setDbSearch(""); setDbClass(""); setDbDate(""); }}
+                          <button onClick={() => { setDbSearch(""); setDbClass(""); setDbDate(""); setDbTerm("Current"); }}
                             className="text-xs font-black uppercase text-red-400 hover:text-red-600 flex items-center gap-1">
                             <X size={11} />Clear
                           </button>
