@@ -733,7 +733,9 @@ function appReducer(state: AppState, action: any): AppState {
           : [...state.attendance, action.payload],
       };
     }
-    case "BULK_SAVE_ATTENDANCE":
+    case "BULK_SAVE_ATTENDANCE": {
+      const cls = action.payload[0]?.studentClass || "";
+      const date = action.payload[0]?.date || "";
       return {
         ...state,
         attendance: [
@@ -742,9 +744,17 @@ function appReducer(state: AppState, action: any): AppState {
           )),
           ...action.payload,
         ],
+        logs: [mkLog("Attendance Saved", `${action.payload.length} student(s)`, cls, `Date: ${date}`, action.actor || ""), ...state.logs].slice(0, 200),
       };
-    case "DELETE_ATTENDANCE":
-      return { ...state, attendance: state.attendance.filter(a => a.id !== action.id) };
+    }
+    case "DELETE_ATTENDANCE": {
+      const a = state.attendance.find(x => x.id === action.id);
+      return {
+        ...state,
+        attendance: state.attendance.filter(x => x.id !== action.id),
+        logs: a ? [mkLog("Attendance Deleted", a.studentName, a.studentClass, `Date: ${a.date}`, action.actor || ""), ...state.logs].slice(0, 200) : state.logs,
+      };
+    }
     case "SAVE_CLASS_ROLL":
       // Strip 'suggested' flag when saving permanently
       return {
@@ -753,6 +763,7 @@ function appReducer(state: AppState, action: any): AppState {
           ...state.classRolls,
           [action.className]: (action.students as RollStudent[]).map(({ suggested: _s, ...rest }) => rest),
         },
+        logs: [mkLog("Class Roll Saved", `${action.students.length} student(s)`, action.className, "", action.actor || ""), ...state.logs].slice(0, 200),
       };
     case "DELETE_ROLL_STUDENT": {
       const roll = state.classRolls[action.className] || [];
