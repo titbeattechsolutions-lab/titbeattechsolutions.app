@@ -800,6 +800,7 @@ interface AppCtxType {
   state: AppState;
   dispatch: React.Dispatch<any>;
   showToast: (msg: string, type?: string) => void;
+  currentActor: string;
 }
 const AppCtx = createContext<AppCtxType | null>(null);
 const useApp = () => useContext(AppCtx)!;
