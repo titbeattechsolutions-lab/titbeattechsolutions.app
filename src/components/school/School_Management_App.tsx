@@ -3742,16 +3742,29 @@ export default function App() {
                         );
                       })()}
                       <div className="grid grid-cols-3 gap-2 pt-1">
-                        <Btn variant="ghost" onClick={() => { setScoreForm({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" }); showToast("Form cleared"); }}>
+                        <Btn variant="ghost" onClick={() => {
+                          const hasData = scoreForm.studentName.trim() || scoreForm.subject || scoreForm.caScore !== "" || scoreForm.examScore !== "";
+                          const caUnsaved = scoreForm.caScore !== "" && scoreForm.examScore === "";
+                          const msg = caUnsaved
+                            ? "You entered a CA score but haven't saved it. Discard this CA without saving?"
+                            : "Discard the current entry?";
+                          if (hasData && !window.confirm(msg)) return;
+                          setScoreForm({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" });
+                          showToast("Form cleared");
+                        }}>
                           Clear
                         </Btn>
                         <Btn variant="outline" onClick={saveCADraft} title="Save CA only — finalize when exam is ready">
                           <Save size={13} />Save CA
                         </Btn>
                         <Btn variant="primary" onClick={() => {
+                          // CA completeness check: warn if exam present but CA missing/zero
+                          if (scoreForm.examScore !== "" && (scoreForm.caScore === "" || parseFloat(scoreForm.caScore) === 0) && !draftMatch) {
+                            if (!window.confirm("CA score is empty. Continue saving with CA = 0?")) return;
+                          }
                           if (draftMatch && scoreForm.caScore === "" && scoreForm.examScore !== "") {
                             finalizeDraft(draftMatch.id, scoreForm.examScore);
-                            setScoreForm(f => ({ ...f, subject: "", caScore: "", examScore: "" }));
+                            setScoreForm({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" });
                           } else {
                             submitScore();
                           }
