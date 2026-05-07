@@ -2940,7 +2940,7 @@ const AttendanceTab = memo(() => {
                           </td>
                           <td className="px-4 py-3 text-xs text-slate-500 max-w-xs truncate">{a.note || <span className="text-slate-300 italic">—</span>}</td>
                           <td className="px-4 py-3">
-                            <button onClick={() => dispatch({ type: "DELETE_ATTENDANCE", id: a.id })}
+                            <button onClick={() => dispatch({ type: "DELETE_ATTENDANCE", id: a.id, actor: currentActor })}
                               className="p-1.5 rounded-lg text-red-400 hover:text-white hover:bg-red-500 transition-all">
                               <Trash2 size={13} />
                             </button>
