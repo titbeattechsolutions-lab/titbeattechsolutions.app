@@ -733,7 +733,9 @@ function appReducer(state: AppState, action: any): AppState {
           : [...state.attendance, action.payload],
       };
     }
-    case "BULK_SAVE_ATTENDANCE":
+    case "BULK_SAVE_ATTENDANCE": {
+      const cls = action.payload[0]?.studentClass || "";
+      const date = action.payload[0]?.date || "";
       return {
         ...state,
         attendance: [
@@ -742,9 +744,17 @@ function appReducer(state: AppState, action: any): AppState {
           )),
           ...action.payload,
         ],
+        logs: [mkLog("Attendance Saved", `${action.payload.length} student(s)`, cls, `Date: ${date}`, action.actor || ""), ...state.logs].slice(0, 200),
       };
-    case "DELETE_ATTENDANCE":
-      return { ...state, attendance: state.attendance.filter(a => a.id !== action.id) };
+    }
+    case "DELETE_ATTENDANCE": {
+      const a = state.attendance.find(x => x.id === action.id);
+      return {
+        ...state,
+        attendance: state.attendance.filter(x => x.id !== action.id),
+        logs: a ? [mkLog("Attendance Deleted", a.studentName, a.studentClass, `Date: ${a.date}`, action.actor || ""), ...state.logs].slice(0, 200) : state.logs,
+      };
+    }
     case "SAVE_CLASS_ROLL":
       // Strip 'suggested' flag when saving permanently
       return {
@@ -753,6 +763,7 @@ function appReducer(state: AppState, action: any): AppState {
           ...state.classRolls,
           [action.className]: (action.students as RollStudent[]).map(({ suggested: _s, ...rest }) => rest),
         },
+        logs: [mkLog("Class Roll Saved", `${action.students.length} student(s)`, action.className, "", action.actor || ""), ...state.logs].slice(0, 200),
       };
     case "DELETE_ROLL_STUDENT": {
       const roll = state.classRolls[action.className] || [];
@@ -789,6 +800,7 @@ interface AppCtxType {
   state: AppState;
   dispatch: React.Dispatch<any>;
   showToast: (msg: string, type?: string) => void;
+  currentActor: string;
 }
 const AppCtx = createContext<AppCtxType | null>(null);
 const useApp = () => useContext(AppCtx)!;
@@ -1912,6 +1924,26 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
                   </div>
                 </Card>
 
+                {/* Submit / Sync Template */}
+                <Card className="p-5 space-y-3">
+                  <div>
+                    <p className="text-sm font-black uppercase text-slate-700">Sync Template</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Apply your saved template across all generated reports{FIREBASE_ENABLED ? " and push it to the cloud so every device uses it." : "."}</p>
+                  </div>
+                  <Btn variant="primary" size="lg" className="w-full" onClick={async () => {
+                    // Re-commit current template (forces save) and push to cloud if enabled
+                    dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { reportTemplate: { ...tpl, syncedAt: new Date().toISOString() } as any } });
+                    if (FIREBASE_ENABLED) {
+                      try { await pushToFirebase(state as any); showToast("Template synced to cloud ✓"); }
+                      catch { showToast("Saved locally — cloud push failed", "warning"); }
+                    } else {
+                      showToast(tpl.uploadedFile ? `Template "${tpl.uploadedFileName || "Custom"}" applied to all reports` : "Template applied to all reports");
+                    }
+                  }}>
+                    <Check size={15} />Submit & Sync Template
+                  </Btn>
+                </Card>
+
                 {/* Reset */}
                 <div className="text-center">
                   <Btn variant="ghost" size="sm" onClick={() => {
@@ -2265,7 +2297,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings }:
 // ATTENDANCE TAB
 // ─────────────────────────────────────────────────────────────────────────────
 const AttendanceTab = memo(() => {
-  const { state, dispatch, showToast } = useApp();
+  const { state, dispatch, showToast, currentActor } = useApp();
   const { attendance, classRolls, entries } = state;
   const [attTab, setAttTab] = useState<"roll" | "mark" | "history">("roll");
 
@@ -2322,7 +2354,7 @@ const AttendanceTab = memo(() => {
       .map(s => ({ id: uid(), name: s.name, admNo: s.admNo }));
     const dupes = csvPreview.length - newStudents.length;
     if (!newStudents.length) { showToast("All students already in roll", "warning"); return; }
-    dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: [...existing, ...newStudents] });
+    dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: [...existing, ...newStudents], actor: currentActor });
     showToast(`${newStudents.length} added${dupes ? `, ${dupes} duplicate${dupes > 1 ? "s" : ""} skipped` : ""}`);
     setCsvImportMode("done");
     setCsvPreview([]);
@@ -2357,6 +2389,7 @@ const AttendanceTab = memo(() => {
       type: "SAVE_CLASS_ROLL",
       className: rollClass,
       students: [...existing, { id: uid(), name: newName.trim(), admNo: newAdmNo.trim() }],
+      actor: currentActor,
     });
     setNewName(""); setNewAdmNo("");
     showToast("Student added to roll");
@@ -2371,7 +2404,7 @@ const AttendanceTab = memo(() => {
       .filter(l => !existingNames.has(l.toLowerCase()))
       .map(l => ({ id: uid(), name: l, admNo: "" }));
     if (!newStudents.length) return showToast("All students already in roll", "warning");
-    dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: [...existing, ...newStudents] });
+    dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: [...existing, ...newStudents], actor: currentActor });
     setBulkText(""); setShowBulk(false);
     showToast(`${newStudents.length} student${newStudents.length !== 1 ? "s" : ""} added`);
   };
@@ -2382,6 +2415,7 @@ const AttendanceTab = memo(() => {
       type: "SAVE_CLASS_ROLL",
       className: rollClass,
       students: [...existing, { id: uid(), name: student.name, admNo: student.admNo || "" }],
+      actor: currentActor,
     });
     showToast(`${student.name} added to roll`);
   };
@@ -2391,13 +2425,13 @@ const AttendanceTab = memo(() => {
     const roll = (classRolls[rollClass] || []).map(s =>
       s.id === id ? { ...s, name: editName.trim(), admNo: editAdmNo.trim() } : s
     );
-    dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: roll });
+    dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: roll, actor: currentActor });
     setEditingId(null);
     showToast("Student updated");
   };
 
   const removeStudent = (studentId: string) => {
-    dispatch({ type: "DELETE_ROLL_STUDENT", className: rollClass, studentId });
+    dispatch({ type: "DELETE_ROLL_STUDENT", className: rollClass, studentId, actor: currentActor });
     showToast("Student removed from roll");
   };
 
@@ -2477,7 +2511,7 @@ const AttendanceTab = memo(() => {
         };
       });
     if (!toSave.length) return showToast("Mark at least one student", "error");
-    dispatch({ type: "BULK_SAVE_ATTENDANCE", payload: toSave });
+    dispatch({ type: "BULK_SAVE_ATTENDANCE", payload: toSave, actor: currentActor });
     setMarkRecords({});
     showToast(`Attendance saved for ${toSave.length} student${toSave.length !== 1 ? "s" : ""}`);
   };
@@ -2928,7 +2962,7 @@ const AttendanceTab = memo(() => {
                           </td>
                           <td className="px-4 py-3 text-xs text-slate-500 max-w-xs truncate">{a.note || <span className="text-slate-300 italic">—</span>}</td>
                           <td className="px-4 py-3">
-                            <button onClick={() => dispatch({ type: "DELETE_ATTENDANCE", id: a.id })}
+                            <button onClick={() => dispatch({ type: "DELETE_ATTENDANCE", id: a.id, actor: currentActor })}
                               className="p-1.5 rounded-lg text-red-400 hover:text-white hover:bg-red-500 transition-all">
                               <Trash2 size={13} />
                             </button>
@@ -3017,6 +3051,7 @@ export default function App() {
   const [dbSearch, setDbSearch] = useState("");
   const [dbClass,  setDbClass]  = useState("");
   const [dbDate,   setDbDate]   = useState("");
+  const [dbTerm,   setDbTerm]   = useState<string>("Current"); // "Current" | "All" | term name
   const [rpSearch, setRpSearch] = useState("");
   const [rpClass,  setRpClass]  = useState("All");
   const [activeReport, setActiveReport] = useState<any>(null);
@@ -3077,13 +3112,19 @@ export default function App() {
     ),
   [studentList, rpSearch, rpClass]);
 
-  const filteredEntries = useMemo(() =>
-    termEntries.filter(e =>
+  const filteredEntries = useMemo(() => {
+    const base = dbTerm === "Current"
+      ? termEntries
+      : dbTerm === "All"
+        ? entries
+        : entries.filter(e => (e.term || schoolSettings.term) === dbTerm &&
+            (!e.session || e.session === schoolSettings.session));
+    return base.filter(e =>
       (!dbSearch || e.studentName.toLowerCase().includes(dbSearch.toLowerCase())) &&
       (!dbClass  || e.studentClass === dbClass) &&
       (!dbDate   || e.createdAt.slice(0, 10) === dbDate)
-    ),
-  [termEntries, dbSearch, dbClass, dbDate]);
+    );
+  }, [termEntries, entries, dbSearch, dbClass, dbDate, dbTerm, schoolSettings.term, schoolSettings.session]);
 
   const curC = useMemo(() =>
     activeReport
@@ -3170,9 +3211,9 @@ export default function App() {
         enteredBy: isAdmin ? "Admin" : (auth.user?.name || "Staff"),
       },
     });
-    showToast("Score saved");
-    // Keep name & class — only clear scores so user can quickly add next subject
-    setScoreForm(f => ({ ...f, subject: "", caScore: "", examScore: "" }));
+    showToast("Score saved — form refreshed");
+    // Full refresh: clear name, class, subject and scores
+    setScoreForm({ studentName: "", studentClass: "", subject: "", caScore: "", examScore: "" });
   }, [scoreForm, entries, showToast, schoolSettings.term, schoolSettings.session, isAdmin, auth.user]);
 
   // Save CA-only draft (exam pending). Drafts are scoped to the current term/session.
@@ -3279,7 +3320,8 @@ export default function App() {
     setDlg(null);
   }, [appState.staffList, showToast]);
 
-  const ctxValue = useMemo<AppCtxType>(() => ({ state: appState, dispatch, showToast }), [appState, showToast]);
+  const currentActor = isAdmin ? "Admin" : (auth.user?.name || "Staff");
+  const ctxValue = useMemo<AppCtxType>(() => ({ state: appState, dispatch, showToast, currentActor }), [appState, showToast, currentActor]);
 
   // ── Auto-save to localStorage whenever state changes ──────────────────────
   useEffect(() => {
@@ -3720,16 +3762,29 @@ export default function App() {
                         );
                       })()}
                       <div className="grid grid-cols-3 gap-2 pt-1">
-                        <Btn variant="ghost" onClick={() => { setScoreForm({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" }); showToast("Form cleared"); }}>
+                        <Btn variant="ghost" onClick={() => {
+                          const hasData = scoreForm.studentName.trim() || scoreForm.subject || scoreForm.caScore !== "" || scoreForm.examScore !== "";
+                          const caUnsaved = scoreForm.caScore !== "" && scoreForm.examScore === "";
+                          const msg = caUnsaved
+                            ? "You entered a CA score but haven't saved it. Discard this CA without saving?"
+                            : "Discard the current entry?";
+                          if (hasData && !window.confirm(msg)) return;
+                          setScoreForm({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" });
+                          showToast("Form cleared");
+                        }}>
                           Clear
                         </Btn>
                         <Btn variant="outline" onClick={saveCADraft} title="Save CA only — finalize when exam is ready">
                           <Save size={13} />Save CA
                         </Btn>
                         <Btn variant="primary" onClick={() => {
+                          // CA completeness check: warn if exam present but CA missing/zero
+                          if (scoreForm.examScore !== "" && (scoreForm.caScore === "" || parseFloat(scoreForm.caScore) === 0) && !draftMatch) {
+                            if (!window.confirm("CA score is empty. Continue saving with CA = 0?")) return;
+                          }
                           if (draftMatch && scoreForm.caScore === "" && scoreForm.examScore !== "") {
                             finalizeDraft(draftMatch.id, scoreForm.examScore);
-                            setScoreForm(f => ({ ...f, subject: "", caScore: "", examScore: "" }));
+                            setScoreForm({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" });
                           } else {
                             submitScore();
                           }
@@ -3772,7 +3827,7 @@ export default function App() {
                   </div>
                   {!showBin && (
                     <Card className="p-4 space-y-3">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                         <div className="relative">
                           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                           <input value={dbSearch} onChange={e => setDbSearch(e.target.value)} placeholder="Search by name…"
@@ -3783,16 +3838,23 @@ export default function App() {
                           <option value="">All Classes</option>
                           {ALL_CLASSES.map(c => <option key={c}>{c}</option>)}
                         </select>
+                        <select value={dbTerm} onChange={e => setDbTerm(e.target.value)}
+                          className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-blue-500 outline-none">
+                          <option value="Current">Current Term ({schoolSettings.term})</option>
+                          <option value="All">All Terms</option>
+                          {TERMS.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
                         <input type="date" value={dbDate} onChange={e => setDbDate(e.target.value)}
                           className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-blue-500 outline-none" />
                       </div>
-                      {(dbSearch || dbClass || dbDate) && (
+                      {(dbSearch || dbClass || dbDate || dbTerm !== "Current") && (
                         <div className="flex items-center gap-2 flex-wrap">
                           {dbSearch && <Pill color="blue">Name: "{dbSearch}"</Pill>}
                           {dbClass  && <Pill color="indigo">{dbClass}</Pill>}
+                          {dbTerm !== "Current" && <Pill color="amber">{dbTerm === "All" ? "All Terms" : dbTerm}</Pill>}
                           {dbDate   && <Pill color="green">{new Date(dbDate + "T00:00:00").toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })}</Pill>}
                           <span className="text-xs text-slate-400 font-bold">{filteredEntries.length} result{filteredEntries.length !== 1 ? "s" : ""}</span>
-                          <button onClick={() => { setDbSearch(""); setDbClass(""); setDbDate(""); }}
+                          <button onClick={() => { setDbSearch(""); setDbClass(""); setDbDate(""); setDbTerm("Current"); }}
                             className="text-xs font-black uppercase text-red-400 hover:text-red-600 flex items-center gap-1">
                             <X size={11} />Clear
                           </button>
