@@ -3191,9 +3191,9 @@ export default function App() {
         enteredBy: isAdmin ? "Admin" : (auth.user?.name || "Staff"),
       },
     });
-    showToast("Score saved");
-    // Keep name & class — only clear scores so user can quickly add next subject
-    setScoreForm(f => ({ ...f, subject: "", caScore: "", examScore: "" }));
+    showToast("Score saved — form refreshed");
+    // Full refresh: clear name, class, subject and scores
+    setScoreForm({ studentName: "", studentClass: "", subject: "", caScore: "", examScore: "" });
   }, [scoreForm, entries, showToast, schoolSettings.term, schoolSettings.session, isAdmin, auth.user]);
 
   // Save CA-only draft (exam pending). Drafts are scoped to the current term/session.
