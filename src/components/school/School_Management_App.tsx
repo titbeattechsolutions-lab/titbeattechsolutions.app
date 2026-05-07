@@ -2334,7 +2334,7 @@ const AttendanceTab = memo(() => {
       .map(s => ({ id: uid(), name: s.name, admNo: s.admNo }));
     const dupes = csvPreview.length - newStudents.length;
     if (!newStudents.length) { showToast("All students already in roll", "warning"); return; }
-    dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: [...existing, ...newStudents] });
+    dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: [...existing, ...newStudents], actor: currentActor });
     showToast(`${newStudents.length} added${dupes ? `, ${dupes} duplicate${dupes > 1 ? "s" : ""} skipped` : ""}`);
     setCsvImportMode("done");
     setCsvPreview([]);
@@ -2383,7 +2383,7 @@ const AttendanceTab = memo(() => {
       .filter(l => !existingNames.has(l.toLowerCase()))
       .map(l => ({ id: uid(), name: l, admNo: "" }));
     if (!newStudents.length) return showToast("All students already in roll", "warning");
-    dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: [...existing, ...newStudents] });
+    dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: [...existing, ...newStudents], actor: currentActor });
     setBulkText(""); setShowBulk(false);
     showToast(`${newStudents.length} student${newStudents.length !== 1 ? "s" : ""} added`);
   };
@@ -2403,13 +2403,13 @@ const AttendanceTab = memo(() => {
     const roll = (classRolls[rollClass] || []).map(s =>
       s.id === id ? { ...s, name: editName.trim(), admNo: editAdmNo.trim() } : s
     );
-    dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: roll });
+    dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: roll, actor: currentActor });
     setEditingId(null);
     showToast("Student updated");
   };
 
   const removeStudent = (studentId: string) => {
-    dispatch({ type: "DELETE_ROLL_STUDENT", className: rollClass, studentId });
+    dispatch({ type: "DELETE_ROLL_STUDENT", className: rollClass, studentId, actor: currentActor });
     showToast("Student removed from roll");
   };
 
