@@ -2277,7 +2277,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings }:
 // ATTENDANCE TAB
 // ─────────────────────────────────────────────────────────────────────────────
 const AttendanceTab = memo(() => {
-  const { state, dispatch, showToast } = useApp();
+  const { state, dispatch, showToast, currentActor } = useApp();
   const { attendance, classRolls, entries } = state;
   const [attTab, setAttTab] = useState<"roll" | "mark" | "history">("roll");
 
