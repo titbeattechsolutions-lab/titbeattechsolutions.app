@@ -1924,6 +1924,26 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
                   </div>
                 </Card>
 
+                {/* Submit / Sync Template */}
+                <Card className="p-5 space-y-3">
+                  <div>
+                    <p className="text-sm font-black uppercase text-slate-700">Sync Template</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Apply your saved template across all generated reports{FIREBASE_ENABLED ? " and push it to the cloud so every device uses it." : "."}</p>
+                  </div>
+                  <Btn variant="primary" size="lg" className="w-full" onClick={async () => {
+                    // Re-commit current template (forces save) and push to cloud if enabled
+                    dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { reportTemplate: { ...tpl, syncedAt: new Date().toISOString() } as any } });
+                    if (FIREBASE_ENABLED) {
+                      try { await pushToFirebase(state as any); showToast("Template synced to cloud ✓"); }
+                      catch { showToast("Saved locally — cloud push failed", "warning"); }
+                    } else {
+                      showToast(tpl.uploadedFile ? `Template "${tpl.uploadedFileName || "Custom"}" applied to all reports` : "Template applied to all reports");
+                    }
+                  }}>
+                    <Check size={15} />Submit & Sync Template
+                  </Btn>
+                </Card>
+
                 {/* Reset */}
                 <div className="text-center">
                   <Btn variant="ghost" size="sm" onClick={() => {
