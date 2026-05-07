@@ -3092,13 +3092,19 @@ export default function App() {
     ),
   [studentList, rpSearch, rpClass]);
 
-  const filteredEntries = useMemo(() =>
-    termEntries.filter(e =>
+  const filteredEntries = useMemo(() => {
+    const base = dbTerm === "Current"
+      ? termEntries
+      : dbTerm === "All"
+        ? entries
+        : entries.filter(e => (e.term || schoolSettings.term) === dbTerm &&
+            (!e.session || e.session === schoolSettings.session));
+    return base.filter(e =>
       (!dbSearch || e.studentName.toLowerCase().includes(dbSearch.toLowerCase())) &&
       (!dbClass  || e.studentClass === dbClass) &&
       (!dbDate   || e.createdAt.slice(0, 10) === dbDate)
-    ),
-  [termEntries, dbSearch, dbClass, dbDate]);
+    );
+  }, [termEntries, entries, dbSearch, dbClass, dbDate, dbTerm, schoolSettings.term, schoolSettings.session]);
 
   const curC = useMemo(() =>
     activeReport
