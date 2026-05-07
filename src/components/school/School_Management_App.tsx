@@ -3031,6 +3031,7 @@ export default function App() {
   const [dbSearch, setDbSearch] = useState("");
   const [dbClass,  setDbClass]  = useState("");
   const [dbDate,   setDbDate]   = useState("");
+  const [dbTerm,   setDbTerm]   = useState<string>("Current"); // "Current" | "All" | term name
   const [rpSearch, setRpSearch] = useState("");
   const [rpClass,  setRpClass]  = useState("All");
   const [activeReport, setActiveReport] = useState<any>(null);
