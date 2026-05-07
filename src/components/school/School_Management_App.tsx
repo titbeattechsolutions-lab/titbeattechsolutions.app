@@ -2369,6 +2369,7 @@ const AttendanceTab = memo(() => {
       type: "SAVE_CLASS_ROLL",
       className: rollClass,
       students: [...existing, { id: uid(), name: newName.trim(), admNo: newAdmNo.trim() }],
+      actor: currentActor,
     });
     setNewName(""); setNewAdmNo("");
     showToast("Student added to roll");
