@@ -2489,7 +2489,7 @@ const AttendanceTab = memo(() => {
         };
       });
     if (!toSave.length) return showToast("Mark at least one student", "error");
-    dispatch({ type: "BULK_SAVE_ATTENDANCE", payload: toSave });
+    dispatch({ type: "BULK_SAVE_ATTENDANCE", payload: toSave, actor: currentActor });
     setMarkRecords({});
     showToast(`Attendance saved for ${toSave.length} student${toSave.length !== 1 ? "s" : ""}`);
   };
