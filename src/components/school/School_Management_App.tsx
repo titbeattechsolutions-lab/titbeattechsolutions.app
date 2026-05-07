@@ -3291,7 +3291,8 @@ export default function App() {
     setDlg(null);
   }, [appState.staffList, showToast]);
 
-  const ctxValue = useMemo<AppCtxType>(() => ({ state: appState, dispatch, showToast }), [appState, showToast]);
+  const currentActor = isAdmin ? "Admin" : (auth.user?.name || "Staff");
+  const ctxValue = useMemo<AppCtxType>(() => ({ state: appState, dispatch, showToast, currentActor }), [appState, showToast, currentActor]);
 
   // ── Auto-save to localStorage whenever state changes ──────────────────────
   useEffect(() => {
