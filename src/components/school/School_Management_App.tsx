@@ -773,6 +773,14 @@ function appReducer(state: AppState, action: any): AppState {
     case "BULK_SAVE_ATTENDANCE": {
       const cls = action.payload[0]?.studentClass || "";
       const date = action.payload[0]?.date || "";
+      const actor = action.actor || "";
+      const notify = actor && actor !== "Admin"
+        ? [makeNotification({
+            fromActor: actor, fromRole: "system", toScope: "admin",
+            title: "Attendance recorded",
+            body: `${actor} saved attendance for ${cls} on ${date} (${action.payload.length} student${action.payload.length === 1 ? "" : "s"}).`,
+          })]
+        : [];
       return {
         ...state,
         attendance: [
@@ -781,7 +789,8 @@ function appReducer(state: AppState, action: any): AppState {
           )),
           ...action.payload,
         ],
-        logs: [mkLog("Attendance Saved", `${action.payload.length} student(s)`, cls, `Date: ${date}`, action.actor || ""), ...state.logs].slice(0, 200),
+        logs: [mkLog("Attendance Saved", `${action.payload.length} student(s)`, cls, `Date: ${date}`, actor), ...state.logs].slice(0, 200),
+        notifications: [...notify, ...state.notifications].slice(0, 200),
       };
     }
     case "DELETE_ATTENDANCE": {
