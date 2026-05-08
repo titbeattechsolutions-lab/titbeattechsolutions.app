@@ -27,7 +27,7 @@ const CURRICULUM: Record<string, { classes: string[]; subjects: string[] }> = {
 const ALL_CLASSES: string[] = Object.values(CURRICULUM).flatMap(c => c.classes);
 const TERMS = ["First Term","Second Term","Third Term"];
 const ROLES = ["Teacher","Class Teacher","Subject Teacher","Head of Dept","Vice Principal","Principal"];
-const DEFAULT_PIN = "1234";
+const ADMIN_PIN_KEY = "gm_admin_pin_v1";
 const PERMS_META = [
   { key:"scoreEntry",    label:"Score Entry",    desc:"Enter CA & exam scores" },
   { key:"viewReports",   label:"View Reports",   desc:"Access student reports" },
@@ -1000,7 +1000,7 @@ const PinAuth = ({ title, subtitle, headerColor = "bg-blue-600", icon: Icon, chi
             </button>
           </div>
         </Field>
-        <p className="text-xs text-slate-400 text-center">Default PIN: <span className="font-black text-slate-600">1234</span></p>
+        <p className="text-xs text-slate-400 text-center">Enter your admin PIN to confirm.</p>
       </div>
       <div className="px-6 pb-6 grid grid-cols-2 gap-3 flex-shrink-0">
         <Btn variant="ghost" onClick={onCancel}>Cancel</Btn>
@@ -1679,7 +1679,9 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
     if (!curOk) return setPinErr("Current PIN is incorrect.");
     if (pinF.nxt.length < 4) return setPinErr("New PIN must be ≥ 4 digits.");
     if (pinF.nxt !== pinF.cnf) return setPinErr("New PINs do not match.");
-    adminPinRef.current = await ensureHashed(pinF.nxt);
+    const hashed = await ensureHashed(pinF.nxt);
+    adminPinRef.current = hashed;
+    try { localStorage.setItem(ADMIN_PIN_KEY, hashed); } catch {}
     setPinF({ cur: "", nxt: "", cnf: "" });
     showToast("Admin PIN updated & encrypted");
   };
@@ -2130,7 +2132,7 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
               </div>
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
                 <AlertTriangle size={15} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-amber-700 font-medium">Keep this PIN private. Default PIN is <strong>1234</strong> — change it immediately after first login.</p>
+                <p className="text-xs text-amber-700 font-medium">Keep this PIN private. Never share it with anyone — it grants full administrative access.</p>
               </div>
               {(["cur", "nxt", "cnf"] as const).map((fk, i) => {
                 const labels = { cur: "Current PIN", nxt: "New PIN (min 4 digits)", cnf: "Confirm New PIN" };
@@ -3031,7 +3033,15 @@ function PendingDraftRow({ draft, onFinalize, onDelete }: {
 export default function App() {
   const [appState, dispatch] = useReducer(appReducer, initialState);
   const { toast, showToast } = useToast();
-  const adminPinRef = useRef("1234"); // plain — verifyPIN handles raw strings
+  const adminPinRef = useRef<string>(typeof window !== "undefined" ? (localStorage.getItem(ADMIN_PIN_KEY) || "") : "");
+  const [needsAdminSetup, setNeedsAdminSetup] = useState<boolean>(!adminPinRef.current);
+  const [setupPin, setSetupPin] = useState({ nxt: "", cnf: "" });
+  const [setupErr, setSetupErr] = useState("");
+  const persistAdminPin = useCallback(async (raw: string) => {
+    const hashed = await ensureHashed(raw);
+    adminPinRef.current = hashed;
+    try { localStorage.setItem(ADMIN_PIN_KEY, hashed); } catch {}
+  }, []);
   const logoRef = useRef<HTMLInputElement>(null);
   const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -3161,11 +3171,12 @@ export default function App() {
 
     if (loginId.toLowerCase() === "admin") {
       if (!loginPass) return setLoginErr("Enter a password");
+      if (!adminPinRef.current) return setLoginErr("Admin PIN not set up. Please set it first.");
       const ok = await verifyPIN(loginPass, adminPinRef.current);
-      if (!ok) return setLoginErr("Incorrect password. Default is: 1234");
+      if (!ok) return setLoginErr("Incorrect password.");
       // Migrate plain PIN to hash on first successful login
       if (!adminPinRef.current.startsWith("h:") && !adminPinRef.current.startsWith("p:")) {
-        adminPinRef.current = await ensureHashed(adminPinRef.current);
+        await persistAdminPin(adminPinRef.current);
       }
       setAuth({ loggedIn: true, user: null });
       return;
@@ -3383,43 +3394,49 @@ export default function App() {
           <div className="inline-flex p-3 bg-amber-100 rounded-2xl mb-3"><ShieldAlert size={28} className="text-amber-600" /></div>
           <h2 className="text-xl font-black text-slate-900">Password Recovery</h2>
         </div>
-        {forgotStep === 1 ? (
-          <div className="space-y-4">
-            <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700 font-medium">
-              Enter the registered school name to verify identity.
-            </div>
-            <Inp
-              label="Registered School Name"
-              value={forgotInput}
-              onChange={(e: any) => setForgotInput(e.target.value)}
-              onKeyDown={(e: any) => e.key === "Enter" && (forgotInput.toLowerCase() === schoolSettings.name.toLowerCase() ? setForgotStep(2) : showToast("School name does not match", "error"))}
-              placeholder={schoolSettings.name}
-            />
-            <Btn variant="primary" size="lg" className="w-full"
-              onClick={() => forgotInput.toLowerCase() === schoolSettings.name.toLowerCase() ? setForgotStep(2) : showToast("School name does not match", "error")}>
-              Verify Identity
-            </Btn>
-            <button onClick={() => { setForgotOpen(false); setForgotStep(1); setForgotInput(""); }}
-              className="w-full text-xs font-black uppercase text-slate-400 hover:text-slate-600 py-2">
-              ← Back to Login
-            </button>
+        <div className="space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 font-medium space-y-2">
+            <p className="font-black uppercase">PIN cannot be recovered</p>
+            <p>For security, admin PINs are stored as one-way hashes and cannot be retrieved. If you've lost the PIN, an authorised admin must reset the local database from another signed-in session, or you can clear browser storage to start fresh (this erases all local data).</p>
           </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-5 text-center space-y-3">
-              <Check size={28} className="text-emerald-500 mx-auto" />
-              <p className="text-xs font-black uppercase text-emerald-700">Identity Verified</p>
-              <p className="text-xs text-slate-500">Admin accepts any non-empty password. Staff use full name + assigned PIN.</p>
-              <div className="bg-white border border-emerald-200 rounded-lg p-3">
-                <p className="text-xs text-slate-400 font-bold uppercase mb-1">Default Admin PIN</p>
-                <p className="text-3xl font-black text-slate-900 tracking-widest">1234</p>
-              </div>
-            </div>
-            <Btn variant="ghost" size="lg" className="w-full" onClick={() => { setForgotOpen(false); setForgotStep(1); setForgotInput(""); }}>
-              Back to Login
-            </Btn>
-          </div>
-        )}
+          <Btn variant="ghost" size="lg" className="w-full" onClick={() => { setForgotOpen(false); setForgotStep(1); setForgotInput(""); }}>
+            Back to Login
+          </Btn>
+        </div>
+      </Card>
+      {toast && <Toast toast={toast} />}
+    </div>
+  );
+
+  // ── First-time admin PIN setup ─────────────────────────────────────────────
+  if (!auth.loggedIn && needsAdminSetup) return (
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
+      <Card className="w-full max-w-sm p-8 border-t-4 border-t-blue-600">
+        <div className="text-center mb-6">
+          <SchoolLogo logoUrl={schoolLogo} size="lg" className="mx-auto mb-4" />
+          <h2 className="text-xl font-black text-slate-900">Set Admin PIN</h2>
+          <p className="text-xs text-slate-500 mt-2">First-time setup. Choose a private PIN of at least 4 digits. Keep it safe — it grants full administrative access and cannot be recovered.</p>
+        </div>
+        <div className="space-y-4">
+          <Field label="New Admin PIN" error={setupErr}>
+            <input type="password" inputMode="numeric" maxLength={8} value={setupPin.nxt}
+              onChange={e => { setSetupPin(p => ({ ...p, nxt: e.target.value.replace(/\D/g, "") })); setSetupErr(""); }}
+              placeholder="••••••" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-blue-500 outline-none" />
+          </Field>
+          <Field label="Confirm PIN">
+            <input type="password" inputMode="numeric" maxLength={8} value={setupPin.cnf}
+              onChange={e => { setSetupPin(p => ({ ...p, cnf: e.target.value.replace(/\D/g, "") })); setSetupErr(""); }}
+              placeholder="••••••" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-blue-500 outline-none" />
+          </Field>
+          <Btn variant="primary" size="lg" className="w-full" onClick={async () => {
+            if (setupPin.nxt.length < 4) return setSetupErr("PIN must be at least 4 digits.");
+            if (setupPin.nxt !== setupPin.cnf) return setSetupErr("PINs do not match.");
+            await persistAdminPin(setupPin.nxt);
+            setSetupPin({ nxt: "", cnf: "" });
+            setNeedsAdminSetup(false);
+            showToast("Admin PIN created. Please sign in.");
+          }}>Create PIN</Btn>
+        </div>
       </Card>
       {toast && <Toast toast={toast} />}
     </div>
@@ -3453,7 +3470,7 @@ export default function App() {
           </div>
           <Btn variant="primary" size="lg" className="w-full" onClick={doLogin}>Launch Portal</Btn>
           <p className="text-xs text-slate-400 text-center">
-            Admin: <code className="font-black bg-slate-100 px-1 rounded">admin</code> + password <code className="font-black bg-slate-100 px-1 rounded">1234</code> · Staff: full name + PIN
+            Admin: <code className="font-black bg-slate-100 px-1 rounded">admin</code> + your private PIN · Staff: full name + assigned PIN
           </p>
         </div>
       </Card>
