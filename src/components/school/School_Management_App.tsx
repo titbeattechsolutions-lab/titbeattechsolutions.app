@@ -6,7 +6,8 @@ import {
   AlertTriangle, Clock, ShieldAlert, Users, UserPlus,
   UserX, UserCheck, Eye, EyeOff, KeyRound, Shield,
   Menu, BookOpen, MoreVertical, ChevronRight, ChevronLeft,
-  CalendarDays, ClipboardList, BookMarked, Edit2, ArrowLeft
+  CalendarDays, ClipboardList, BookMarked, Edit2, ArrowLeft,
+  Bell, CalendarClock, Send, Inbox, MessageSquare
 } from "lucide-react";
 
 // ─── Upgrade Imports (CDN-based, no bundler needed) ──────────────────────────
