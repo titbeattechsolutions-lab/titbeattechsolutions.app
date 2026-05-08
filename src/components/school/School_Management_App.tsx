@@ -3964,6 +3964,12 @@ export default function App() {
               <p className="font-black text-sm text-slate-900 truncate max-w-[160px]">{schoolSettings.name}</p>
             </div>
             <div className="flex items-center gap-1">
+              <button onClick={() => navigate("inbox")} className="p-2 text-slate-500 hover:text-blue-600 transition-colors rounded-lg hover:bg-blue-50 relative">
+                <Bell size={18} />
+                {unreadInbox > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 text-[9px] font-black bg-blue-600 text-white rounded-full min-w-4 h-4 px-1 flex items-center justify-center">{unreadInbox}</span>
+                )}
+              </button>
               <button onClick={() => setShowLogout(true)} className="p-2 text-slate-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50">
                 <LogOut size={18} />
               </button>
