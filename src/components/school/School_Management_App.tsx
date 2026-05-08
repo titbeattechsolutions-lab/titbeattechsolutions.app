@@ -3996,6 +3996,9 @@ export default function App() {
                   {t.id === "database" && bin.length > 0 && (
                     <span className="ml-auto text-xs font-black bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center">{bin.length}</span>
                   )}
+                  {t.id === "inbox" && unreadInbox > 0 && (
+                    <span className="ml-auto text-xs font-black bg-blue-600 text-white rounded-full min-w-5 h-5 px-1.5 flex items-center justify-center">{unreadInbox}</span>
+                  )}
                 </button>
               ))}
               <div className="pt-2 border-t border-slate-100 mt-1">
