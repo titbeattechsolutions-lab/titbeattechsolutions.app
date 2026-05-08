@@ -3733,6 +3733,10 @@ export default function App() {
   }, [appState.staffList, showToast]);
 
   const currentActor = isAdmin ? "Admin" : (auth.user?.name || "Staff");
+  const unreadInbox = useMemo(
+    () => appState.notifications.filter(n => notificationVisible(n, isAdmin, currentActor) && !n.readBy.includes(currentActor)).length,
+    [appState.notifications, isAdmin, currentActor]
+  );
   const ctxValue = useMemo<AppCtxType>(() => ({ state: appState, dispatch, showToast, currentActor }), [appState, showToast, currentActor]);
 
   // ── Auto-save to localStorage whenever state changes ──────────────────────
