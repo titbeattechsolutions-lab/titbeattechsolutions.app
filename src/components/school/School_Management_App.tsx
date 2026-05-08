@@ -111,6 +111,24 @@ interface SchoolSettings {
   resumptionDate: string;
   reportTemplate?: ReportTemplateConfig;
 }
+interface TimetableCell { subject: string; teacherName: string }
+interface TimetableState {
+  periods: { id: string; label: string; start: string; end: string }[];
+  days: string[];
+  // key: `${className}|${day}|${periodId}` → TimetableCell
+  cells: Record<string, TimetableCell>;
+}
+interface AppNotification {
+  id: string;
+  createdAt: string;
+  fromActor: string;
+  fromRole: "admin" | "staff" | "system";
+  toScope: "admin" | "all-staff" | string; // string = `staff:<name>`
+  title: string;
+  body: string;
+  priority: "normal" | "high";
+  readBy: string[];
+}
 interface AppState {
   entries: Entry[];
   bin: BinEntry[];
@@ -120,6 +138,8 @@ interface AppState {
   classRolls: Record<string, RollStudent[]>;
   staffList: StaffMember[];
   schoolSettings: SchoolSettings;
+  timetable: TimetableState;
+  notifications: AppNotification[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
