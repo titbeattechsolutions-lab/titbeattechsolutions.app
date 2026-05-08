@@ -2132,7 +2132,7 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
               </div>
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
                 <AlertTriangle size={15} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-amber-700 font-medium">Keep this PIN private. Default PIN is <strong>1234</strong> — change it immediately after first login.</p>
+                <p className="text-xs text-amber-700 font-medium">Keep this PIN private. Never share it with anyone — it grants full administrative access.</p>
               </div>
               {(["cur", "nxt", "cnf"] as const).map((fk, i) => {
                 const labels = { cur: "Current PIN", nxt: "New PIN (min 4 digits)", cnf: "Confirm New PIN" };
