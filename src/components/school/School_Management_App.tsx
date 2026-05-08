@@ -1000,7 +1000,7 @@ const PinAuth = ({ title, subtitle, headerColor = "bg-blue-600", icon: Icon, chi
             </button>
           </div>
         </Field>
-        <p className="text-xs text-slate-400 text-center">Default PIN: <span className="font-black text-slate-600">1234</span></p>
+        <p className="text-xs text-slate-400 text-center">Enter your admin PIN to confirm.</p>
       </div>
       <div className="px-6 pb-6 grid grid-cols-2 gap-3 flex-shrink-0">
         <Btn variant="ghost" onClick={onCancel}>Cancel</Btn>
