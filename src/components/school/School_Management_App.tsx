@@ -682,6 +682,20 @@ const _defaultStaff: StaffMember[] = [
   { id:"s2", name:"Mr. Chidi Eze",   role:"Subject Teacher", pin:"9012", status:"active", assignedClasses:["JSS 1","JSS 2","JSS 3"],  permissions:{scoreEntry:true,viewReports:true,printReports:false,manageRecords:false}, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() },
 ];
 
+const _defaultTimetable: TimetableState = {
+  periods: [
+    { id: "p1", label: "Period 1", start: "08:00", end: "08:40" },
+    { id: "p2", label: "Period 2", start: "08:40", end: "09:20" },
+    { id: "p3", label: "Period 3", start: "09:20", end: "10:00" },
+    { id: "br", label: "Break",    start: "10:00", end: "10:20" },
+    { id: "p4", label: "Period 4", start: "10:20", end: "11:00" },
+    { id: "p5", label: "Period 5", start: "11:00", end: "11:40" },
+    { id: "p6", label: "Period 6", start: "11:40", end: "12:20" },
+  ],
+  days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
+  cells: {},
+};
+
 const initialState: AppState = {
   entries:        _saved.entries        ?? [],
   bin:            _saved.bin            ?? [],
@@ -691,6 +705,8 @@ const initialState: AppState = {
   classRolls:     _saved.classRolls     ?? {},
   staffList:      _saved.staffList      ?? _defaultStaff,
   schoolSettings: _saved.schoolSettings ?? { name:"Greatmind Academy", motto:"Excellence in every child", session:"2024/2025", term:"First Term", resumptionDate:"January 8th, 2025" },
+  timetable:      _saved.timetable      ?? _defaultTimetable,
+  notifications:  _saved.notifications  ?? [],
 };
 
 function mkLog(action: string, student: string, subject: string, detail = "", actor = "") {
