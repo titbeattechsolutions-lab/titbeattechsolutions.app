@@ -3470,7 +3470,7 @@ export default function App() {
           </div>
           <Btn variant="primary" size="lg" className="w-full" onClick={doLogin}>Launch Portal</Btn>
           <p className="text-xs text-slate-400 text-center">
-            Admin: <code className="font-black bg-slate-100 px-1 rounded">admin</code> + password <code className="font-black bg-slate-100 px-1 rounded">1234</code> · Staff: full name + PIN
+            Admin: <code className="font-black bg-slate-100 px-1 rounded">admin</code> + your private PIN · Staff: full name + assigned PIN
           </p>
         </div>
       </Card>
