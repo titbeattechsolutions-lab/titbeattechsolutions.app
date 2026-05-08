@@ -3399,6 +3399,26 @@ export default function App() {
     debouncedSaveDB(appState);
   }, [appState]);
 
+  // ── Cross-device hydration via storage event (TenantApp pull-loop fires this)
+  // When TenantApp pulls a newer remote snapshot, it writes DB_KEY and dispatches
+  // a synthetic storage event. We rehydrate the reducer so the UI converges.
+  const lastAcceptedRev = useRef<number>(0);
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== DB_KEY || !e.newValue) return;
+      try {
+        const snap = JSON.parse(e.newValue);
+        const rev = typeof snap._rev === "number" ? snap._rev : 0;
+        if (rev <= lastAcceptedRev.current) return;
+        lastAcceptedRev.current = rev;
+        const { _rev, _updatedAt, _deviceId, ...payload } = snap;
+        dispatch({ type: "REPLACE_ALL", payload });
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   // ── Firebase real-time listener: pull remote changes into local state ──────
   const [syncStatus, setSyncStatus] = useState<"idle" | "synced" | "error">("idle");
   const lastLocalTs = useRef<string>("");
