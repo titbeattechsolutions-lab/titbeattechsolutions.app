@@ -11,19 +11,35 @@ import {
 } from "@/lib/tenant-client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { LogOut, CloudOff, Loader2 } from "lucide-react";
+import { LogOut, CloudOff, Loader2, Cloud, CloudUpload } from "lucide-react";
 
-const DB_KEY = "schoolapp_v1";
-const SAVE_DEBOUNCE_MS = 1500;
+// MUST match the key the monolithic app uses (greatmind_school_db_v2).
+const DB_KEY = "greatmind_school_db_v2";
+const SAVE_DEBOUNCE_MS = 1200;
+const PULL_INTERVAL_MS = 8000;
+
+type SyncPhase = "idle" | "pulling" | "pushing" | "synced" | "error";
+
+/** Increment a monotonic revision used to resolve concurrent edits. */
+function bumpRev(obj: Record<string, unknown>): Record<string, unknown> {
+  const cur = typeof obj?._rev === "number" ? (obj._rev as number) : 0;
+  return { ...obj, _rev: cur + 1, _updatedAt: new Date().toISOString() };
+}
 
 export default function TenantApp() {
   const navigate = useNavigate();
   const [session, setSession] = useState<TenantSession | null>(null);
   const [phase, setPhase] = useState<"loading" | "ready" | "expired" | "error">("loading");
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
-  const lastSaved = useRef<string>("");
+  const [syncPhase, setSyncPhase] = useState<SyncPhase>("idle");
+  const [lastSyncAt, setLastSyncAt] = useState<number>(0);
 
-  // Load tenant data into localStorage, then mount the app
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  const pullTimer = useRef<ReturnType<typeof setInterval>>();
+  const lastSerialized = useRef<string>(""); // last JSON we either pushed or accepted from pull
+  const localRev = useRef<number>(0);
+  const isPushing = useRef<boolean>(false);
+
+  // 1. Initial load: pull tenant data and seed localStorage
   useEffect(() => {
     const s = loadTenantSession();
     if (!s) { navigate("/", { replace: true }); return; }
@@ -37,47 +53,102 @@ export default function TenantApp() {
     (async () => {
       const remote = await fetchTenantData(s);
       if (remote === null) { setPhase("error"); return; }
-      // Seed localStorage with remote data (or empty object — app will fill defaults)
-      localStorage.setItem(DB_KEY, JSON.stringify(remote));
-      lastSaved.current = JSON.stringify(remote);
+
+      // Merge: prefer remote if it has _rev, otherwise keep local (could be from previous offline session)
+      let seed = remote as Record<string, unknown>;
+      try {
+        const localRaw = localStorage.getItem(DB_KEY);
+        if (localRaw) {
+          const local = JSON.parse(localRaw) as Record<string, unknown>;
+          const lr = typeof local._rev === "number" ? (local._rev as number) : 0;
+          const rr = typeof seed._rev === "number" ? (seed._rev as number) : 0;
+          if (lr > rr) seed = local;
+        }
+      } catch { /* ignore */ }
+
+      const json = JSON.stringify(seed);
+      localStorage.setItem(DB_KEY, json);
+      lastSerialized.current = json;
+      localRev.current = typeof seed._rev === "number" ? (seed._rev as number) : 0;
+
+      // Notify in-app listeners (storage event doesn't fire in same tab)
+      window.dispatchEvent(new StorageEvent("storage", { key: DB_KEY, newValue: json }));
+
       setSession(s);
       setPhase("ready");
+      setSyncPhase("synced");
+      setLastSyncAt(Date.now());
     })();
   }, [navigate]);
 
-  // Watch localStorage for changes and push to Cloud (debounced)
+  // 2. Bidirectional sync (push on local change + periodic pull)
   useEffect(() => {
     if (phase !== "ready" || !session) return;
 
-    const pushIfChanged = () => {
+    const pushIfChanged = async () => {
       const current = localStorage.getItem(DB_KEY) ?? "{}";
-      if (current === lastSaved.current) return;
-      lastSaved.current = current;
-      try {
-        const parsed = JSON.parse(current);
-        saveTenantData(session, parsed);
-      } catch { /* malformed — skip */ }
+      if (current === lastSerialized.current) return;
+      let parsed: Record<string, unknown>;
+      try { parsed = JSON.parse(current); } catch { return; }
+
+      const stamped = bumpRev(parsed);
+      localRev.current = stamped._rev as number;
+
+      const stampedJson = JSON.stringify(stamped);
+      // write back so the rev is persisted (without re-triggering push)
+      isPushing.current = true;
+      localStorage.setItem(DB_KEY, stampedJson);
+      lastSerialized.current = stampedJson;
+      isPushing.current = false;
+
+      setSyncPhase("pushing");
+      const ok = await saveTenantData(session, stamped);
+      setSyncPhase(ok ? "synced" : "error");
+      if (ok) setLastSyncAt(Date.now());
     };
 
-    const schedule = () => {
+    const pull = async () => {
+      if (isPushing.current) return;
+      setSyncPhase("pulling");
+      const remote = await fetchTenantData(session);
+      if (remote === null) { setSyncPhase("error"); return; }
+      const r = remote as Record<string, unknown>;
+      const remoteRev = typeof r._rev === "number" ? (r._rev as number) : 0;
+      if (remoteRev > localRev.current) {
+        const json = JSON.stringify(r);
+        lastSerialized.current = json;
+        localRev.current = remoteRev;
+        localStorage.setItem(DB_KEY, json);
+        // Tell the in-app reducer to rehydrate
+        window.dispatchEvent(new StorageEvent("storage", { key: DB_KEY, newValue: json }));
+      }
+      setSyncPhase("synced");
+      setLastSyncAt(Date.now());
+    };
+
+    const schedulePush = () => {
       clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(pushIfChanged, SAVE_DEBOUNCE_MS);
     };
 
-    // Patch setItem to detect writes from anywhere in the app
+    // Patch setItem to detect any write to DB_KEY
     const origSet = localStorage.setItem.bind(localStorage);
     localStorage.setItem = (k: string, v: string) => {
       origSet(k, v);
-      if (k === DB_KEY) schedule();
+      if (k === DB_KEY && !isPushing.current) schedulePush();
     };
 
-    // Also poll as a safety net
-    const interval = setInterval(pushIfChanged, 5000);
+    // Pull loop (8s) + on focus / on online
+    pullTimer.current = setInterval(pull, PULL_INTERVAL_MS);
+    const onFocus = () => pull();
+    const onOnline = () => pull();
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("online", onOnline);
 
-    // Push pending save on unload
+    // Push pending on unload
     const onUnload = () => {
       const current = localStorage.getItem(DB_KEY) ?? "{}";
-      if (current !== lastSaved.current) {
+      if (current !== lastSerialized.current) {
         try { saveTenantData(session, JSON.parse(current)); } catch { /* */ }
       }
     };
@@ -85,7 +156,9 @@ export default function TenantApp() {
 
     return () => {
       clearTimeout(saveTimer.current);
-      clearInterval(interval);
+      clearInterval(pullTimer.current);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("online", onOnline);
       window.removeEventListener("beforeunload", onUnload);
       localStorage.setItem = origSet;
       pushIfChanged();
@@ -138,6 +211,12 @@ export default function TenantApp() {
 
   const d = session ? daysRemaining(session) : null;
   const showBanner = session && (session.status === "trial" || (d !== null && d <= 14));
+  const syncLabel =
+    syncPhase === "pulling" ? "Syncing…" :
+    syncPhase === "pushing" ? "Saving…" :
+    syncPhase === "error"   ? "Offline" :
+    lastSyncAt ? `Synced ${Math.max(1, Math.round((Date.now() - lastSyncAt) / 1000))}s ago` : "Synced";
+  const SyncIcon = syncPhase === "error" ? CloudOff : syncPhase === "pushing" ? CloudUpload : Cloud;
 
   return (
     <div className="min-h-screen">
@@ -147,7 +226,17 @@ export default function TenantApp() {
             {session!.status === "trial" ? "🎁 Free trial" : "⏰ Subscription"} — {d ?? "?"} days remaining
             {session!.status === "trial" && " · Contact provider to subscribe"}
           </span>
+          <span className="inline-flex items-center gap-1 opacity-80">
+            <SyncIcon className={`w-3 h-3 ${syncPhase === "pulling" || syncPhase === "pushing" ? "animate-pulse" : ""}`} />
+            {syncLabel}
+          </span>
           <button onClick={signOut} className="underline opacity-80 hover:opacity-100">Sign out</button>
+        </div>
+      )}
+      {!showBanner && (
+        <div className="fixed bottom-2 right-2 z-50 text-[10px] bg-white/90 backdrop-blur border border-slate-200 rounded-full px-2 py-1 shadow-sm flex items-center gap-1 text-slate-600">
+          <SyncIcon className={`w-3 h-3 ${syncPhase === "pulling" || syncPhase === "pushing" ? "animate-pulse text-blue-500" : syncPhase === "error" ? "text-red-500" : "text-emerald-500"}`} />
+          {syncLabel}
         </div>
       )}
       <App />

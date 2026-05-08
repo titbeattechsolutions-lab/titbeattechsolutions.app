@@ -6,7 +6,8 @@ import {
   AlertTriangle, Clock, ShieldAlert, Users, UserPlus,
   UserX, UserCheck, Eye, EyeOff, KeyRound, Shield,
   Menu, BookOpen, MoreVertical, ChevronRight, ChevronLeft,
-  CalendarDays, ClipboardList, BookMarked, Edit2, ArrowLeft
+  CalendarDays, ClipboardList, BookMarked, Edit2, ArrowLeft,
+  Bell, CalendarClock, Send, Inbox, MessageSquare
 } from "lucide-react";
 
 // ─── Upgrade Imports (CDN-based, no bundler needed) ──────────────────────────
@@ -110,6 +111,24 @@ interface SchoolSettings {
   resumptionDate: string;
   reportTemplate?: ReportTemplateConfig;
 }
+interface TimetableCell { subject: string; teacherName: string }
+interface TimetableState {
+  periods: { id: string; label: string; start: string; end: string }[];
+  days: string[];
+  // key: `${className}|${day}|${periodId}` → TimetableCell
+  cells: Record<string, TimetableCell>;
+}
+interface AppNotification {
+  id: string;
+  createdAt: string;
+  fromActor: string;
+  fromRole: "admin" | "staff" | "system";
+  toScope: "admin" | "all-staff" | string; // string = `staff:<name>`
+  title: string;
+  body: string;
+  priority: "normal" | "high";
+  readBy: string[];
+}
 interface AppState {
   entries: Entry[];
   bin: BinEntry[];
@@ -119,6 +138,8 @@ interface AppState {
   classRolls: Record<string, RollStudent[]>;
   staffList: StaffMember[];
   schoolSettings: SchoolSettings;
+  timetable: TimetableState;
+  notifications: AppNotification[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -661,6 +682,20 @@ const _defaultStaff: StaffMember[] = [
   { id:"s2", name:"Mr. Chidi Eze",   role:"Subject Teacher", pin:"9012", status:"active", assignedClasses:["JSS 1","JSS 2","JSS 3"],  permissions:{scoreEntry:true,viewReports:true,printReports:false,manageRecords:false}, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() },
 ];
 
+const _defaultTimetable: TimetableState = {
+  periods: [
+    { id: "p1", label: "Period 1", start: "08:00", end: "08:40" },
+    { id: "p2", label: "Period 2", start: "08:40", end: "09:20" },
+    { id: "p3", label: "Period 3", start: "09:20", end: "10:00" },
+    { id: "br", label: "Break",    start: "10:00", end: "10:20" },
+    { id: "p4", label: "Period 4", start: "10:20", end: "11:00" },
+    { id: "p5", label: "Period 5", start: "11:00", end: "11:40" },
+    { id: "p6", label: "Period 6", start: "11:40", end: "12:20" },
+  ],
+  days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
+  cells: {},
+};
+
 const initialState: AppState = {
   entries:        _saved.entries        ?? [],
   bin:            _saved.bin            ?? [],
@@ -670,6 +705,8 @@ const initialState: AppState = {
   classRolls:     _saved.classRolls     ?? {},
   staffList:      _saved.staffList      ?? _defaultStaff,
   schoolSettings: _saved.schoolSettings ?? { name:"Greatmind Academy", motto:"Excellence in every child", session:"2024/2025", term:"First Term", resumptionDate:"January 8th, 2025" },
+  timetable:      _saved.timetable      ?? _defaultTimetable,
+  notifications:  _saved.notifications  ?? [],
 };
 
 function mkLog(action: string, student: string, subject: string, detail = "", actor = "") {
@@ -736,6 +773,14 @@ function appReducer(state: AppState, action: any): AppState {
     case "BULK_SAVE_ATTENDANCE": {
       const cls = action.payload[0]?.studentClass || "";
       const date = action.payload[0]?.date || "";
+      const actor = action.actor || "";
+      const notify = actor && actor !== "Admin"
+        ? [makeNotification({
+            fromActor: actor, fromRole: "system", toScope: "admin",
+            title: "Attendance recorded",
+            body: `${actor} saved attendance for ${cls} on ${date} (${action.payload.length} student${action.payload.length === 1 ? "" : "s"}).`,
+          })]
+        : [];
       return {
         ...state,
         attendance: [
@@ -744,7 +789,8 @@ function appReducer(state: AppState, action: any): AppState {
           )),
           ...action.payload,
         ],
-        logs: [mkLog("Attendance Saved", `${action.payload.length} student(s)`, cls, `Date: ${date}`, action.actor || ""), ...state.logs].slice(0, 200),
+        logs: [mkLog("Attendance Saved", `${action.payload.length} student(s)`, cls, `Date: ${date}`, actor), ...state.logs].slice(0, 200),
+        notifications: [...notify, ...state.notifications].slice(0, 200),
       };
     }
     case "DELETE_ATTENDANCE": {
@@ -788,6 +834,29 @@ function appReducer(state: AppState, action: any): AppState {
       };
     case "SET_SCHOOL_SETTINGS":
       return { ...state, schoolSettings: { ...state.schoolSettings, ...action.payload } };
+    case "SET_TIMETABLE_CELL": {
+      const next = { ...state.timetable.cells };
+      if (!action.cell || (!action.cell.subject && !action.cell.teacherName)) delete next[action.key];
+      else next[action.key] = action.cell;
+      return { ...state, timetable: { ...state.timetable, cells: next } };
+    }
+    case "SET_TIMETABLE_PERIODS":
+      return { ...state, timetable: { ...state.timetable, periods: action.periods } };
+    case "ADD_NOTIFICATION":
+      return { ...state, notifications: [action.payload, ...state.notifications].slice(0, 200) };
+    case "MARK_NOTIFICATION_READ": {
+      const next = state.notifications.map(n =>
+        n.id === action.id && !n.readBy.includes(action.actor)
+          ? { ...n, readBy: [...n.readBy, action.actor] }
+          : n
+      );
+      return { ...state, notifications: next };
+    }
+    case "DELETE_NOTIFICATION":
+      return { ...state, notifications: state.notifications.filter(n => n.id !== action.id) };
+    case "REPLACE_ALL":
+      // Cross-device hydration: full state swap. Preserve unknown keys from default.
+      return { ...state, ...action.payload };
     case "__HYDRATE__":
       return { ...state, [action.key]: action.value };
     default:
@@ -3028,6 +3097,345 @@ function PendingDraftRow({ draft, onFinalize, onDelete }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Notification helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function notificationVisible(n: AppNotification, isAdmin: boolean, actor: string): boolean {
+  if (n.toScope === "admin") return isAdmin;
+  if (n.toScope === "all-staff") return !isAdmin || isAdmin; // visible to everyone
+  if (n.toScope.startsWith("staff:")) {
+    const target = n.toScope.slice(6);
+    return target === actor;
+  }
+  return false;
+}
+
+function makeNotification(args: {
+  fromActor: string;
+  fromRole: AppNotification["fromRole"];
+  toScope: AppNotification["toScope"];
+  title: string;
+  body: string;
+  priority?: AppNotification["priority"];
+}): AppNotification {
+  return {
+    id: uid(),
+    createdAt: new Date().toISOString(),
+    fromActor: args.fromActor,
+    fromRole: args.fromRole,
+    toScope: args.toScope,
+    title: args.title,
+    body: args.body,
+    priority: args.priority ?? "normal",
+    readBy: [],
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Timetable view
+// ─────────────────────────────────────────────────────────────────────────────
+function TimetableView({
+  isAdmin, currentActor, staffList, classRolls, timetable, dispatch, showToast,
+}: {
+  isAdmin: boolean;
+  currentActor: string;
+  staffList: StaffMember[];
+  classRolls: Record<string, RollStudent[]>;
+  timetable: TimetableState;
+  dispatch: React.Dispatch<any>;
+  showToast: (msg: string, type?: string) => void;
+}) {
+  const allClasses = useMemo(() => {
+    const fromRolls = Object.keys(classRolls);
+    const fromCells = Object.keys(timetable.cells).map(k => k.split("|")[0]);
+    const all = [...new Set([...fromRolls, ...fromCells])].filter(Boolean).sort();
+    if (all.length === 0) {
+      // fall back to curriculum classes
+      return Object.values(CURRICULUM).flatMap((c: any) => c.classes);
+    }
+    return all;
+  }, [classRolls, timetable.cells]);
+
+  const [activeClass, setActiveClass] = useState<string>(allClasses[0] || "");
+  const [editing, setEditing] = useState<{ key: string; subject: string; teacherName: string } | null>(null);
+  const [myOnly, setMyOnly] = useState(false);
+
+  useEffect(() => {
+    if (!activeClass && allClasses.length) setActiveClass(allClasses[0]);
+  }, [allClasses, activeClass]);
+
+  const cellOf = (day: string, periodId: string) =>
+    timetable.cells[`${activeClass}|${day}|${periodId}`];
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 uppercase">Timetable</h1>
+          <p className="text-sm text-slate-400">Weekly class schedule {isAdmin ? "— tap a cell to edit" : "— read-only"}</p>
+        </div>
+        {!isAdmin && (
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+            <input type="checkbox" checked={myOnly} onChange={e => setMyOnly(e.target.checked)} />
+            My periods only
+          </label>
+        )}
+      </div>
+
+      <Card className="p-4 space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-xs font-black uppercase text-slate-400">Class:</p>
+          {allClasses.map(c => (
+            <button key={c} onClick={() => setActiveClass(c)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all ${activeClass === c ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+              {c}
+            </button>
+          ))}
+        </div>
+
+        <div className="overflow-x-auto -mx-4 px-4">
+          <table className="w-full text-xs border-separate border-spacing-1 min-w-[640px]">
+            <thead>
+              <tr>
+                <th className="text-left text-slate-400 font-black uppercase px-2">Period</th>
+                {timetable.days.map(d => (
+                  <th key={d} className="text-slate-500 font-black uppercase">{d}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {timetable.periods.map(p => (
+                <tr key={p.id}>
+                  <td className="px-2 py-2 align-top">
+                    <p className="font-black text-slate-700">{p.label}</p>
+                    <p className="text-[10px] text-slate-400">{p.start}–{p.end}</p>
+                  </td>
+                  {timetable.days.map(d => {
+                    const c = cellOf(d, p.id);
+                    const mine = c?.teacherName && c.teacherName === currentActor;
+                    const dim = !isAdmin && myOnly && !mine;
+                    return (
+                      <td key={d} className="align-top">
+                        <button
+                          disabled={!isAdmin}
+                          onClick={() => isAdmin && setEditing({
+                            key: `${activeClass}|${d}|${p.id}`,
+                            subject: c?.subject || "",
+                            teacherName: c?.teacherName || "",
+                          })}
+                          className={`w-full min-h-[56px] p-2 rounded-lg text-left transition-all border-2 ${
+                            dim ? "opacity-30" :
+                            mine ? "bg-emerald-50 border-emerald-300" :
+                            c ? "bg-blue-50 border-blue-100" : "bg-slate-50 border-dashed border-slate-200"
+                          } ${isAdmin ? "hover:border-blue-400 cursor-pointer" : "cursor-default"}`}
+                        >
+                          {c ? (
+                            <>
+                              <p className="font-black text-slate-800 leading-tight">{c.subject || "—"}</p>
+                              {c.teacherName && <p className="text-[10px] text-slate-500 mt-0.5 truncate">{c.teacherName}</p>}
+                            </>
+                          ) : (
+                            <p className="text-[10px] text-slate-400 italic">{isAdmin ? "Tap to set" : "—"}</p>
+                          )}
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {editing && (
+        <Modal onBgClick={() => setEditing(null)}>
+          <MHead icon={CalendarClock} title="Edit Timetable Slot" subtitle={editing.key.replace(/\|/g, " · ")} color="bg-blue-600" onClose={() => setEditing(null)} />
+          <div className="p-6 space-y-4">
+            <Field label="Subject">
+              <input value={editing.subject}
+                onChange={e => setEditing(s => s ? { ...s, subject: e.target.value } : s)}
+                className="w-full px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-blue-500 outline-none" />
+            </Field>
+            <Field label="Teacher">
+              <select value={editing.teacherName}
+                onChange={e => setEditing(s => s ? { ...s, teacherName: e.target.value } : s)}
+                className="w-full px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-blue-500 outline-none">
+                <option value="">— None —</option>
+                {staffList.filter(s => s.status !== "revoked").map(s => (
+                  <option key={s.id} value={s.name}>{s.name}</option>
+                ))}
+              </select>
+            </Field>
+            <div className="grid grid-cols-3 gap-2">
+              <Btn variant="ghost" onClick={() => setEditing(null)}>Cancel</Btn>
+              <Btn variant="danger" onClick={() => {
+                dispatch({ type: "SET_TIMETABLE_CELL", key: editing.key, cell: null });
+                showToast("Slot cleared");
+                setEditing(null);
+              }}>Clear</Btn>
+              <Btn variant="primary" onClick={() => {
+                dispatch({ type: "SET_TIMETABLE_CELL", key: editing.key,
+                  cell: { subject: editing.subject.trim(), teacherName: editing.teacherName } });
+                if (editing.teacherName) {
+                  dispatch({ type: "ADD_NOTIFICATION", payload: makeNotification({
+                    fromActor: currentActor, fromRole: "system",
+                    toScope: `staff:${editing.teacherName}`,
+                    title: "New timetable assignment",
+                    body: `You have been assigned ${editing.subject || "a period"} (${editing.key.replace(/\|/g, " · ")}).`,
+                  }) });
+                }
+                showToast("Slot saved — staff notified");
+                setEditing(null);
+              }}>Save</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inbox / notifications view
+// ─────────────────────────────────────────────────────────────────────────────
+function InboxView({
+  isAdmin, currentActor, staffList, notifications, dispatch, showToast,
+}: {
+  isAdmin: boolean;
+  currentActor: string;
+  staffList: StaffMember[];
+  notifications: AppNotification[];
+  dispatch: React.Dispatch<any>;
+  showToast: (msg: string, type?: string) => void;
+}) {
+  const [composing, setComposing] = useState(false);
+  const [draft, setDraft] = useState({
+    toScope: isAdmin ? "all-staff" : "admin",
+    title: "",
+    body: "",
+    priority: "normal" as "normal" | "high",
+  });
+
+  const visible = useMemo(
+    () => notifications.filter(n => notificationVisible(n, isAdmin, currentActor)),
+    [notifications, isAdmin, currentActor]
+  );
+
+  const send = () => {
+    if (!draft.title.trim() || !draft.body.trim()) return showToast("Add a title and message.", "error");
+    dispatch({ type: "ADD_NOTIFICATION", payload: makeNotification({
+      fromActor: currentActor,
+      fromRole: isAdmin ? "admin" : "staff",
+      toScope: draft.toScope as any,
+      title: draft.title.trim(),
+      body: draft.body.trim(),
+      priority: draft.priority,
+    }) });
+    showToast("Message sent");
+    setDraft({ toScope: isAdmin ? "all-staff" : "admin", title: "", body: "", priority: "normal" });
+    setComposing(false);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 uppercase">Inbox</h1>
+          <p className="text-sm text-slate-400">{visible.length} message(s) · {visible.filter(n => !n.readBy.includes(currentActor)).length} unread</p>
+        </div>
+        <Btn variant="primary" onClick={() => setComposing(true)}><Send size={14} />New Message</Btn>
+      </div>
+
+      {visible.length === 0
+        ? <EmptyState icon={Inbox} title="No messages" subtitle={isAdmin ? "Notify staff of updates and announcements." : "Messages from admin and the system appear here."} />
+        : (
+          <div className="space-y-2">
+            {visible.map(n => {
+              const unread = !n.readBy.includes(currentActor);
+              return (
+                <Card key={n.id} className={`p-4 ${unread ? "border-l-4 border-l-blue-500" : ""}`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${n.priority === "high" ? "bg-red-100 text-red-600" : n.fromRole === "system" ? "bg-amber-100 text-amber-600" : n.fromRole === "admin" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-600"}`}>
+                      <MessageSquare size={14} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-black text-slate-900">{n.title}</p>
+                        {n.priority === "high" && <Pill color="red">High</Pill>}
+                        {unread && <Pill color="blue">New</Pill>}
+                      </div>
+                      <p className="text-xs text-slate-600 mt-1 whitespace-pre-wrap">{n.body}</p>
+                      <p className="text-[10px] text-slate-400 mt-2 uppercase font-bold">
+                        {n.fromActor} · {new Date(n.createdAt).toLocaleString()} · to {n.toScope}
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {unread && (
+                        <button onClick={() => dispatch({ type: "MARK_NOTIFICATION_READ", id: n.id, actor: currentActor })}
+                          className="text-[10px] font-black uppercase text-blue-600 hover:underline">Mark read</button>
+                      )}
+                      {(isAdmin || n.fromActor === currentActor) && (
+                        <button onClick={() => dispatch({ type: "DELETE_NOTIFICATION", id: n.id })}
+                          className="text-[10px] font-black uppercase text-red-500 hover:underline">Delete</button>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+      {composing && (
+        <Modal onBgClick={() => setComposing(false)}>
+          <MHead icon={Send} title="New Message" subtitle={isAdmin ? "Notify staff" : "Message admin"} color="bg-blue-600" onClose={() => setComposing(false)} />
+          <div className="p-6 space-y-4">
+            <Field label="To">
+              <select value={draft.toScope}
+                onChange={e => setDraft(d => ({ ...d, toScope: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-blue-500 outline-none">
+                {isAdmin ? (
+                  <>
+                    <option value="all-staff">All staff</option>
+                    <option value="admin">Admin (yourself)</option>
+                    {staffList.filter(s => s.status !== "revoked").map(s => (
+                      <option key={s.id} value={`staff:${s.name}`}>{s.name}</option>
+                    ))}
+                  </>
+                ) : (
+                  <option value="admin">Admin</option>
+                )}
+              </select>
+            </Field>
+            <Field label="Title">
+              <input value={draft.title}
+                onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
+                placeholder="Short subject"
+                className="w-full px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-blue-500 outline-none" />
+            </Field>
+            <Field label="Message">
+              <textarea value={draft.body} rows={4}
+                onChange={e => setDraft(d => ({ ...d, body: e.target.value }))}
+                placeholder="Write your message…"
+                className="w-full px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-medium focus:border-blue-500 outline-none resize-none" />
+            </Field>
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+              <input type="checkbox" checked={draft.priority === "high"}
+                onChange={e => setDraft(d => ({ ...d, priority: e.target.checked ? "high" : "normal" }))} />
+              High priority
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <Btn variant="ghost" onClick={() => setComposing(false)}>Cancel</Btn>
+              <Btn variant="primary" onClick={send}><Send size={13} />Send</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main App
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
@@ -3159,6 +3567,8 @@ export default function App() {
     { id:"database",   label:"Records",    icon:Database,         show:isAdmin||can("manageRecords")||can("scoreEntry"), primary:true },
     { id:"reports",    label:"Reports",    icon:FileText,         show:can("viewReports"),                    primary:true },
     { id:"attendance", label:"Attendance", icon:CalendarDays,     show:can("scoreEntry")||isAdmin,            primary:false },
+    { id:"timetable",  label:"Timetable",  icon:CalendarClock,    show:true,                                  primary:false },
+    { id:"inbox",      label:"Inbox",      icon:Inbox,            show:true,                                  primary:false },
     { id:"staff",      label:"Staff",      icon:Users,            show:isAdmin,                               primary:false },
     { id:"settings",   label:"Settings",   icon:Settings,         show:isAdmin,                               primary:false },
   ].filter(t => t.show), [can, isAdmin]);
@@ -3332,12 +3742,36 @@ export default function App() {
   }, [appState.staffList, showToast]);
 
   const currentActor = isAdmin ? "Admin" : (auth.user?.name || "Staff");
+  const unreadInbox = useMemo(
+    () => appState.notifications.filter(n => notificationVisible(n, isAdmin, currentActor) && !n.readBy.includes(currentActor)).length,
+    [appState.notifications, isAdmin, currentActor]
+  );
   const ctxValue = useMemo<AppCtxType>(() => ({ state: appState, dispatch, showToast, currentActor }), [appState, showToast, currentActor]);
 
   // ── Auto-save to localStorage whenever state changes ──────────────────────
   useEffect(() => {
     debouncedSaveDB(appState);
   }, [appState]);
+
+  // ── Cross-device hydration via storage event (TenantApp pull-loop fires this)
+  // When TenantApp pulls a newer remote snapshot, it writes DB_KEY and dispatches
+  // a synthetic storage event. We rehydrate the reducer so the UI converges.
+  const lastAcceptedRev = useRef<number>(0);
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== DB_KEY || !e.newValue) return;
+      try {
+        const snap = JSON.parse(e.newValue);
+        const rev = typeof snap._rev === "number" ? snap._rev : 0;
+        if (rev <= lastAcceptedRev.current) return;
+        lastAcceptedRev.current = rev;
+        const { _rev, _updatedAt, _deviceId, ...payload } = snap;
+        dispatch({ type: "REPLACE_ALL", payload });
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   // ── Firebase real-time listener: pull remote changes into local state ──────
   const [syncStatus, setSyncStatus] = useState<"idle" | "synced" | "error">("idle");
@@ -3517,6 +3951,9 @@ export default function App() {
                 {t.id === "database" && bin.length > 0 && (
                   <span className="ml-auto text-xs font-black bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center">{bin.length}</span>
                 )}
+                {t.id === "inbox" && unreadInbox > 0 && (
+                  <span className="ml-auto text-xs font-black bg-blue-600 text-white rounded-full min-w-5 h-5 px-1.5 flex items-center justify-center">{unreadInbox}</span>
+                )}
               </button>
             ))}
           </nav>
@@ -3536,6 +3973,12 @@ export default function App() {
               <p className="font-black text-sm text-slate-900 truncate max-w-[160px]">{schoolSettings.name}</p>
             </div>
             <div className="flex items-center gap-1">
+              <button onClick={() => navigate("inbox")} className="p-2 text-slate-500 hover:text-blue-600 transition-colors rounded-lg hover:bg-blue-50 relative">
+                <Bell size={18} />
+                {unreadInbox > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 text-[9px] font-black bg-blue-600 text-white rounded-full min-w-4 h-4 px-1 flex items-center justify-center">{unreadInbox}</span>
+                )}
+              </button>
               <button onClick={() => setShowLogout(true)} className="p-2 text-slate-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50">
                 <LogOut size={18} />
               </button>
@@ -3567,6 +4010,9 @@ export default function App() {
                   <span className="text-sm">{t.label}</span>
                   {t.id === "database" && bin.length > 0 && (
                     <span className="ml-auto text-xs font-black bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center">{bin.length}</span>
+                  )}
+                  {t.id === "inbox" && unreadInbox > 0 && (
+                    <span className="ml-auto text-xs font-black bg-blue-600 text-white rounded-full min-w-5 h-5 px-1.5 flex items-center justify-center">{unreadInbox}</span>
                   )}
                 </button>
               ))}
@@ -4116,6 +4562,32 @@ export default function App() {
 
               {/* ATTENDANCE */}
               {activeTab === "attendance" && (can("scoreEntry") || isAdmin) && <AttendanceTab />}
+
+              {/* TIMETABLE */}
+              {activeTab === "timetable" && (
+                <TimetableView
+                  isAdmin={isAdmin}
+                  currentActor={currentActor}
+                  staffList={staffList}
+                  classRolls={classRolls}
+                  timetable={appState.timetable}
+                  dispatch={dispatch}
+                  showToast={showToast}
+                />
+              )}
+
+              {/* INBOX */}
+              {activeTab === "inbox" && (
+                <InboxView
+                  isAdmin={isAdmin}
+                  currentActor={currentActor}
+                  staffList={staffList}
+                  notifications={appState.notifications}
+                  dispatch={dispatch}
+                  showToast={showToast}
+                />
+              )}
+
 
               {/* STAFF */}
               {activeTab === "staff" && isAdmin && (() => {
