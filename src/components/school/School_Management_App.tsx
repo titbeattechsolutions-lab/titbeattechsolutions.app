@@ -825,6 +825,29 @@ function appReducer(state: AppState, action: any): AppState {
       };
     case "SET_SCHOOL_SETTINGS":
       return { ...state, schoolSettings: { ...state.schoolSettings, ...action.payload } };
+    case "SET_TIMETABLE_CELL": {
+      const next = { ...state.timetable.cells };
+      if (!action.cell || (!action.cell.subject && !action.cell.teacherName)) delete next[action.key];
+      else next[action.key] = action.cell;
+      return { ...state, timetable: { ...state.timetable, cells: next } };
+    }
+    case "SET_TIMETABLE_PERIODS":
+      return { ...state, timetable: { ...state.timetable, periods: action.periods } };
+    case "ADD_NOTIFICATION":
+      return { ...state, notifications: [action.payload, ...state.notifications].slice(0, 200) };
+    case "MARK_NOTIFICATION_READ": {
+      const next = state.notifications.map(n =>
+        n.id === action.id && !n.readBy.includes(action.actor)
+          ? { ...n, readBy: [...n.readBy, action.actor] }
+          : n
+      );
+      return { ...state, notifications: next };
+    }
+    case "DELETE_NOTIFICATION":
+      return { ...state, notifications: state.notifications.filter(n => n.id !== action.id) };
+    case "REPLACE_ALL":
+      // Cross-device hydration: full state swap. Preserve unknown keys from default.
+      return { ...state, ...action.payload };
     case "__HYDRATE__":
       return { ...state, [action.key]: action.value };
     default:
