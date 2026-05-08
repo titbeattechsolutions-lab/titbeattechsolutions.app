@@ -3031,7 +3031,15 @@ function PendingDraftRow({ draft, onFinalize, onDelete }: {
 export default function App() {
   const [appState, dispatch] = useReducer(appReducer, initialState);
   const { toast, showToast } = useToast();
-  const adminPinRef = useRef("1234"); // plain — verifyPIN handles raw strings
+  const adminPinRef = useRef<string>(typeof window !== "undefined" ? (localStorage.getItem(ADMIN_PIN_KEY) || "") : "");
+  const [needsAdminSetup, setNeedsAdminSetup] = useState<boolean>(!adminPinRef.current);
+  const [setupPin, setSetupPin] = useState({ nxt: "", cnf: "" });
+  const [setupErr, setSetupErr] = useState("");
+  const persistAdminPin = useCallback(async (raw: string) => {
+    const hashed = await ensureHashed(raw);
+    adminPinRef.current = hashed;
+    try { localStorage.setItem(ADMIN_PIN_KEY, hashed); } catch {}
+  }, []);
   const logoRef = useRef<HTMLInputElement>(null);
   const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("dashboard");
