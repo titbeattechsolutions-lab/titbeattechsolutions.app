@@ -3169,11 +3169,12 @@ export default function App() {
 
     if (loginId.toLowerCase() === "admin") {
       if (!loginPass) return setLoginErr("Enter a password");
+      if (!adminPinRef.current) return setLoginErr("Admin PIN not set up. Please set it first.");
       const ok = await verifyPIN(loginPass, adminPinRef.current);
-      if (!ok) return setLoginErr("Incorrect password. Default is: 1234");
+      if (!ok) return setLoginErr("Incorrect password.");
       // Migrate plain PIN to hash on first successful login
       if (!adminPinRef.current.startsWith("h:") && !adminPinRef.current.startsWith("p:")) {
-        adminPinRef.current = await ensureHashed(adminPinRef.current);
+        await persistAdminPin(adminPinRef.current);
       }
       setAuth({ loggedIn: true, user: null });
       return;
