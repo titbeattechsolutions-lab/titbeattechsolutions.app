@@ -1679,7 +1679,9 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
     if (!curOk) return setPinErr("Current PIN is incorrect.");
     if (pinF.nxt.length < 4) return setPinErr("New PIN must be ≥ 4 digits.");
     if (pinF.nxt !== pinF.cnf) return setPinErr("New PINs do not match.");
-    adminPinRef.current = await ensureHashed(pinF.nxt);
+    const hashed = await ensureHashed(pinF.nxt);
+    adminPinRef.current = hashed;
+    try { localStorage.setItem(ADMIN_PIN_KEY, hashed); } catch {}
     setPinF({ cur: "", nxt: "", cnf: "" });
     showToast("Admin PIN updated & encrypted");
   };
