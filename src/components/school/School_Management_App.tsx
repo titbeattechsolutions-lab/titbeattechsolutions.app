@@ -4199,6 +4199,32 @@ export default function App() {
               {/* ATTENDANCE */}
               {activeTab === "attendance" && (can("scoreEntry") || isAdmin) && <AttendanceTab />}
 
+              {/* TIMETABLE */}
+              {activeTab === "timetable" && (
+                <TimetableView
+                  isAdmin={isAdmin}
+                  currentActor={currentActor}
+                  staffList={staffList}
+                  classRolls={classRolls}
+                  timetable={appState.timetable}
+                  dispatch={dispatch}
+                  showToast={showToast}
+                />
+              )}
+
+              {/* INBOX */}
+              {activeTab === "inbox" && (
+                <InboxView
+                  isAdmin={isAdmin}
+                  currentActor={currentActor}
+                  staffList={staffList}
+                  notifications={appState.notifications}
+                  dispatch={dispatch}
+                  showToast={showToast}
+                />
+              )}
+
+
               {/* STAFF */}
               {activeTab === "staff" && isAdmin && (() => {
                 const detailStaff = staffDetailId ? staffList.find(s => s.id === staffDetailId) : null;
