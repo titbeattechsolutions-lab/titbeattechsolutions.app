@@ -149,6 +149,7 @@ interface AppState {
   schoolSettings: SchoolSettings;
   timetable: TimetableState;
   notifications: AppNotification[];
+  staffSignIns: StaffSignIn[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
