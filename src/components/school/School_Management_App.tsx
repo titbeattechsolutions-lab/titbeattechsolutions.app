@@ -73,9 +73,18 @@ interface StaffMember {
   pin: string;
   status: "active" | "restricted" | "revoked";
   assignedClasses: string[];
+  assignedSubjects?: string[]; // empty/undefined = all subjects of assigned classes
   permissions: Record<string, boolean>;
   createdAt: string;
   updatedAt: string;
+}
+interface StaffSignIn {
+  id: string;
+  staffName: string;
+  role: string;       // "Admin" or staff role
+  date: string;       // YYYY-MM-DD
+  time: string;       // HH:mm
+  ts: string;         // ISO
 }
 interface AttendanceRecord {
   id: string;
@@ -140,6 +149,7 @@ interface AppState {
   schoolSettings: SchoolSettings;
   timetable: TimetableState;
   notifications: AppNotification[];
+  staffSignIns: StaffSignIn[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -678,8 +688,8 @@ const _saved = loadDB();
 
 // Default staff — plain PINs, automatically migrated to hashed on first login
 const _defaultStaff: StaffMember[] = [
-  { id:"s1", name:"Mrs. Amaka Obi",  role:"Class Teacher",   pin:"5678", status:"active", assignedClasses:["Primary 3","Primary 4"], permissions:{scoreEntry:true,viewReports:true,printReports:true,manageRecords:false},  createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() },
-  { id:"s2", name:"Mr. Chidi Eze",   role:"Subject Teacher", pin:"9012", status:"active", assignedClasses:["JSS 1","JSS 2","JSS 3"],  permissions:{scoreEntry:true,viewReports:true,printReports:false,manageRecords:false}, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() },
+  { id:"s1", name:"Mrs. Amaka Obi",  role:"Class Teacher",   pin:"5678", status:"active", assignedClasses:["Primary 3","Primary 4"], assignedSubjects:[], permissions:{scoreEntry:true,viewReports:true,printReports:true,manageRecords:false},  createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() },
+  { id:"s2", name:"Mr. Chidi Eze",   role:"Subject Teacher", pin:"9012", status:"active", assignedClasses:["JSS 1","JSS 2","JSS 3"],  assignedSubjects:["Mathematics"], permissions:{scoreEntry:true,viewReports:true,printReports:false,manageRecords:false}, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() },
 ];
 
 const _defaultTimetable: TimetableState = {
@@ -707,6 +717,7 @@ const initialState: AppState = {
   schoolSettings: _saved.schoolSettings ?? { name:"Greatmind Academy", motto:"Excellence in every child", session:"2024/2025", term:"First Term", resumptionDate:"January 8th, 2025" },
   timetable:      _saved.timetable      ?? _defaultTimetable,
   notifications:  _saved.notifications  ?? [],
+  staffSignIns:   _saved.staffSignIns   ?? [],
 };
 
 function mkLog(action: string, student: string, subject: string, detail = "", actor = "") {
@@ -854,6 +865,17 @@ function appReducer(state: AppState, action: any): AppState {
     }
     case "DELETE_NOTIFICATION":
       return { ...state, notifications: state.notifications.filter(n => n.id !== action.id) };
+    case "LOG_STAFF_SIGNIN": {
+      const p = action.payload as StaffSignIn;
+      // Idempotent: only one sign-in per staff per day
+      const existing = state.staffSignIns.find(s => s.staffName === p.staffName && s.date === p.date);
+      if (existing) return state;
+      return {
+        ...state,
+        staffSignIns: [p, ...state.staffSignIns].slice(0, 1000),
+        logs: [mkLog("Signed In", p.staffName, p.role, `${p.date} ${p.time}`, p.staffName), ...state.logs].slice(0, 200),
+      };
+    }
     case "REPLACE_ALL":
       // Cross-device hydration: full state swap. Preserve unknown keys from default.
       return { ...state, ...action.payload };
@@ -1144,6 +1166,7 @@ const STEPS = [
 const blankStaff = (): Omit<StaffMember, "id" | "createdAt" | "updatedAt"> => ({
   name: "", role: "Teacher", pin: "", status: "active",
   assignedClasses: [],
+  assignedSubjects: [],
   permissions: { scoreEntry:true, viewReports:true, printReports:false, manageRecords:false },
 });
 
@@ -1231,6 +1254,7 @@ const StaffDialog = memo(({ staff, mode, onSave, onClose }: { staff?: StaffMembe
     onSave({
       ...form,
       assignedClasses: Array.from(classSet),
+      assignedSubjects: form.assignedSubjects || [],
       pin: finalPin,
       id: staff?.id || uid(),
       createdAt: staff?.createdAt || new Date().toISOString(),
@@ -1391,6 +1415,52 @@ const StaffDialog = memo(({ staff, mode, onSave, onClose }: { staff?: StaffMembe
               <p className="text-xs text-amber-700 font-bold">No classes selected — this staff member will see all classes by default</p>
             </div>
           )}
+
+          {/* ── Assigned subjects (Subject Teacher scoping) ───────────────── */}
+          {(() => {
+            const selectedSubjects: string[] = form.assignedSubjects || [];
+            // Pool of subjects from selected classes (or all curriculum subjects when none selected)
+            const pool = (() => {
+              const set = new Set<string>();
+              Object.values(CURRICULUM).forEach(cat => {
+                const overlap = classSet.size === 0 || cat.classes.some(c => classSet.has(c));
+                if (overlap) cat.subjects.forEach(s => set.add(s));
+              });
+              return Array.from(set).sort();
+            })();
+            const toggleSubj = (s: string) => {
+              const next = selectedSubjects.includes(s)
+                ? selectedSubjects.filter(x => x !== s)
+                : [...selectedSubjects, s];
+              setF("assignedSubjects", next);
+            };
+            return (
+              <div className="border-t border-slate-100 pt-4 mt-2 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase text-slate-700 tracking-wide">Assigned Subjects</p>
+                    <p className="text-[11px] text-slate-400 font-medium mt-0.5">Leave empty to allow all subjects · Select to restrict (Subject Teacher)</p>
+                  </div>
+                  <span className="text-xs font-black px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700">{selectedSubjects.length}</span>
+                </div>
+                <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+                  {pool.map(s => {
+                    const sel = selectedSubjects.includes(s);
+                    return (
+                      <button key={s} type="button" onClick={() => toggleSubj(s)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${sel ? "bg-indigo-600 text-white shadow-sm" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                        {sel && <Check size={10} />} {s}
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedSubjects.length > 0 && (
+                  <button type="button" onClick={() => setF("assignedSubjects", [])}
+                    className="text-xs font-black uppercase text-red-600 hover:underline">× Clear subjects</button>
+                )}
+              </div>
+            );
+          })()}
         </div>
       );
 
@@ -3487,10 +3557,21 @@ export default function App() {
   const isAdmin = !auth.user;
   const can = useCallback((p: string) => isAdmin || (auth.user?.permissions?.[p] ?? false), [isAdmin, auth.user]);
 
+  // Refresh score entry form whenever the active actor changes (login/logout/switch)
+  useEffect(() => {
+    setScoreForm({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" });
+  }, [auth.user?.id, isAdmin]);
+
   const subjectList = useMemo(() => {
     const cat = Object.values(CURRICULUM).find(c => c.classes.includes(scoreForm.studentClass));
-    return cat ? cat.subjects : [];
-  }, [scoreForm.studentClass]);
+    const fromClass = cat ? cat.subjects : [];
+    // Subject Teacher scoping: if staff has assignedSubjects, restrict to those that are valid for this class
+    const restrict = auth.user?.assignedSubjects || [];
+    if (!isAdmin && restrict.length > 0) {
+      return fromClass.filter(s => restrict.includes(s));
+    }
+    return fromClass;
+  }, [scoreForm.studentClass, auth.user, isAdmin]);
 
   const allKnownStudents = useMemo(() => {
     const fromRolls = Object.entries(classRolls).flatMap(([cls, students]) =>
@@ -3589,6 +3670,7 @@ export default function App() {
         await persistAdminPin(adminPinRef.current);
       }
       setAuth({ loggedIn: true, user: null });
+      logSignIn("Admin", "Administrator");
       return;
     }
 
@@ -3607,8 +3689,20 @@ export default function App() {
     }
 
     setAuth({ loggedIn: true, user: s });
+    logSignIn(s.name, s.role);
     if (s.status === "restricted") showToast("Account restricted — limited access.", "warning");
   }, [loginId, loginPass, staffList, showToast]);
+
+  // Record one sign-in per staff per day (admin or staff). Idempotent in reducer.
+  const logSignIn = useCallback((staffName: string, role: string) => {
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10);
+    const time = now.toTimeString().slice(0, 5);
+    dispatch({
+      type: "LOG_STAFF_SIGNIN",
+      payload: { id: uid(), staffName, role, date, time, ts: now.toISOString() },
+    });
+  }, []);
 
   const submitScore = useCallback(() => {
     const { studentName, studentClass, subject, caScore, examScore } = scoreForm;
@@ -4066,6 +4160,59 @@ export default function App() {
                       <p className="text-xs text-slate-400 mt-1 font-bold">{schoolSettings.term || "—"}</p>
                     </Card>
                   </div>
+
+                  {/* ── Staff sign-in roll (admin-only daily presence log) ────── */}
+                  {isAdmin && (() => {
+                    const today = new Date().toISOString().slice(0, 10);
+                    const todays = appState.staffSignIns.filter(s => s.date === today);
+                    const allStaffNames = staffList.filter(s => s.status !== "revoked").map(s => s.name);
+                    const presentNames = new Set(todays.map(t => t.staffName));
+                    const absent = allStaffNames.filter(n => !presentNames.has(n));
+                    return (
+                      <Card>
+                        <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
+                          <CalendarDays size={14} className="text-emerald-500" />
+                          <p className="text-sm font-black uppercase text-slate-600">Staff Sign-In · Today</p>
+                          <span className="ml-auto text-xs font-black px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700">{todays.length} present</span>
+                          {absent.length > 0 && <span className="text-xs font-black px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">{absent.length} not in</span>}
+                        </div>
+                        <div className="divide-y divide-slate-50 max-h-[280px] overflow-y-auto">
+                          {todays.length === 0 ? (
+                            <p className="px-5 py-6 text-center text-xs text-slate-400 font-bold">No staff has signed in today yet.</p>
+                          ) : (
+                            todays
+                              .slice()
+                              .sort((a, b) => a.time.localeCompare(b.time))
+                              .map(t => (
+                                <div key={t.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                      <span className="text-xs font-black text-emerald-700">{t.staffName.split(" ").map(w => w[0]).join("").slice(0,2).toUpperCase()}</span>
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-black text-slate-900 truncate">{t.staffName}</p>
+                                      <p className="text-xs text-slate-500 truncate">{t.role}</p>
+                                    </div>
+                                  </div>
+                                  <span className="text-xs font-black text-emerald-600">{t.time}</span>
+                                </div>
+                              ))
+                          )}
+                          {absent.length > 0 && (
+                            <div className="px-5 py-3 bg-slate-50/50">
+                              <p className="text-[10px] font-black uppercase text-slate-400 mb-1.5 tracking-wider">Not signed in</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {absent.map(n => (
+                                  <span key={n} className="px-2 py-0.5 rounded-md bg-slate-200 text-slate-500 text-[11px] font-bold">{n}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </Card>
+                    );
+                  })()}
+
                   {visibleLogs.length > 0 && (
                     <Card>
                       <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
