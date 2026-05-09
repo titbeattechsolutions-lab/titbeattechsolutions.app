@@ -1414,6 +1414,52 @@ const StaffDialog = memo(({ staff, mode, onSave, onClose }: { staff?: StaffMembe
               <p className="text-xs text-amber-700 font-bold">No classes selected — this staff member will see all classes by default</p>
             </div>
           )}
+
+          {/* ── Assigned subjects (Subject Teacher scoping) ───────────────── */}
+          {(() => {
+            const selectedSubjects: string[] = form.assignedSubjects || [];
+            // Pool of subjects from selected classes (or all curriculum subjects when none selected)
+            const pool = (() => {
+              const set = new Set<string>();
+              Object.values(CURRICULUM).forEach(cat => {
+                const overlap = classSet.size === 0 || cat.classes.some(c => classSet.has(c));
+                if (overlap) cat.subjects.forEach(s => set.add(s));
+              });
+              return Array.from(set).sort();
+            })();
+            const toggleSubj = (s: string) => {
+              const next = selectedSubjects.includes(s)
+                ? selectedSubjects.filter(x => x !== s)
+                : [...selectedSubjects, s];
+              setF("assignedSubjects", next);
+            };
+            return (
+              <div className="border-t border-slate-100 pt-4 mt-2 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase text-slate-700 tracking-wide">Assigned Subjects</p>
+                    <p className="text-[11px] text-slate-400 font-medium mt-0.5">Leave empty to allow all subjects · Select to restrict (Subject Teacher)</p>
+                  </div>
+                  <span className="text-xs font-black px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700">{selectedSubjects.length}</span>
+                </div>
+                <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+                  {pool.map(s => {
+                    const sel = selectedSubjects.includes(s);
+                    return (
+                      <button key={s} type="button" onClick={() => toggleSubj(s)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${sel ? "bg-indigo-600 text-white shadow-sm" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                        {sel && <Check size={10} />} {s}
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedSubjects.length > 0 && (
+                  <button type="button" onClick={() => setF("assignedSubjects", [])}
+                    className="text-xs font-black uppercase text-red-600 hover:underline">× Clear subjects</button>
+                )}
+              </div>
+            );
+          })()}
         </div>
       );
 
