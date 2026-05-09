@@ -3557,6 +3557,11 @@ export default function App() {
   const isAdmin = !auth.user;
   const can = useCallback((p: string) => isAdmin || (auth.user?.permissions?.[p] ?? false), [isAdmin, auth.user]);
 
+  // Refresh score entry form whenever the active actor changes (login/logout/switch)
+  useEffect(() => {
+    setScoreForm({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" });
+  }, [auth.user?.id, isAdmin]);
+
   const subjectList = useMemo(() => {
     const cat = Object.values(CURRICULUM).find(c => c.classes.includes(scoreForm.studentClass));
     const fromClass = cat ? cat.subjects : [];
