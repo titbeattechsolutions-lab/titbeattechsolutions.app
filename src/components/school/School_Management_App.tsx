@@ -4160,7 +4160,59 @@ export default function App() {
                       <p className="text-xs text-slate-400 mt-1 font-bold">{schoolSettings.term || "—"}</p>
                     </Card>
                   </div>
-                  {visibleLogs.length > 0 && (
+
+                  {/* ── Staff sign-in roll (admin-only daily presence log) ────── */}
+                  {isAdmin && (() => {
+                    const today = new Date().toISOString().slice(0, 10);
+                    const todays = appState.staffSignIns.filter(s => s.date === today);
+                    const allStaffNames = staffList.filter(s => s.status !== "revoked").map(s => s.name);
+                    const presentNames = new Set(todays.map(t => t.staffName));
+                    const absent = allStaffNames.filter(n => !presentNames.has(n));
+                    return (
+                      <Card>
+                        <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
+                          <CalendarDays size={14} className="text-emerald-500" />
+                          <p className="text-sm font-black uppercase text-slate-600">Staff Sign-In · Today</p>
+                          <span className="ml-auto text-xs font-black px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700">{todays.length} present</span>
+                          {absent.length > 0 && <span className="text-xs font-black px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">{absent.length} not in</span>}
+                        </div>
+                        <div className="divide-y divide-slate-50 max-h-[280px] overflow-y-auto">
+                          {todays.length === 0 ? (
+                            <p className="px-5 py-6 text-center text-xs text-slate-400 font-bold">No staff has signed in today yet.</p>
+                          ) : (
+                            todays
+                              .slice()
+                              .sort((a, b) => a.time.localeCompare(b.time))
+                              .map(t => (
+                                <div key={t.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                      <span className="text-xs font-black text-emerald-700">{t.staffName.split(" ").map(w => w[0]).join("").slice(0,2).toUpperCase()}</span>
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-black text-slate-900 truncate">{t.staffName}</p>
+                                      <p className="text-xs text-slate-500 truncate">{t.role}</p>
+                                    </div>
+                                  </div>
+                                  <span className="text-xs font-black text-emerald-600">{t.time}</span>
+                                </div>
+                              ))
+                          )}
+                          {absent.length > 0 && (
+                            <div className="px-5 py-3 bg-slate-50/50">
+                              <p className="text-[10px] font-black uppercase text-slate-400 mb-1.5 tracking-wider">Not signed in</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {absent.map(n => (
+                                  <span key={n} className="px-2 py-0.5 rounded-md bg-slate-200 text-slate-500 text-[11px] font-bold">{n}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </Card>
+                    );
+                  })()}
+
                     <Card>
                       <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
                         <Clock size={14} className="text-slate-400" />
