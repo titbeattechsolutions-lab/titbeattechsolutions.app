@@ -717,6 +717,7 @@ const initialState: AppState = {
   schoolSettings: _saved.schoolSettings ?? { name:"Greatmind Academy", motto:"Excellence in every child", session:"2024/2025", term:"First Term", resumptionDate:"January 8th, 2025" },
   timetable:      _saved.timetable      ?? _defaultTimetable,
   notifications:  _saved.notifications  ?? [],
+  staffSignIns:   _saved.staffSignIns   ?? [],
 };
 
 function mkLog(action: string, student: string, subject: string, detail = "", actor = "") {
