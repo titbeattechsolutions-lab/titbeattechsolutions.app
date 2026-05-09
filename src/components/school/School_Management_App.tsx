@@ -3670,6 +3670,7 @@ export default function App() {
         await persistAdminPin(adminPinRef.current);
       }
       setAuth({ loggedIn: true, user: null });
+      logSignIn("Admin", "Administrator");
       return;
     }
 
@@ -3688,8 +3689,20 @@ export default function App() {
     }
 
     setAuth({ loggedIn: true, user: s });
+    logSignIn(s.name, s.role);
     if (s.status === "restricted") showToast("Account restricted — limited access.", "warning");
   }, [loginId, loginPass, staffList, showToast]);
+
+  // Record one sign-in per staff per day (admin or staff). Idempotent in reducer.
+  const logSignIn = useCallback((staffName: string, role: string) => {
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10);
+    const time = now.toTimeString().slice(0, 5);
+    dispatch({
+      type: "LOG_STAFF_SIGNIN",
+      payload: { id: uid(), staffName, role, date, time, ts: now.toISOString() },
+    });
+  }, []);
 
   const submitScore = useCallback(() => {
     const { studentName, studentClass, subject, caScore, examScore } = scoreForm;
