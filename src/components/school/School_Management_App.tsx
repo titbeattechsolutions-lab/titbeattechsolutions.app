@@ -865,6 +865,17 @@ function appReducer(state: AppState, action: any): AppState {
     }
     case "DELETE_NOTIFICATION":
       return { ...state, notifications: state.notifications.filter(n => n.id !== action.id) };
+    case "LOG_STAFF_SIGNIN": {
+      const p = action.payload as StaffSignIn;
+      // Idempotent: only one sign-in per staff per day
+      const existing = state.staffSignIns.find(s => s.staffName === p.staffName && s.date === p.date);
+      if (existing) return state;
+      return {
+        ...state,
+        staffSignIns: [p, ...state.staffSignIns].slice(0, 1000),
+        logs: [mkLog("Signed In", p.staffName, p.role, `${p.date} ${p.time}`, p.staffName), ...state.logs].slice(0, 200),
+      };
+    }
     case "REPLACE_ALL":
       // Cross-device hydration: full state swap. Preserve unknown keys from default.
       return { ...state, ...action.payload };
