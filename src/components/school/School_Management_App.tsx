@@ -1166,6 +1166,7 @@ const STEPS = [
 const blankStaff = (): Omit<StaffMember, "id" | "createdAt" | "updatedAt"> => ({
   name: "", role: "Teacher", pin: "", status: "active",
   assignedClasses: [],
+  assignedSubjects: [],
   permissions: { scoreEntry:true, viewReports:true, printReports:false, manageRecords:false },
 });
 
