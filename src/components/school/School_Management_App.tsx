@@ -4213,6 +4213,7 @@ export default function App() {
                     );
                   })()}
 
+                  {visibleLogs.length > 0 && (
                     <Card>
                       <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
                         <Clock size={14} className="text-slate-400" />
