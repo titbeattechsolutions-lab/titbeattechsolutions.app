@@ -3559,8 +3559,14 @@ export default function App() {
 
   const subjectList = useMemo(() => {
     const cat = Object.values(CURRICULUM).find(c => c.classes.includes(scoreForm.studentClass));
-    return cat ? cat.subjects : [];
-  }, [scoreForm.studentClass]);
+    const fromClass = cat ? cat.subjects : [];
+    // Subject Teacher scoping: if staff has assignedSubjects, restrict to those that are valid for this class
+    const restrict = auth.user?.assignedSubjects || [];
+    if (!isAdmin && restrict.length > 0) {
+      return fromClass.filter(s => restrict.includes(s));
+    }
+    return fromClass;
+  }, [scoreForm.studentClass, auth.user, isAdmin]);
 
   const allKnownStudents = useMemo(() => {
     const fromRolls = Object.entries(classRolls).flatMap(([cls, students]) =>
