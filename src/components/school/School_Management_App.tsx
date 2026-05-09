@@ -1254,6 +1254,7 @@ const StaffDialog = memo(({ staff, mode, onSave, onClose }: { staff?: StaffMembe
     onSave({
       ...form,
       assignedClasses: Array.from(classSet),
+      assignedSubjects: form.assignedSubjects || [],
       pin: finalPin,
       id: staff?.id || uid(),
       createdAt: staff?.createdAt || new Date().toISOString(),
