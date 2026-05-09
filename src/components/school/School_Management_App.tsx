@@ -73,9 +73,18 @@ interface StaffMember {
   pin: string;
   status: "active" | "restricted" | "revoked";
   assignedClasses: string[];
+  assignedSubjects?: string[]; // empty/undefined = all subjects of assigned classes
   permissions: Record<string, boolean>;
   createdAt: string;
   updatedAt: string;
+}
+interface StaffSignIn {
+  id: string;
+  staffName: string;
+  role: string;       // "Admin" or staff role
+  date: string;       // YYYY-MM-DD
+  time: string;       // HH:mm
+  ts: string;         // ISO
 }
 interface AttendanceRecord {
   id: string;
