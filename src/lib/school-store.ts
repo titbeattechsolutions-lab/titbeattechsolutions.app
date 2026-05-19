@@ -10,6 +10,7 @@ export interface StaffMember {
   status: "active" | "restricted" | "revoked";
   assignedClasses: string[];
   permissions: Record<string, boolean>;
+  signature?: string; // Base64 encoded signature
   createdAt: string;
   updatedAt: string;
 }

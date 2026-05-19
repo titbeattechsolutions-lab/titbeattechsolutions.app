@@ -6,7 +6,7 @@ import { FileText, Search, Printer } from "lucide-react";
 
 export default function ReportsTab() {
   const { state } = useApp();
-  const { entries, schoolSettings } = state;
+  const { entries, schoolSettings, staffList } = state;
 
   const [selectedClass, setSelectedClass] = useState("");
   const [search, setSearch] = useState("");
@@ -104,6 +104,26 @@ export default function ReportsTab() {
                   );
                 })}
               </div>
+
+              {/* Staff Signature Section */}
+              {(() => {
+                const staffMember = studentDetail.entries[0]?.enteredBy ? staffList.find((s) => s.name === studentDetail.entries[0].enteredBy) : null;
+                return staffMember?.signature ? (
+                  <div className="mt-6 pt-6 border-t border-border">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Staff Authorization</p>
+                    <div className="flex items-end justify-between">
+                      <div>
+                        <img src={staffMember.signature} alt="Signature" className="h-16 object-contain" />
+                        <div className="mt-2">
+                          <p className="text-xs font-semibold">{staffMember.name}</p>
+                          <p className="text-xs text-muted-foreground">{staffMember.role}</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{new Date().toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                ) : null;
+              })()}
             </div>
 
             <button onClick={() => window.print()}

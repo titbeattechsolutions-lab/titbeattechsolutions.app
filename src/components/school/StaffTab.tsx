@@ -5,6 +5,7 @@ import { ROLES, PERMS_META, ALL_CLASSES } from "@/lib/school-constants";
 import type { StaffMember } from "@/lib/school-store";
 import { UserPlus, Search, UserCheck, UserX, Shield, Eye, EyeOff, Check } from "lucide-react";
 import BottomSheet from "./BottomSheet";
+import SignaturePad from "./utils/SignaturePad";
 
 export default function StaffTab() {
   const { state, dispatch, showToast } = useApp();
@@ -20,20 +21,22 @@ export default function StaffTab() {
     name: string; role: string; pin: string; status: "active" | "restricted" | "revoked";
     assignedClasses: string[];
     permissions: { scoreEntry: boolean; viewReports: boolean; printReports: boolean; manageRecords: boolean };
+    signature: string;
   }>({
     name: "", role: "Teacher", pin: "", status: "active",
     assignedClasses: [] as string[],
     permissions: { scoreEntry: true, viewReports: true, printReports: false, manageRecords: false },
+    signature: "",
   });
 
   const startEdit = (s: StaffMember) => {
-    setForm({ name: s.name, role: s.role, pin: "", status: s.status, assignedClasses: [...s.assignedClasses], permissions: { scoreEntry: s.permissions.scoreEntry ?? true, viewReports: s.permissions.viewReports ?? true, printReports: s.permissions.printReports ?? false, manageRecords: s.permissions.manageRecords ?? false } });
+    setForm({ name: s.name, role: s.role, pin: "", status: s.status, assignedClasses: [...s.assignedClasses], permissions: { scoreEntry: s.permissions.scoreEntry ?? true, viewReports: s.permissions.viewReports ?? true, printReports: s.permissions.printReports ?? false, manageRecords: s.permissions.manageRecords ?? false }, signature: s.signature || "" });
     setEditStaff(s);
     setShowForm(true);
   };
 
   const startAdd = () => {
-    setForm({ name: "", role: "Teacher", pin: "", status: "active", assignedClasses: [], permissions: { scoreEntry: true, viewReports: true, printReports: false, manageRecords: false } });
+    setForm({ name: "", role: "Teacher", pin: "", status: "active", assignedClasses: [], permissions: { scoreEntry: true, viewReports: true, printReports: false, manageRecords: false }, signature: "" });
     setEditStaff(null);
     setShowForm(true);
   };
@@ -52,6 +55,7 @@ export default function StaffTab() {
         status: form.status,
         assignedClasses: form.assignedClasses,
         permissions: form.permissions,
+        signature: form.signature,
         createdAt: editStaff?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -220,6 +224,13 @@ export default function StaffTab() {
               {form.assignedClasses.length === 0 && (
                 <p className="text-xs text-muted-foreground mt-2">No selection = access to all classes</p>
               )}
+            </div>
+
+            {/* Signature */}
+            <div>
+              <p className="section-title mb-2">Default Signature</p>
+              <p className="text-xs text-muted-foreground mb-3">Draw or update your signature to be used in staff reports</p>
+              <SignaturePad value={form.signature} onChange={(sig) => setForm((f) => ({ ...f, signature: sig }))} />
             </div>
 
             <div className="flex gap-3 pt-2">
