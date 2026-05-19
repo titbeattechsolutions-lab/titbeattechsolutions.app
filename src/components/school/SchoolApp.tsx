@@ -7,8 +7,9 @@ import ScoresTab from "@/components/school/ScoresTab";
 import AttendanceTab from "@/components/school/AttendanceTab";
 import StaffTab from "@/components/school/StaffTab";
 import ReportsTab from "@/components/school/ReportsTab";
+import ESignatureTab from "@/components/school/ESignatureTab";
 import SettingsTab from "@/components/school/SettingsTab";
-import { LayoutDashboard, ClipboardList, CalendarDays, Users, FileText, Settings } from "lucide-react";
+import { LayoutDashboard, ClipboardList, CalendarDays, Users, FileText, PenTool, Settings } from "lucide-react";
 
 const TABS = [
   { id: "dashboard", label: "Home", icon: LayoutDashboard },
@@ -16,6 +17,7 @@ const TABS = [
   { id: "attendance", label: "Attend", icon: CalendarDays },
   { id: "reports", label: "Reports", icon: FileText },
   { id: "staff", label: "Staff", icon: Users },
+  { id: "esignature", label: "Signature", icon: PenTool },
   { id: "settings", label: "Settings", icon: Settings },
 ] as const;
 
@@ -46,6 +48,7 @@ export default function SchoolApp() {
           {tab === "attendance" && <AttendanceTab />}
           {tab === "reports" && <ReportsTab />}
           {tab === "staff" && <StaffTab />}
+          {tab === "esignature" && <ESignatureTab />}
           {tab === "settings" && <SettingsTab />}
         </div>
 

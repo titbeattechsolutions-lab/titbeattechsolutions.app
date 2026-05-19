@@ -5,7 +5,6 @@ import { ROLES, PERMS_META, ALL_CLASSES } from "@/lib/school-constants";
 import type { StaffMember } from "@/lib/school-store";
 import { UserPlus, Search, UserCheck, UserX, Shield, Eye, EyeOff, Check } from "lucide-react";
 import BottomSheet from "./BottomSheet";
-import SignaturePad from "./utils/SignaturePad";
 
 export default function StaffTab() {
   const { state, dispatch, showToast } = useApp();
@@ -21,22 +20,20 @@ export default function StaffTab() {
     name: string; role: string; pin: string; status: "active" | "restricted" | "revoked";
     assignedClasses: string[];
     permissions: { scoreEntry: boolean; viewReports: boolean; printReports: boolean; manageRecords: boolean };
-    signature: string;
   }>({
     name: "", role: "Teacher", pin: "", status: "active",
     assignedClasses: [] as string[],
     permissions: { scoreEntry: true, viewReports: true, printReports: false, manageRecords: false },
-    signature: "",
   });
 
   const startEdit = (s: StaffMember) => {
-    setForm({ name: s.name, role: s.role, pin: "", status: s.status, assignedClasses: [...s.assignedClasses], permissions: { scoreEntry: s.permissions.scoreEntry ?? true, viewReports: s.permissions.viewReports ?? true, printReports: s.permissions.printReports ?? false, manageRecords: s.permissions.manageRecords ?? false }, signature: s.signature || "" });
+    setForm({ name: s.name, role: s.role, pin: "", status: s.status, assignedClasses: [...s.assignedClasses], permissions: { scoreEntry: s.permissions.scoreEntry ?? true, viewReports: s.permissions.viewReports ?? true, printReports: s.permissions.printReports ?? false, manageRecords: s.permissions.manageRecords ?? false } });
     setEditStaff(s);
     setShowForm(true);
   };
 
   const startAdd = () => {
-    setForm({ name: "", role: "Teacher", pin: "", status: "active", assignedClasses: [], permissions: { scoreEntry: true, viewReports: true, printReports: false, manageRecords: false }, signature: "" });
+    setForm({ name: "", role: "Teacher", pin: "", status: "active", assignedClasses: [], permissions: { scoreEntry: true, viewReports: true, printReports: false, manageRecords: false } });
     setEditStaff(null);
     setShowForm(true);
   };
@@ -55,7 +52,7 @@ export default function StaffTab() {
         status: form.status,
         assignedClasses: form.assignedClasses,
         permissions: form.permissions,
-        signature: form.signature,
+        signature: editStaff?.signature,
         createdAt: editStaff?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
