@@ -885,14 +885,35 @@ const AttendanceTab = memo(()=>{
 
   return(
     <div className="space-y-5">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div><h1 className="text-2xl font-black text-slate-900 uppercase">Attendance</h1><p className="text-sm text-slate-400">{attendance.length} records · {Object.keys(classRolls).length} class rolls</p></div>
-        <div className="flex gap-2">{([["roll","Rolls",ClipboardList],["mark","Mark",CalendarDays],["history","History",Database]] as const).map(([id,label,Icon])=><Btn key={id} variant={attTab===id?"primary":"outline"} size="sm" onClick={()=>setAttTab(id)}><Icon size={14}/>{label}</Btn>)}</div>
+      {/* Sub-Navigation (Segmented Control style) */}
+      <div className="bg-slate-200/50 p-1.5 rounded-2xl flex gap-1 shadow-inner">
+        {([
+          ["roll", "Class Rolls", ClipboardList],
+          ["mark", "Mark Today", CalendarDays],
+          ["history", "History", Database],
+        ] as const).map(([id, label, Icon]) => (
+          <button
+            key={id}
+            onClick={() => setAttTab(id)}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-200 ${
+              attTab === id 
+                ? "bg-white text-blue-600 shadow-md scale-[1.02]" 
+                : "text-slate-500 hover:text-slate-700 hover:bg-slate-300/40"
+            }`}
+          >
+            <Icon size={14} className={attTab === id ? "text-blue-600" : "text-slate-400"} />
+            <span className="hidden sm:inline">{label}</span>
+            <span className="sm:hidden">{label.split(" ")[0]}</span>
+          </button>
+        ))}
       </div>
 
       {attTab==="roll"&&<div className="space-y-4">
         <Card className="p-5 space-y-4">
-          <Sel value={rollClass} onChange={(e: any)=>{setRollClass(e.target.value);setRollSearch("");}}><option value="">Choose a class…</option>{ALL_CLASSES.map(c=><option key={c}>{c}</option>)}</Sel>
+          <Sel value={rollClass} onChange={(e: any)=>{setRollClass(e.target.value);setRollSearch("");}}>
+            <option value="">Choose a class…</option>
+            {(isAdmin ? ALL_CLASSES : (auth.user?.assignedClasses || [])).map(c => <option key={c}>{c}</option>)}
+          </Sel>
           {rollClass&&<div className="flex items-center justify-between flex-wrap gap-2"><div className="flex items-center gap-2"><Pill color="blue">{(classRolls[rollClass]||[]).length} registered</Pill></div><div className="flex gap-2"><Btn variant="outline" size="sm" onClick={()=>{const input=document.createElement("input");input.type="file";input.accept=".csv,.txt";input.onchange=async(ev: any)=>{const file=ev.target.files[0];if(!file)return;try{const text=await readFileAsText(file);const parsed=parseCSV(text);if(!parsed.length)return showToast("No valid names found","error");const existing=classRolls[rollClass]||[];const existingNames=new Set(existing.map((s: any)=>s.name.toLowerCase()));const newStudents=parsed.filter(s=>!existingNames.has(s.name.toLowerCase())).map(s=>({id:uid(),name:s.name,admNo:s.admNo}));if(!newStudents.length)return showToast("All already on roll","warning");dispatch({type:"SAVE_CLASS_ROLL",className:rollClass,students:[...existing,...newStudents]});showToast(`${newStudents.length} students imported from CSV`);}catch{showToast("Failed to read file","error");}};input.click();}}><Upload size={13}/>Import CSV</Btn><Btn variant="outline" size="sm" onClick={()=>setShowBulk(b=>!b)}>{showBulk?<><X size={13}/>Close</>:<><PlusCircle size={13}/>Bulk Add</>}</Btn></div></div>}
         </Card>
         {rollClass&&<>
@@ -908,23 +929,141 @@ const AttendanceTab = memo(()=>{
       </div>}
 
       {attTab==="mark"&&<div className="space-y-4">
-        <Card className="p-5 space-y-4"><Sel value={markClass} onChange={(e: any)=>{setMarkClass(e.target.value);setMarkRecords({});}}><option value="">Select class…</option>{ALL_CLASSES.map(c=><option key={c}>{c}</option>)}</Sel><Inp type="date" value={markDate} onChange={(e: any)=>{setMarkDate(e.target.value);setMarkRecords({});}} max={todayStr()}/>
-        {markClass&&markDate&&<div className="grid grid-cols-4 gap-2">{([["Present",markSummary.present,"bg-emerald-50 text-emerald-700"],["Absent",markSummary.absent,"bg-red-50 text-red-700"],["Late",markSummary.late,"bg-amber-50 text-amber-700"],["Excused",markSummary.excused,"bg-indigo-50 text-indigo-700"]] as const).map(([l,v,c])=><div key={l} className={`${c} rounded-xl p-3 text-center`}><p className="text-2xl font-black">{v}</p><p className="text-xs font-black uppercase opacity-70">{l}</p></div>)}</div>}
+        <Card className="p-5 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Sel label="Select Class" value={markClass} onChange={(e: any)=>{setMarkClass(e.target.value);setMarkRecords({});}}>
+              <option value="">Select class…</option>
+              {(isAdmin ? ALL_CLASSES : (auth.user?.assignedClasses || [])).map(c => <option key={c}>{c}</option>)}
+            </Sel>
+            <Inp type="date" label="Attendance Date" value={markDate} onChange={(e: any)=>{setMarkDate(e.target.value);setMarkRecords({});}} max={todayStr()}/>
+          </div>
+          {markClass && markDate && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+              {[
+                { label: "Present", value: markSummary.present, color: "emerald", icon: Check },
+                { label: "Absent",  value: markSummary.absent,  color: "red",     icon: X },
+                { label: "Late",    value: markSummary.late,    color: "amber",   icon: Clock },
+                { label: "Excused", value: markSummary.excused, color: "indigo",  icon: ClipboardList },
+              ].map((stat) => (
+                <div key={stat.label} className={`relative overflow-hidden group p-4 rounded-2xl bg-${stat.color}-50 border-2 border-${stat.color}-100 transition-all hover:shadow-lg hover:translate-y-[-2px]`}>
+                  <div className="relative z-10">
+                    <p className={`text-3xl font-black text-${stat.color}-700`}>{stat.value}</p>
+                    <p className={`text-[10px] font-black uppercase tracking-widest text-${stat.color}-600/70 mt-1`}>{stat.label}</p>
+                  </div>
+                  <stat.icon className={`absolute -right-2 -bottom-2 w-12 h-12 text-${stat.color}-200 opacity-50 transition-transform group-hover:scale-110 group-hover:rotate-12`} />
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
-        {markClass?markPool.length===0?<EmptyState icon={Users} title="No students in this class" action={<Btn variant="primary" size="sm" onClick={()=>setAttTab("roll")}><ClipboardList size={14}/>Go to Rolls</Btn>}/>:
-        <Card className="overflow-hidden"><div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row gap-3"><div className="relative flex-1"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={markSearch} onChange={(e: any)=>setMarkSearch(e.target.value)} placeholder="Search…" className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary focus:bg-white outline-none"/></div><div className="flex gap-1.5 flex-wrap">{ATT_STATUSES.map(({key,label,icon,color})=><button key={key} onClick={()=>markAll(key)} className={`text-xs font-black uppercase px-3 py-2 rounded-xl ${color==="emerald"?"bg-emerald-500 text-white":color==="red"?"bg-red-500 text-white":color==="amber"?"bg-amber-500 text-white":"bg-indigo-500 text-white"}`}>{icon} {label}</button>)}</div></div>
-        <div className="divide-y divide-slate-50">{filteredMark.map((name: string,i: number)=>{const saved=existingForDate[name];const cur=markRecords[name];const status=cur?.status||saved?.status||null;const note=cur?.note!==undefined?cur.note:(saved?.note||"");const rowBg=status==="present"?"bg-emerald-50":status==="absent"?"bg-red-50":status==="late"?"bg-amber-50":status==="excused"?"bg-indigo-50":"hover:bg-slate-50";
-        return<div key={name} className={`px-5 py-3.5 transition-colors ${rowBg}`}><div className="flex items-center gap-3 flex-wrap"><span className="text-xs font-black text-slate-400 w-6 text-center">{i+1}</span><div className="w-9 h-9 rounded-xl bg-slate-200 flex items-center justify-center"><span className="text-slate-600 font-black text-sm">{name.split(" ").map((w: string)=>w[0]).join("").slice(0,2).toUpperCase()}</span></div><p className="font-black text-sm text-slate-900 flex-1 min-w-0 truncate">{name}</p><div className="flex gap-1.5">{ATT_STATUSES.map(({key,icon,color})=>{const active=status===key;const bg=active?(color==="emerald"?"bg-emerald-500 border-emerald-500":color==="red"?"bg-red-500 border-red-500":color==="amber"?"bg-amber-500 border-amber-500":"bg-indigo-500 border-indigo-500"):"bg-white border-slate-200 text-slate-400";return<button key={key} onClick={()=>setStudentAtt(name,"status",status===key?null:key)} className={`w-9 h-9 rounded-xl text-sm font-black border-2 transition-all ${bg} ${active?"text-white":""}`}>{icon}</button>;})}{saved&&!cur&&<span className="text-xs font-black text-slate-400">Saved</span>}</div></div>
-        {status&&<div className="mt-2 ml-16"><input value={note} onChange={(e: any)=>setStudentAtt(name,"note",e.target.value)} placeholder="Note (optional)…" className="w-full px-3 py-2 bg-white/80 border border-slate-200 rounded-lg text-xs font-medium focus:border-primary outline-none"/></div>}
-        </div>;})}
-        </div><div className="px-5 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between"><p className="text-xs text-slate-500 font-bold">{unsaved} unsaved</p><Btn variant="primary" onClick={saveAttendance} disabled={unsaved===0}><Save size={14}/>Save Attendance</Btn></div></Card>:
+        <Card className="overflow-hidden border-2 border-slate-100 shadow-xl">
+          <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row gap-4 items-center justify-between">
+            <div className="relative w-full md:w-64">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input value={markSearch} onChange={e => setMarkSearch(e.target.value)}
+                placeholder="Find student…"
+                className="w-full pl-9 pr-4 py-2.5 bg-white border-2 border-slate-200 rounded-xl text-sm font-semibold focus:border-blue-500 outline-none transition-all shadow-sm" />
+            </div>
+            <div className="flex items-center gap-1.5 p-1 bg-slate-200/50 rounded-2xl w-full md:w-auto overflow-x-auto no-scrollbar">
+              <span className="text-[10px] font-black uppercase text-slate-400 px-3 hidden lg:block">Bulk:</span>
+              {ATT_STATUSES.map(({ key, label, icon, color }) => (
+                <button key={key} onClick={() => markAll(key)}
+                  className={`flex-1 md:flex-none whitespace-nowrap text-[10px] font-black uppercase px-4 py-2 rounded-xl transition-all hover:shadow-md ${
+                    color === "emerald" ? "bg-emerald-500 text-white" : 
+                    color === "red" ? "bg-red-500 text-white" : 
+                    color === "amber" ? "bg-amber-500 text-white" : 
+                    "bg-indigo-500 text-white"
+                  }`}>
+                  {icon} {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr>
+                  <th className="px-6 py-3 text-[10px] font-black uppercase text-slate-400 w-16">#</th>
+                  <th className="px-6 py-3 text-[10px] font-black uppercase text-slate-400">Student Name</th>
+                  <th className="px-6 py-3 text-[10px] font-black uppercase text-slate-400 text-center">Status</th>
+                  <th className="px-6 py-3 text-[10px] font-black uppercase text-slate-400">Note / Reason</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filteredMark.map((name, i) => {
+                  const saved = existingForDate[name];
+                  const cur = markRecords[name];
+                  const status = cur?.status || saved?.status || null;
+                  const note = cur?.note !== undefined ? cur.note : (saved?.note || "");
+                  const statColor: any = { present:"emerald", absent:"red", late:"amber", excused:"indigo" };
+                  
+                  return (
+                    <tr key={name} className={`group transition-colors ${status ? `bg-${statColor[status]}-50/30` : "hover:bg-slate-50"}`}>
+                      <td className="px-6 py-4 text-xs font-black text-slate-300">{i + 1}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs transition-colors ${status ? `bg-${statColor[status]}-200 text-${statColor[status]}-700` : "bg-slate-100 text-slate-500"}`}>
+                            {name.split(" ").map((w:any) => w[0]).join("").slice(0, 2).toUpperCase()}
+                          </div>
+                          <span className="font-black text-sm text-slate-900 uppercase truncate max-w-[150px] sm:max-w-none">{name}</span>
+                          {saved && !cur && <Pill color="green">Saved</Pill>}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-center gap-1.5">
+                          {ATT_STATUSES.map(({ key, icon, color }) => {
+                            const active = status === key;
+                            return (
+                              <button key={key}
+                                onClick={() => setStudentAtt(name, "status", status === key ? null : key)}
+                                className={`w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all ${
+                                  active 
+                                    ? `bg-${color}-500 border-${color}-500 text-white shadow-lg scale-110 z-10` 
+                                    : `bg-white border-slate-100 text-slate-300 hover:border-${color}-300 hover:text-${color}-500`
+                                }`}>
+                                <span className="text-sm font-black">{icon}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <input value={note} onChange={e => setStudentAtt(name, "note", e.target.value)}
+                          placeholder="Add optional note…"
+                          className={`w-full px-3 py-2 bg-transparent border-b-2 transition-all text-xs font-medium outline-none ${
+                            note ? "border-blue-400 text-slate-700" : "border-transparent focus:border-slate-200 text-slate-400"
+                          }`} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="px-6 py-5 border-t border-slate-100 bg-slate-50/80 backdrop-blur-sm flex items-center justify-between gap-4 sticky bottom-0 z-20">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${unsaved > 0 ? "bg-amber-500 animate-pulse" : "bg-slate-300"}`} />
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                {unsaved > 0 ? `${unsaved} Changes Pending` : "No Unsaved Changes"}
+              </p>
+            </div>
+            <Btn variant="primary" size="lg" onClick={saveAttendance} disabled={unsaved === 0} className="shadow-blue-200 shadow-lg">
+              <Save size={14} /> Submit Attendance
+            </Btn>
+          </div>
+        </Card>:
         <EmptyState icon={CalendarDays} title="Select a class to mark attendance" action={<Btn variant="outline" size="sm" onClick={()=>setAttTab("roll")}><ClipboardList size={14}/>Manage Rolls</Btn>}/>}
       </div>}
 
       {attTab==="history"&&<div className="space-y-4">
         <Card className="p-4 space-y-3"><div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="relative col-span-2 md:col-span-1"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={hSearch} onChange={(e: any)=>setHSearch(e.target.value)} placeholder="Search…" className="w-full pl-9 pr-3 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none"/></div>
-          <select value={hClass} onChange={(e: any)=>setHClass(e.target.value)} className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none"><option value="">All Classes</option>{ALL_CLASSES.map(c=><option key={c}>{c}</option>)}</select>
+          <select value={hClass} onChange={(e: any)=>setHClass(e.target.value)} className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none">
+            <option value="">{isAdmin ? "All Classes" : "All My Classes"}</option>
+            {(isAdmin ? ALL_CLASSES : (auth.user?.assignedClasses || [])).map(c => <option key={c}>{c}</option>)}
+          </select>
           <input type="date" value={hDate} onChange={(e: any)=>setHDate(e.target.value)} className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none"/>
           <select value={hStatus} onChange={(e: any)=>setHStatus(e.target.value)} className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none"><option value="All">All Statuses</option>{ATT_STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}</select>
         </div></Card>
@@ -991,7 +1130,18 @@ export default function SchoolManagementApp() {
   useEffect(()=>{ if(dbReady && adminPinSet) saveDB(appState,adminPinRef.current); },[appState,dbReady,adminPinSet]);
 
   const subjectList = useMemo(()=>{ const cat=Object.values(CURRICULUM).find(c=>c.classes.includes(scoreForm.studentClass)); return cat?cat.subjects:[]; },[scoreForm.studentClass]);
-  const allKnownStudents = useMemo(()=>{ const fromRolls=Object.entries(classRolls).flatMap(([cls,students]: any)=>students.filter((s: any)=>!s.suggested).map((s: any)=>({name:s.name,class:cls}))); const fromEntries=entries.map((e: any)=>({name:e.studentName,class:e.studentClass})); const map: any={}; [...fromRolls,...fromEntries].forEach((s: any)=>{map[`${s.name}||${s.class}`]=s;}); return Object.values(map); },[classRolls,entries]);
+  const allKnownStudents = useMemo(() => {
+    const allowedClasses = isAdmin ? [] : (auth.user?.assignedClasses || []);
+    const fromRolls = Object.entries(classRolls)
+      .filter(([cls]) => isAdmin || allowedClasses.includes(cls))
+      .flatMap(([cls, students]: any) => students.filter((s: any) => !s.suggested).map((s: any) => ({ name: s.name, class: cls })));
+    const fromEntries = entries
+      .filter((e: any) => isAdmin || allowedClasses.includes(e.studentClass))
+      .map((e: any) => ({ name: e.studentName, class: e.studentClass }));
+    const map: any = {};
+    [...fromRolls, ...fromEntries].forEach((s: any) => { map[`${s.name}||${s.class}`] = s; });
+    return Object.values(map);
+  }, [classRolls, entries, isAdmin, auth.user]);
   const classSuggestions = useMemo(()=>{ if(!scoreForm.studentClass) return []; return (allKnownStudents as any[]).filter((s: any)=>s.class===scoreForm.studentClass).map((s: any)=>s.name).sort(); },[allKnownStudents,scoreForm.studentClass]);
   const allSessions = useMemo(()=>[...new Set(entries.map((e: any)=>e.session as string).filter(Boolean))] as string[]  ,[entries]);
   const activeTermEntries = useMemo(()=>{
@@ -999,13 +1149,35 @@ export default function SchoolManagementApp() {
     const s = rpSession==="current"?schoolSettings.session:rpSession==="all"?"":rpSession;
     return entries.filter((e: any)=>(!t||e.term===t)&&(!s||e.session===s));
   },[entries,rpTerm,rpSession,schoolSettings]);
-  const studentList = useMemo(()=>{ const m: any={}; activeTermEntries.forEach((e: any)=>{const k=`${e.studentName}||${e.studentClass}`; if(!m[k])m[k]={name:e.studentName,class:e.studentClass,id:k};}); return Object.values(m) as any[]; },[activeTermEntries]);
+  const studentList = useMemo(() => {
+    const allowedClasses = isAdmin
+      ? Object.keys(classRolls)
+      : (auth.user?.assignedClasses || []);
+    const m: any = {};
+    Object.entries(classRolls)
+      .filter(([cls]) => isAdmin || allowedClasses.includes(cls))
+      .flatMap(([cls, students]: any) => students.map((s: any) => ({ name: s.name, class: cls, id: `${s.name}||${cls}` })))
+      .forEach((s: any) => { m[s.id] = s; });
+    activeTermEntries
+      .filter((e: any) => isAdmin || allowedClasses.includes(e.studentClass))
+      .forEach((e: any) => {
+        const k = `${e.studentName}||${e.studentClass}`;
+        if (!m[k]) m[k] = { name: e.studentName, class: e.studentClass, id: k };
+      });
+    return Object.values(m).sort((a: any, b: any) => a.name.localeCompare(b.name));
+  }, [classRolls, activeTermEntries, isAdmin, auth.user?.assignedClasses]);
   const filteredStudents = useMemo(()=>studentList.filter((s: any)=>s.name.toLowerCase().includes(rpSearch.toLowerCase())&&(rpClass==="All"||s.class===rpClass)),[studentList,rpSearch,rpClass]);
-  const filteredEntries = useMemo(()=>{
-    const t = dbTerm==="current"?schoolSettings.term:dbTerm==="all"?"":dbTerm;
-    const s = dbSession==="current"?schoolSettings.session:dbSession==="all"?"":dbSession;
-    return entries.filter((e: any)=>(!dbSearch||e.studentName.toLowerCase().includes(dbSearch.toLowerCase()))&&(!dbClass||e.studentClass===dbClass)&&(!dbDate||e.createdAt.slice(0,10)===dbDate)&&(!t||e.term===t)&&(!s||e.session===s));
-  },[entries,dbSearch,dbClass,dbDate,dbTerm,dbSession,schoolSettings]);
+    const allowedClasses = isAdmin ? [] : (auth.user?.assignedClasses || []);
+    return entries.filter((e: any) => {
+      const inAllowedClass = isAdmin || allowedClasses.includes(e.studentClass);
+      return inAllowedClass && 
+             (!dbSearch || e.studentName.toLowerCase().includes(dbSearch.toLowerCase())) && 
+             (!dbClass || e.studentClass === dbClass) && 
+             (!dbDate || e.createdAt.slice(0, 10) === dbDate) && 
+             (!t || e.term === t) && 
+             (!s || e.session === s);
+    });
+  }, [entries, dbSearch, dbClass, dbDate, dbTerm, dbSession, schoolSettings, isAdmin, auth.user]);
   const curC = useMemo(()=>activeReport?(appState.comments[activeReport.id]||{teacher:"",principal:"",teacherSig:"",principalSig:"",daysOpen:"",daysPresent:"",daysAbsent:""}):{teacher:"",principal:"",teacherSig:"",principalSig:"",daysOpen:"",daysPresent:"",daysAbsent:""},[activeReport,appState.comments]);
   const attRate = useMemo(()=>{ const o=parseInt(curC.daysOpen)||0,p=parseInt(curC.daysPresent)||0; return o>0?Math.round(p/o*100):null; },[curC]);
 
@@ -1067,13 +1239,14 @@ export default function SchoolManagementApp() {
     const s = rpSession==="current"?schoolSettings.session:rpSession==="all"?"":rpSession;
     const scopedEntries = entries.filter((e: any)=>(!t||e.term===t)&&(!s||e.session===s));
     const records=scopedEntries.filter((e: any)=>e.studentName.toLowerCase()===student.name.toLowerCase()&&e.studentClass===student.class);
-    if(!records.length)return showToast("No records found","error");
+    // Do NOT hard-return — allow editor to open even with no scores yet
     const names=[...new Set(scopedEntries.filter((e: any)=>e.studentClass===student.class).map((e: any)=>e.studentName.toLowerCase().trim()))];
     const standings=names.map(n=>({name:n,total:scopedEntries.filter((e: any)=>e.studentName.toLowerCase().trim()===n&&e.studentClass===student.class).reduce((a: number,c: any)=>a+c.total,0)})).sort((a,b)=>b.total-a.total);
     const pos=standings.findIndex(s=>s.name===student.name.toLowerCase().trim())+1;
     const total=records.reduce((a: number,c: any)=>a+c.total,0);
     const termLabel = t||schoolSettings.term; const sessionLabel = s||schoolSettings.session;
-    setActiveReport({id:student.id,name:student.name,class:student.class,records,position:getOrdinal(pos),classCount:names.length,term:termLabel,session:sessionLabel,summary:{total,obtainable:records.length*100,avg:records.length?(total/records.length).toFixed(1):"0.0"}});
+    setActiveReport({id:student.id,name:student.name,class:student.class,records,position:records.length ? getOrdinal(pos) : "—",classCount:names.length,term:termLabel,session:sessionLabel,summary:{total,obtainable:records.length*100,avg:records.length?(total/records.length).toFixed(1):"0.0"}});
+    if (records.length === 0) showToast("No score entries yet — comments still editable", "warning");
     setActiveTab("reports");
   },[entries,showToast,rpTerm,rpSession,schoolSettings]);
 
@@ -1275,32 +1448,111 @@ export default function SchoolManagementApp() {
               {/* RECORDS */}
               {activeTab==="database"&&<>
                 <div className="flex items-center justify-between flex-wrap gap-3"><div><h1 className="text-2xl font-black text-slate-900 uppercase">Records</h1><p className="text-sm text-slate-400">{filteredEntries.length} shown · {bin.length} in bin</p></div>{(isAdmin||can("manageRecords"))&&<Btn variant={showBin?"primary":"outline"} onClick={()=>setShowBin(b=>!b)}><RotateCcw size={14}/>{showBin?"View Active":`Bin${bin.length?` (${bin.length})`:""}`}</Btn>}</div>
-                {!showBin&&<Card className="p-4 space-y-3"><div className="grid grid-cols-1 md:grid-cols-3 gap-3"><div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={dbSearch} onChange={(e: any)=>setDbSearch(e.target.value)} placeholder="Search by name…" className="w-full pl-9 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary focus:bg-white outline-none"/></div><select value={dbClass} onChange={(e: any)=>setDbClass(e.target.value)} className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none"><option value="">All Classes</option>{ALL_CLASSES.map(c=><option key={c}>{c}</option>)}</select><input type="date" value={dbDate} onChange={(e: any)=>setDbDate(e.target.value)} className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none"/></div>
+                {!showBin&&<Card className="p-4 space-y-3"><div className="grid grid-cols-1 md:grid-cols-3 gap-3"><div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={dbSearch} onChange={(e: any)=>setDbSearch(e.target.value)} placeholder="Search by name…" className="w-full pl-9 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary focus:bg-white outline-none"/></div><select value={dbClass} onChange={(e: any)=>setDbClass(e.target.value)} className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none"><option value="">{isAdmin ? "All Classes" : "All My Classes"}</option>{(isAdmin ? ALL_CLASSES : (auth.user?.assignedClasses || [])).map(c=><option key={c}>{c}</option>)}</select><input type="date" value={dbDate} onChange={(e: any)=>setDbDate(e.target.value)} className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none"/></div>
                 <div className="grid grid-cols-2 gap-3"><select value={dbTerm} onChange={(e: any)=>setDbTerm(e.target.value)} className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none"><option value="current">Current Term ({schoolSettings.term})</option><option value="all">All Terms</option>{TERMS.map(t=><option key={t} value={t}>{t}</option>)}</select><select value={dbSession} onChange={(e: any)=>setDbSession(e.target.value)} className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none"><option value="current">Current Session ({schoolSettings.session})</option><option value="all">All Sessions</option>{allSessions.map(s=><option key={s} value={s}>{s}</option>)}</select></div></Card>}
                 {!showBin&&(filteredEntries.length===0?<EmptyState icon={Database} title="No records for this term" subtitle="Switch term filter or add scores" action={<Btn variant="ghost" size="sm" onClick={()=>{setDbSearch("");setDbClass("");setDbDate("");setDbTerm("all");setDbSession("all");}}>Show All</Btn>}/>:
                 <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-slate-50 border-b border-slate-100"><tr>{["Student","Class","Subject","CA","Exam","Total","Grade","Term","Logged"].map((h,i)=><th key={i} className={`px-4 py-3 text-xs font-black uppercase text-slate-400 ${[3,4,5,6].includes(i)?"text-center":""}`}>{h}</th>)}{(isAdmin||can("manageRecords"))&&<th className="px-4 py-3"/>}</tr></thead><tbody className="divide-y divide-slate-50">{filteredEntries.map((e: any)=>{const g=getGrade(e.total);const{date,time}=fmtTs(e.createdAt);return<tr key={e.id} className="hover:bg-slate-50 transition-colors"><td className="px-4 py-3 font-black text-sm text-slate-900">{e.studentName}</td><td className="px-4 py-3 text-xs font-bold text-slate-600">{e.studentClass}</td><td className="px-4 py-3 text-xs font-bold text-primary">{e.subject}</td><td className="px-4 py-3 text-xs font-bold text-center">{e.caScore}</td><td className="px-4 py-3 text-xs font-bold text-center">{e.examScore}</td><td className="px-4 py-3 text-sm font-black text-center">{e.total}</td><td className="px-4 py-3 text-center"><span className="text-xs font-black px-2 py-0.5 rounded-md" style={{background:g.bg,color:g.color}}>{g.grade}</span></td><td className="px-4 py-3"><span className="text-xs font-bold text-slate-500">{e.term||"—"}</span></td><td className="px-4 py-3"><p className="text-xs font-bold text-slate-600">{time}</p><p className="text-xs text-slate-400">{date}</p></td>{(isAdmin||can("manageRecords"))&&<td className="px-4 py-3 text-center"><button onClick={()=>setDlg({type:"delete",data:e})} className="p-1.5 rounded-lg text-red-400 hover:text-white hover:bg-red-500 transition-all"><Trash2 size={14}/></button></td>}</tr>; })}</tbody></table></div></Card>)}
                 {showBin&&(bin.length===0?<EmptyState icon={RotateCcw} title="Recycle bin is empty"/>:
                 <Card className="overflow-hidden border-amber-200"><div className="bg-amber-50 px-5 py-3 border-b border-amber-100 flex items-center gap-2"><AlertTriangle size={13} className="text-amber-500"/><p className="text-xs font-black uppercase text-amber-700">Recycle Bin — {bin.length} item{bin.length!==1?"s":""}</p></div><div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-slate-50 border-b border-slate-100"><tr>{["Student","Class","Subject","Total","Created","Deleted",""].map((h,i)=><th key={i} className="px-4 py-3 text-xs font-black uppercase text-slate-400">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-50">{bin.map((e: any)=>{const g=getGrade(e.total);const cr=fmtTs(e.createdAt);const dl=fmtTs(e.deletedAt);return<tr key={e.id} className="hover:bg-amber-50 transition-colors"><td className="px-4 py-3 font-black text-sm text-slate-700">{e.studentName}</td><td className="px-4 py-3 text-xs font-bold text-slate-500">{e.studentClass}</td><td className="px-4 py-3 text-xs font-bold text-slate-400 line-through">{e.subject}</td><td className="px-4 py-3"><span className="text-xs font-black px-2 py-0.5 rounded-md" style={{background:g.bg,color:g.color}}>{e.total} · {g.grade}</span></td><td className="px-4 py-3"><p className="text-xs font-bold text-slate-500">{cr.time}</p><p className="text-xs text-slate-400">{cr.date}</p></td><td className="px-4 py-3"><p className="text-xs font-bold text-red-400">{dl.time}</p><p className="text-xs text-red-300">{dl.date}</p></td><td className="px-4 py-3"><button onClick={()=>setDlg({type:"restore",data:e})} className="p-1.5 rounded-lg text-emerald-500 hover:text-white hover:bg-emerald-500 transition-all"><RotateCcw size={14}/></button></td></tr>; })}</tbody></table></div></Card>)}
-              </>}
-
               {/* REPORTS */}
               {activeTab==="reports"&&can("viewReports")&&(!activeReport?<>
                 <div><h1 className="text-2xl font-black text-slate-900 uppercase">Reports</h1><p className="text-sm text-slate-400">{filteredStudents.length} students · {rpTerm==="current"?schoolSettings.term:rpTerm==="all"?"All Terms":rpTerm}</p></div>
-                <div className="flex flex-col sm:flex-row gap-3 flex-wrap"><div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={rpSearch} onChange={(e: any)=>setRpSearch(e.target.value)} placeholder="Search student…" className="w-full pl-9 pr-4 py-3 bg-white border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none shadow-sm"/></div><select value={rpClass} onChange={(e: any)=>setRpClass(e.target.value)} className="px-4 py-3 bg-white border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none shadow-sm"><option value="All">All Classes</option>{ALL_CLASSES.map(c=><option key={c}>{c}</option>)}</select><select value={rpTerm} onChange={(e: any)=>setRpTerm(e.target.value)} className="px-4 py-3 bg-white border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none shadow-sm"><option value="current">Current Term</option><option value="all">All Terms</option>{TERMS.map(t=><option key={t} value={t}>{t}</option>)}</select><select value={rpSession} onChange={(e: any)=>setRpSession(e.target.value)} className="px-4 py-3 bg-white border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none shadow-sm"><option value="current">Current Session</option><option value="all">All Sessions</option>{allSessions.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+                <div className="flex flex-col sm:flex-row gap-3 flex-wrap"><div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={rpSearch} onChange={(e: any)=>setRpSearch(e.target.value)} placeholder="Search student…" className="w-full pl-9 pr-4 py-3 bg-white border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none shadow-sm"/></div><select value={rpClass} onChange={(e: any)=>setRpClass(e.target.value)} className="px-4 py-3 bg-white border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none shadow-sm"><option value="All">{isAdmin ? "All Classes" : "All My Classes"}</option>{(isAdmin ? ALL_CLASSES : (auth.user?.assignedClasses || [])).map(c=><option key={c}>{c}</option>)}</select><select value={rpTerm} onChange={(e: any)=>setRpTerm(e.target.value)} className="px-4 py-3 bg-white border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none shadow-sm"><option value="current">Current Term</option><option value="all">All Terms</option>{TERMS.map(t=><option key={t} value={t}>{t}</option>)}</select><select value={rpSession} onChange={(e: any)=>setRpSession(e.target.value)} className="px-4 py-3 bg-white border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-primary outline-none shadow-sm"><option value="current">Current Session</option><option value="all">All Sessions</option>{allSessions.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
                 {rpClass!=="All"&&filteredStudents.length>0&&<Card className="p-4"><div className="flex items-center justify-between flex-wrap gap-3"><p className="text-xs font-black uppercase text-slate-500">Bulk Export — {rpClass}</p><div className="flex gap-2 flex-wrap">
                   <Btn variant="outline" size="sm" onClick={()=>{const t=rpTerm==="current"?schoolSettings.term:rpTerm;const s=rpSession==="current"?schoolSettings.session:rpSession;const r=exportClassResultsExcel(entries,rpClass,t,s,schoolSettings.name);if(r)showToast("Class results Excel downloaded");else showToast("No records for this class/term","error");}}><FileSpreadsheet size={13}/>Class Results Excel</Btn>
                   <Btn variant="outline" size="sm" onClick={()=>{const t=rpTerm==="current"?schoolSettings.term:rpTerm;const s=rpSession==="current"?schoolSettings.session:rpSession;const count=exportBulkPDFs(entries,rpClass,t,s,schoolSettings,appState.comments,attendance);if(count)showToast(`${count} PDF reports downloaded`);else showToast("No records found","error");}}><Download size={13}/>All PDFs ({filteredStudents.filter((st: any)=>st.class===rpClass).length})</Btn>
                 </div></div></Card>}
-                {filteredStudents.length===0?<EmptyState icon={FileText} title="No students found for this term" subtitle="Switch term or add scores" action={<Btn variant="ghost" size="sm" onClick={()=>{setRpTerm("all");setRpSession("all");}}>Show All Terms</Btn>}/>:<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{filteredStudents.map((s: any)=><button key={s.id} onClick={()=>openReport(s)} className="p-5 bg-white border-2 border-slate-100 rounded-2xl flex items-center justify-between text-left group hover:border-blue-400 hover:shadow-md transition-all"><div><p className="font-black text-sm uppercase text-slate-900">{s.name}</p><p className="text-xs font-bold text-slate-400 mt-0.5">{s.class}</p></div><FileText size={18} className="text-slate-300 group-hover:text-primary transition-colors"/></button>)}</div>}
+                {filteredStudents.length===0?<EmptyState icon={FileText} title="No students found for this term" subtitle="Switch term or add scores" action={<Btn variant="ghost" size="sm" onClick={()=>{setRpTerm("all");setRpSession("all");}}>Show All Terms</Btn>}/>:
+                  <Card className="overflow-hidden border-2 border-slate-100 shadow-xl">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead className="bg-slate-50 border-b border-slate-100">
+                          <tr>
+                            <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Student</th>
+                            <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Class</th>
+                            <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 text-center">Progress</th>
+                            <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 text-center">Remarks</th>
+                            <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Status</th>
+                            <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {filteredStudents.map((s: any) => {
+                            const sEntries = entries.filter((e: any) => 
+                              e.studentName.toLowerCase().trim() === s.name.toLowerCase().trim() && 
+                              e.studentClass === s.class &&
+                              (rpTerm === "all" || e.term === (rpTerm === "current" ? schoolSettings.term : rpTerm)) &&
+                              (rpSession === "all" || e.session === (rpSession === "current" ? schoolSettings.session : rpSession))
+                            );
+                            const comms = appState.comments[s.id] || {};
+                            const hasTeacherComm = !!comms.teacher;
+                            const hasPrincipalComm = !!(comms.principal && comms.principalSig);
+                            
+                            const cat = Object.values(CURRICULUM).find(c => c.classes.includes(s.class));
+                            const totalSubjects = cat ? cat.subjects.length : 0;
+                            const entryCount = sEntries.length;
+                            const pct = totalSubjects > 0 ? Math.round((entryCount / totalSubjects) * 100) : 0;
+
+                            let status = { label: "Incomplete", color: "slate" };
+                            if (hasPrincipalComm) status = { label: "Approved", color: "emerald" };
+                            else if (hasTeacherComm && entryCount >= totalSubjects) status = { label: "Ready", color: "blue" };
+                            else if (entryCount > 0) status = { label: "Drafting", color: "amber" };
+
+                            return (
+                              <tr key={s.id} className="hover:bg-blue-50/30 transition-colors group">
+                                <td className="px-6 py-4">
+                                  <p className="font-black text-sm text-slate-900 uppercase group-hover:text-blue-600 transition-colors">{s.name}</p>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">REF: {s.id.split("||")[0].slice(0,8)}</p>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className="px-2 py-1 bg-slate-100 rounded text-[10px] font-black text-slate-600 uppercase">{s.class}</span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex flex-col items-center">
+                                    <div className="flex items-center justify-between w-24 mb-1">
+                                      <span className="text-[10px] font-black text-slate-400 uppercase">{pct}%</span>
+                                      <span className="text-[10px] font-black text-slate-600">{entryCount}/{totalSubjects}</span>
+                                    </div>
+                                    <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200 shadow-inner">
+                                      <div className={`h-full transition-all duration-500 ${pct === 100 ? "bg-emerald-500" : "bg-blue-500"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                  <div className="flex flex-col items-center gap-1">
+                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${
+                                      hasTeacherComm ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"
+                                    }`}>
+                                      Teacher: {hasTeacherComm ? "✓" : "—"}
+                                    </span>
+                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${
+                                      hasPrincipalComm ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"
+                                    }`}>
+                                      Principal: {hasPrincipalComm ? "✓" : "—"}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <Pill color={status.color as any}>{status.label}</Pill>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <button onClick={() => openReport(s)}
+                                    className="inline-flex items-center gap-2 px-4 py-2 bg-white border-2 border-slate-100 text-slate-600 rounded-xl text-[11px] font-black hover:border-blue-500 hover:text-blue-600 hover:shadow-md transition-all uppercase">
+                                    Manage <ChevronRight size={12} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                }
               </>:
-              <div className="space-y-5 max-w-3xl mx-auto">
-                <button onClick={()=>setActiveReport(null)} className="flex items-center gap-2 text-xs font-black uppercase text-slate-400 hover:text-slate-700 transition-colors"><X size={13}/>Back to Students</button>
-                <Card className="overflow-hidden"><div className="bg-primary px-6 py-4 flex items-center gap-3"><PenTool size={16} className="text-white/80"/><p className="text-white font-black uppercase tracking-widest text-sm">Report Editor — {activeReport.name}</p></div>
-                <div className="p-6 space-y-5">
-                  <div><p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-3">Attendance</p><div className="grid grid-cols-3 gap-3">{([["daysOpen","Days Opened","slate"],["daysPresent","Days Present","emerald"],["daysAbsent","Days Absent","red"]] as const).map(([f,l,c])=><div key={f}><label className="block text-xs font-black uppercase text-slate-400 mb-1.5">{l}</label><input type="number" min="0" max="365" placeholder="0" value={curC[f]||""} onChange={(e: any)=>{const v=e.target.value;if(v===""||( +v>=0&& +v<=365))dispatch({type:"SET_COMMENT",studentId:activeReport.id,field:f,value:v});}} onKeyDown={(e: any)=>["-","e","E","+"].includes(e.key)&&e.preventDefault()} className={`w-full px-3 py-3 rounded-xl border-2 font-black text-center text-xl outline-none transition-all ${c==="emerald"?"bg-emerald-50 border-emerald-100 focus:border-emerald-400":c==="red"?"bg-red-50 border-red-100 focus:border-red-400":"bg-slate-50 border-slate-100 focus:border-slate-400"}`}/></div>)}</div>{attRate!==null&&<p className={`mt-2 text-center text-sm font-black ${attRate>=75?"text-emerald-600":"text-red-500"}`}>Attendance Rate: {attRate}% {attRate>=75?"✓":"⚠"}</p>}</div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">{([["teacher","Class Teacher's Remark","teacherSig","Teacher Signature"],["principal","Principal's Remark","principalSig","Principal's Signature"]] as const).map(([f,l,sf,sl])=><div key={f} className="space-y-2"><label className="block text-xs font-black uppercase text-slate-400 tracking-wide">{l}</label><textarea value={curC[f]||""} onChange={(e: any)=>dispatch({type:"SET_COMMENT",studentId:activeReport.id,field:f,value:e.target.value})} rows={3} placeholder="Enter remark…" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-medium focus:border-primary outline-none resize-none"/><input value={curC[sf]||""} onChange={(e: any)=>dispatch({type:"SET_COMMENT",studentId:activeReport.id,field:sf,value:e.target.value})} placeholder={sl} className="w-full px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-xs font-black uppercase tracking-wide focus:border-primary outline-none"/></div>)}</div>
-                  {can("printReports")&&<Btn variant="primary" size="lg" className="w-full" onClick={()=>setShowPrint(true)}><Printer size={16}/>Print / Export Report</Btn>}
-                </div></Card>
                 <ReportSheet report={activeReport} curC={curC} attRate={attRate} schoolLogo={schoolLogo} schoolSettings={schoolSettings}/>
               </div>)}
 

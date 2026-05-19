@@ -1,4 +1,8 @@
 import { useState, useMemo, useRef, useCallback, memo, useReducer, createContext, useContext, useEffect } from "react";
+import { NAPPS_CURRICULUM } from "./data/nappsCurriculum";
+import { E_NOTES } from "./data/eNotes";
+import { RESOURCE_SOURCES } from "./data/resourceSources";
+import { downloadCurriculumGuidePDF, downloadENotePDF } from "./utils/resourcePdf";
 import {
   GraduationCap, Database, FileText, Printer, PlusCircle,
   Check, X, Settings, Save, LogOut, LayoutDashboard,
@@ -7,7 +11,8 @@ import {
   UserX, UserCheck, Eye, EyeOff, KeyRound, Shield,
   Menu, BookOpen, MoreVertical, ChevronRight, ChevronLeft,
   CalendarDays, ClipboardList, BookMarked, Edit2, ArrowLeft,
-  Bell, CalendarClock, Send, Inbox, MessageSquare
+  Bell, CalendarClock, Send, Inbox, MessageSquare, Wallet, CheckCircle,
+  FileSpreadsheet, Lock, Info, DollarSign
 } from "lucide-react";
 
 // ─── Upgrade Imports (CDN-based, no bundler needed) ──────────────────────────
@@ -27,7 +32,7 @@ const CURRICULUM: Record<string, { classes: string[]; subjects: string[] }> = {
 };
 const ALL_CLASSES: string[] = Object.values(CURRICULUM).flatMap(c => c.classes);
 const TERMS = ["First Term","Second Term","Third Term"];
-const ROLES = ["Teacher","Class Teacher","Subject Teacher","Head of Dept","Vice Principal","Principal"];
+const ROLES = ["Teacher","Class Teacher","Subject Teacher","Head of Dept","Bursar","Secretary","Headmaster","Headmistress","Vice Principal","Principal"];
 const ADMIN_PIN_KEY = "gm_admin_pin_v1";
 const PERMS_META = [
   { key:"scoreEntry",    label:"Score Entry",    desc:"Enter CA & exam scores" },
@@ -41,6 +46,14 @@ const ATT_STATUSES = [
   { key:"late",    label:"Late",    icon:"⏱", color:"amber" },
   { key:"excused", label:"Excused", icon:"📋", color:"indigo" },
 ];
+
+const BUILTIN_REMARKS = {
+  excellent: "Excellent performance in all subjects. Keep it up!",
+  veryGood: "Very good academic performance. Shows great potential.",
+  good: "Good performance. Needs more effort in weak areas.",
+  fair: "Fair performance. Requires improvement in several subjects.",
+  poor: "Below average performance. Needs serious attention and extra coaching."
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface RollStudent {
@@ -692,15 +705,22 @@ const _defaultStaff: StaffMember[] = [
   { id:"s2", name:"Mr. Chidi Eze",   role:"Subject Teacher", pin:"9012", status:"active", assignedClasses:["JSS 1","JSS 2","JSS 3"],  assignedSubjects:["Mathematics"], permissions:{scoreEntry:true,viewReports:true,printReports:false,manageRecords:false}, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() },
 ];
 
+// NAPPS-Standard Timetable: Morning Assembly, 8 academic periods of 40 min,
+// Short Break (mid-morning) and Long Break (lunch), Closing Assembly.
 const _defaultTimetable: TimetableState = {
   periods: [
-    { id: "p1", label: "Period 1", start: "08:00", end: "08:40" },
-    { id: "p2", label: "Period 2", start: "08:40", end: "09:20" },
-    { id: "p3", label: "Period 3", start: "09:20", end: "10:00" },
-    { id: "br", label: "Break",    start: "10:00", end: "10:20" },
-    { id: "p4", label: "Period 4", start: "10:20", end: "11:00" },
-    { id: "p5", label: "Period 5", start: "11:00", end: "11:40" },
-    { id: "p6", label: "Period 6", start: "11:40", end: "12:20" },
+    { id: "asm", label: "Morning Assembly", start: "07:45", end: "08:00" },
+    { id: "p1",  label: "Period 1",         start: "08:00", end: "08:40" },
+    { id: "p2",  label: "Period 2",         start: "08:40", end: "09:20" },
+    { id: "p3",  label: "Period 3",         start: "09:20", end: "10:00" },
+    { id: "sbr", label: "Short Break",      start: "10:00", end: "10:20" },
+    { id: "p4",  label: "Period 4",         start: "10:20", end: "11:00" },
+    { id: "p5",  label: "Period 5",         start: "11:00", end: "11:40" },
+    { id: "lbr", label: "Long Break / Lunch", start: "11:40", end: "12:20" },
+    { id: "p6",  label: "Period 6",         start: "12:20", end: "13:00" },
+    { id: "p7",  label: "Period 7",         start: "13:00", end: "13:40" },
+    { id: "p8",  label: "Period 8",         start: "13:40", end: "14:20" },
+    { id: "cls", label: "Closing Assembly", start: "14:20", end: "14:30" },
   ],
   days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
   cells: {},
@@ -1013,10 +1033,10 @@ const EmptyState = ({ icon: Icon, title, subtitle, action }: { icon: any; title:
   </Card>
 );
 
-const Modal = ({ children, maxW = "max-w-md", onBgClick }: { children: React.ReactNode; maxW?: string; onBgClick?: () => void }) => (
+const Modal = ({ children, maxW = "max-w-md", onBgClick, zIndex = 200 }: { children: React.ReactNode; maxW?: string; onBgClick?: () => void; zIndex?: number }) => (
   <div
-    className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-    style={{ background: "rgba(15,23,42,0.65)" }}
+    className="fixed inset-0 flex items-center justify-center p-4"
+    style={{ background: "rgba(15,23,42,0.65)", zIndex }}
     onClick={e => { if (e.target === e.currentTarget) onBgClick?.(); }}
   >
     <div className={`bg-white rounded-2xl shadow-2xl w-full ${maxW} overflow-hidden max-h-[92vh] flex flex-col`}>
@@ -1102,6 +1122,136 @@ const PinAuth = ({ title, subtitle, headerColor = "bg-blue-600", icon: Icon, chi
 };
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
+const SignaturePad = memo(({ value, onChange, onClear }: { value: string; onChange: (value: string) => void; onClear: () => void }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDrawing = useRef(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const resize = () => {
+      canvas.width = canvas.offsetWidth;
+      canvas.height = 150;
+      ctx.strokeStyle = "#1e293b";
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      if (value) {
+        const img = new Image();
+        img.onload = () => ctx.drawImage(img, 0, 0);
+        img.src = value;
+      }
+    };
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, [value]);
+
+  const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+    isDrawing.current = true;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = "touches" in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+    const y = "touches" in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDrawing.current) return;
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = "touches" in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+    const y = "touches" in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    if (isDrawing.current) {
+      isDrawing.current = false;
+      const canvas = canvasRef.current;
+      if (canvas) onChange(canvas.toDataURL());
+    }
+  };
+
+  const clear = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      onChange("");
+      onClear();
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <canvas
+        ref={canvasRef}
+        onMouseDown={startDrawing}
+        onMouseMove={draw}
+        onMouseUp={stopDrawing}
+        onMouseLeave={stopDrawing}
+        onTouchStart={startDrawing}
+        onTouchMove={draw}
+        onTouchEnd={stopDrawing}
+        className="w-full bg-white border-2 border-slate-200 rounded-xl cursor-crosshair touch-none"
+        style={{ height: "150px" }}
+      />
+      <button
+        onClick={clear}
+        className="text-xs font-black uppercase text-red-600 hover:text-red-700 transition-colors"
+      >
+        Clear Signature
+      </button>
+    </div>
+  );
+});
+
+const DefaultSignaturesPanel = memo(({ initialTeacher, initialPrincipal, onSave }: {
+  initialTeacher: string;
+  initialPrincipal: string;
+  onSave: (teacher: string, principal: string) => void;
+}) => {
+  const [teacherSig, setTeacherSig] = useState(initialTeacher);
+  const [principalSig, setPrincipalSig] = useState(initialPrincipal);
+  const saved = teacherSig === initialTeacher && principalSig === initialPrincipal;
+  return (
+    <Card className="p-6 space-y-5">
+      <div>
+        <p className="text-sm font-black uppercase text-slate-700">Default Signatures</p>
+        <p className="text-xs text-slate-400 mt-0.5">Set default signatures for teacher and principal on reports</p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="space-y-2">
+          <label className="block text-xs font-black uppercase text-slate-400 tracking-wide">Default Teacher Signature</label>
+          <SignaturePad value={teacherSig} onChange={setTeacherSig} onClear={() => setTeacherSig("")} />
+        </div>
+        <div className="space-y-2">
+          <label className="block text-xs font-black uppercase text-slate-400 tracking-wide">Default Principal Signature</label>
+          <SignaturePad value={principalSig} onChange={setPrincipalSig} onClear={() => setPrincipalSig("")} />
+        </div>
+      </div>
+      <div className="pt-2 border-t border-slate-100">
+        <Btn variant="primary" size="lg" className="w-full" onClick={() => onSave(teacherSig, principalSig)}>
+          {saved ? <><Check size={15} />Saved!</> : <><Save size={15} />Save Signatures</>}
+        </Btn>
+      </div>
+    </Card>
+  );
+});
+
 const Toast = memo(({ toast }: { toast: { msg: string; type: string; id: string } }) => {
   const s: Record<string, string> = { success:"bg-slate-900 text-white", error:"bg-red-600 text-white", warning:"bg-amber-500 text-white" };
   const ic: Record<string, React.ReactNode> = { success:<Check size={12}/>, error:<X size={12}/>, warning:<AlertTriangle size={12}/> };
@@ -1571,7 +1721,7 @@ const StaffDialog = memo(({ staff, mode, onSave, onClose }: { staff?: StaffMembe
       </div>
 
       {confirmClose && (
-        <Modal maxW="max-w-sm" onBgClick={() => setConfirmClose(false)}>
+        <Modal maxW="max-w-sm" zIndex={300} onBgClick={() => setConfirmClose(false)}>
           <MHead icon={AlertTriangle} title="Discard Changes?" subtitle="Your unsaved changes will be lost" color="bg-amber-500" onClose={() => setConfirmClose(false)} />
           <div className="p-6 space-y-4">
             <p className="text-sm text-slate-600 font-medium">Are you sure you want to close without saving?</p>
@@ -1758,9 +1908,985 @@ const SETTINGS_SECTIONS = [
   { id:"info",     label:"School Info",    icon:"🏫" },
   { id:"session",  label:"Session & Term", icon:"📅" },
   { id:"template", label:"Report Template",icon:"📋" },
+  { id:"signatures",label:"Signatures",    icon:"✍️" },
   { id:"security", label:"Security & PIN", icon:"🔒" },
   { id:"database", label:"Database",       icon:"🗄️" },
 ];
+
+// ─── Fees: auto-structured tracker ────────────────────────────────────────────
+// Admin sets ONE fee structure per class (Tuition + extras). The app automatically
+// derives Expected / Collected / Outstanding per enrolled student and per class.
+const FEES_LS = "sf_fees_v2";
+const FEE_STRUCT_LS = "sf_fee_structure_v2";
+
+const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) => void }) => {
+  const { state } = useApp();
+  const { entries, classRolls, schoolSettings } = state;
+
+  const session = schoolSettings?.session || "2024/2025";
+  const term = schoolSettings?.term || "First Term";
+  const periodKey = `${session}__${term}`;
+
+  // Fee structure: { [class]: { [periodKey]: { tuition, items: [{label, amount}] } } }
+  const [structures, setStructures] = useState<Record<string, Record<string, { tuition: number; items: { label: string; amount: number }[] }>>>(() => {
+    try { return JSON.parse(localStorage.getItem(FEE_STRUCT_LS) || "{}"); } catch { return {}; }
+  });
+  // Payments: { [class|student|periodKey]: { paid: number, history: [{amount, date}] } }
+  const [payments, setPayments] = useState<Record<string, { paid: number; history: { amount: number; date: string; note?: string }[] }>>(() => {
+    try { return JSON.parse(localStorage.getItem(FEES_LS) || "{}"); } catch { return {}; }
+  });
+
+  const [activeClass, setActiveClass] = useState<string>("");
+  const [editingStructure, setEditingStructure] = useState(false);
+  const [tuitionInput, setTuitionInput] = useState("");
+  const [itemsInput, setItemsInput] = useState<{ label: string; amount: number }[]>([]);
+  const [newItemLabel, setNewItemLabel] = useState("");
+  const [newItemAmount, setNewItemAmount] = useState("");
+  const [payingStudent, setPayingStudent] = useState<string | null>(null);
+  const [payAmount, setPayAmount] = useState("");
+  const [payNote, setPayNote] = useState("");
+
+  // Persist
+  useEffect(() => { localStorage.setItem(FEE_STRUCT_LS, JSON.stringify(structures)); }, [structures]);
+  useEffect(() => { localStorage.setItem(FEES_LS, JSON.stringify(payments)); }, [payments]);
+
+  // Classes with enrolled students (from rolls or entries)
+  const classes = useMemo(() => {
+    const fromRolls = Object.keys(classRolls).filter(c => (classRolls[c] || []).length > 0);
+    const fromEntries = [...new Set(entries.map(e => e.studentClass))];
+    return [...new Set([...fromRolls, ...fromEntries])].sort();
+  }, [classRolls, entries]);
+
+  useEffect(() => { if (!activeClass && classes.length > 0) setActiveClass(classes[0]); }, [classes, activeClass]);
+
+  // Students enrolled in the active class (roll first, fallback to entries)
+  const studentsInClass = useMemo(() => {
+    if (!activeClass) return [] as string[];
+    const roll = classRolls[activeClass] || [];
+    if (roll.length > 0) return roll.map(r => r.name);
+    return [...new Set(entries.filter(e => e.studentClass === activeClass).map(e => e.studentName))];
+  }, [activeClass, classRolls, entries]);
+
+  const currentStructure = structures[activeClass]?.[periodKey];
+  const expectedPerStudent = currentStructure
+    ? (currentStructure.tuition || 0) + currentStructure.items.reduce((s, i) => s + (i.amount || 0), 0)
+    : 0;
+
+  const openStructureEditor = () => {
+    setTuitionInput(String(currentStructure?.tuition || ""));
+    setItemsInput(currentStructure?.items ? [...currentStructure.items] : []);
+    setNewItemLabel(""); setNewItemAmount("");
+    setEditingStructure(true);
+  };
+
+  const saveStructure = () => {
+    const tuition = parseFloat(tuitionInput) || 0;
+    setStructures(prev => ({
+      ...prev,
+      [activeClass]: {
+        ...(prev[activeClass] || {}),
+        [periodKey]: { tuition, items: itemsInput },
+      },
+    }));
+    setEditingStructure(false);
+    showToast(`Fee structure saved for ${activeClass}`, "success");
+  };
+
+  const addItem = () => {
+    if (!newItemLabel.trim() || !newItemAmount) return;
+    setItemsInput(prev => [...prev, { label: newItemLabel.trim(), amount: parseFloat(newItemAmount) || 0 }]);
+    setNewItemLabel(""); setNewItemAmount("");
+  };
+
+  const recordPayment = () => {
+    if (!payingStudent || !payAmount) return;
+    const amt = parseFloat(payAmount);
+    if (isNaN(amt) || amt <= 0) { showToast("Enter a valid amount", "error"); return; }
+    const key = `${activeClass}|${payingStudent}|${periodKey}`;
+    setPayments(prev => {
+      const cur = prev[key] || { paid: 0, history: [] };
+      return {
+        ...prev,
+        [key]: {
+          paid: cur.paid + amt,
+          history: [...cur.history, { amount: amt, date: new Date().toISOString(), note: payNote.trim() || undefined }],
+        },
+      };
+    });
+    showToast(`₦${amt.toLocaleString()} recorded for ${payingStudent}`, "success");
+    setPayingStudent(null); setPayAmount(""); setPayNote("");
+  };
+
+  const statusOf = (paid: number, expected: number) => {
+    if (expected <= 0) return { label: "No Structure", color: "bg-slate-100 text-slate-500" };
+    if (paid <= 0) return { label: "Outstanding", color: "bg-red-100 text-red-700" };
+    if (paid >= expected) return { label: "Paid in Full", color: "bg-emerald-100 text-emerald-700" };
+    return { label: "Partial", color: "bg-amber-100 text-amber-700" };
+  };
+
+  // Aggregate stats for active class
+  const stats = useMemo(() => {
+    const expectedTotal = expectedPerStudent * studentsInClass.length;
+    let collected = 0, partial = 0, paidInFull = 0, outstanding = 0;
+    studentsInClass.forEach(name => {
+      const k = `${activeClass}|${name}|${periodKey}`;
+      const p = payments[k]?.paid || 0;
+      collected += Math.min(p, expectedPerStudent);
+      if (expectedPerStudent <= 0) return;
+      if (p <= 0) outstanding++;
+      else if (p >= expectedPerStudent) paidInFull++;
+      else partial++;
+    });
+    return { expectedTotal, collected, outstanding, partial, paidInFull, balance: Math.max(expectedTotal - collected, 0) };
+  }, [studentsInClass, activeClass, periodKey, payments, expectedPerStudent]);
+
+  return (
+    <div className="space-y-6 max-w-6xl mx-auto">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-black text-slate-900 uppercase">Fees</h2>
+          <p className="text-sm text-slate-500 mt-1">Auto-structured tracker · {session} · {term}</p>
+        </div>
+        <div className="flex gap-2">
+          <Sel value={activeClass} onChange={(e: any) => setActiveClass(e.target.value)}>
+            {classes.length === 0 && <option value="">No enrolled classes</option>}
+            {classes.map(c => <option key={c}>{c}</option>)}
+          </Sel>
+          <Btn variant="outline" onClick={openStructureEditor} disabled={!activeClass}>
+            <Settings size={14}/>{currentStructure ? "Edit Structure" : "Set Structure"}
+          </Btn>
+        </div>
+      </div>
+
+      {!activeClass ? (
+        <EmptyState icon={DollarSign} title="No classes yet" subtitle="Enrol students from Attendance roll or Score Entry to start tracking fees" />
+      ) : !currentStructure ? (
+        <Card className="p-8 text-center">
+          <DollarSign size={32} className="mx-auto text-slate-300 mb-3"/>
+          <p className="font-black text-slate-700 mb-1">No fee structure for {activeClass} ({term})</p>
+          <p className="text-sm text-slate-400 mb-4">Set the tuition and extras once — it applies automatically to all {studentsInClass.length} enrolled student{studentsInClass.length === 1 ? "" : "s"}.</p>
+          <Btn variant="primary" onClick={openStructureEditor}><PlusCircle size={14}/>Set Structure</Btn>
+        </Card>
+      ) : (
+        <>
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: "Expected",      value: stats.expectedTotal, color: "bg-slate-100 text-slate-700",  icon: Wallet },
+              { label: "Collected",     value: stats.collected,     color: "bg-emerald-100 text-emerald-700", icon: CheckCircle },
+              { label: "Outstanding",   value: stats.balance,       color: "bg-red-100 text-red-700",      icon: AlertTriangle },
+              { label: "Per Student",   value: expectedPerStudent,  color: "bg-blue-100 text-blue-700",    icon: Users },
+            ].map((s) => (
+              <Card key={s.label} className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <s.icon size={14} className="text-slate-400" />
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">{s.label}</p>
+                </div>
+                <p className={`text-xl font-black ${s.color.split(" ")[1]}`}>₦{s.value.toLocaleString()}</p>
+              </Card>
+            ))}
+          </div>
+
+          {/* Status counts */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-emerald-50 border-2 border-emerald-100 rounded-xl p-4 text-center">
+              <p className="text-3xl font-black text-emerald-700">{stats.paidInFull}</p>
+              <p className="text-[10px] font-black uppercase text-emerald-600 tracking-widest mt-1">Paid in Full</p>
+            </div>
+            <div className="bg-amber-50 border-2 border-amber-100 rounded-xl p-4 text-center">
+              <p className="text-3xl font-black text-amber-700">{stats.partial}</p>
+              <p className="text-[10px] font-black uppercase text-amber-600 tracking-widest mt-1">Partial</p>
+            </div>
+            <div className="bg-red-50 border-2 border-red-100 rounded-xl p-4 text-center">
+              <p className="text-3xl font-black text-red-700">{stats.outstanding}</p>
+              <p className="text-[10px] font-black uppercase text-red-600 tracking-widest mt-1">Outstanding</p>
+            </div>
+          </div>
+
+          {/* Per-student tracker */}
+          <Card className="p-0 overflow-hidden">
+            <div className="px-5 py-4 border-b-2 border-slate-100 flex items-center justify-between">
+              <div>
+                <p className="font-black uppercase text-sm text-slate-800">{activeClass} · Enrolled Students</p>
+                <p className="text-xs text-slate-400 mt-0.5">Expected ₦{expectedPerStudent.toLocaleString()} per student (Tuition ₦{currentStructure.tuition.toLocaleString()}{currentStructure.items.length > 0 ? ` + ${currentStructure.items.length} extra${currentStructure.items.length === 1 ? "" : "s"}` : ""})</p>
+              </div>
+              <span className="text-xs font-black text-slate-500">{studentsInClass.length} student{studentsInClass.length === 1 ? "" : "s"}</span>
+            </div>
+            {studentsInClass.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-sm">No students enrolled. Add them from Attendance roll.</div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {studentsInClass.map(name => {
+                  const k = `${activeClass}|${name}|${periodKey}`;
+                  const paid = payments[k]?.paid || 0;
+                  const balance = Math.max(expectedPerStudent - paid, 0);
+                  const pct = expectedPerStudent > 0 ? Math.min(Math.round((paid / expectedPerStudent) * 100), 100) : 0;
+                  const st = statusOf(paid, expectedPerStudent);
+                  return (
+                    <div key={name} className="px-5 py-4 hover:bg-slate-50 transition-colors">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-black text-slate-800 truncate">{name}</p>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${st.color}`}>{st.label}</span>
+                          </div>
+                          <div className="mt-2 flex items-center gap-2">
+                            <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden max-w-xs">
+                              <div className={`h-full ${pct >= 100 ? "bg-emerald-500" : pct > 0 ? "bg-amber-500" : "bg-red-400"}`} style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="text-[10px] font-black text-slate-500">{pct}%</span>
+                          </div>
+                          <div className="mt-1.5 text-xs text-slate-500 flex gap-3 flex-wrap">
+                            <span>Expected: <b className="text-slate-700">₦{expectedPerStudent.toLocaleString()}</b></span>
+                            <span>Paid: <b className="text-emerald-700">₦{paid.toLocaleString()}</b></span>
+                            <span>Balance: <b className={balance > 0 ? "text-red-700" : "text-emerald-700"}>₦{balance.toLocaleString()}</b></span>
+                          </div>
+                        </div>
+                        <Btn variant={balance > 0 ? "primary" : "ghost"} size="sm" onClick={() => { setPayingStudent(name); setPayAmount(""); setPayNote(""); }}>
+                          {balance > 0 ? <><PlusCircle size={13}/>Record Payment</> : <><Check size={13}/>Add Payment</>}
+                        </Btn>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        </>
+      )}
+
+      {/* Structure editor modal */}
+      {editingStructure && (
+        <Modal maxW="max-w-lg" onBgClick={() => setEditingStructure(false)}>
+          <MHead icon={Wallet} title={`Fee Structure — ${activeClass}`} subtitle={`${session} · ${term}`} color="bg-blue-600" onClose={() => setEditingStructure(false)} />
+          <div className="p-6 space-y-4">
+            <Field label="Tuition (₦)">
+              <Inp type="number" value={tuitionInput} onChange={(e: any) => setTuitionInput(e.target.value)} placeholder="0" />
+            </Field>
+            <div>
+              <label className="block text-xs font-black uppercase text-slate-400 mb-2">Extra Items</label>
+              {itemsInput.length === 0 && <p className="text-xs text-slate-400 italic mb-2">No extras yet. Add books, uniforms, sports, etc.</p>}
+              <div className="space-y-1.5 mb-3">
+                {itemsInput.map((it, idx) => (
+                  <div key={idx} className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg">
+                    <span className="flex-1 text-sm font-medium">{it.label}</span>
+                    <span className="font-black text-slate-700">₦{it.amount.toLocaleString()}</span>
+                    <button onClick={() => setItemsInput(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700"><Trash2 size={13}/></button>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-[1fr_120px_auto] gap-2">
+                <input value={newItemLabel} onChange={e => setNewItemLabel(e.target.value)} placeholder="Item name (e.g. Books)" className="px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-lg text-sm"/>
+                <input type="number" value={newItemAmount} onChange={e => setNewItemAmount(e.target.value)} placeholder="Amount" className="px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-lg text-sm"/>
+                <Btn variant="outline" size="sm" onClick={addItem} disabled={!newItemLabel.trim() || !newItemAmount}><PlusCircle size={13}/></Btn>
+              </div>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center justify-between">
+              <span className="text-xs font-black uppercase text-blue-700">Total per student</span>
+              <span className="text-lg font-black text-blue-700">₦{((parseFloat(tuitionInput) || 0) + itemsInput.reduce((s, i) => s + i.amount, 0)).toLocaleString()}</span>
+            </div>
+          </div>
+          <div className="px-6 pb-6 grid grid-cols-2 gap-2">
+            <Btn variant="ghost" onClick={() => setEditingStructure(false)}>Cancel</Btn>
+            <Btn variant="primary" onClick={saveStructure}><Save size={13}/>Save Structure</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* Payment modal */}
+      {payingStudent && (
+        <Modal maxW="max-w-sm" onBgClick={() => setPayingStudent(null)}>
+          <MHead icon={Wallet} title="Record Payment" subtitle={`${payingStudent} · ${activeClass}`} color="bg-emerald-600" onClose={() => setPayingStudent(null)} />
+          <div className="p-6 space-y-4">
+            {(() => {
+              const k = `${activeClass}|${payingStudent}|${periodKey}`;
+              const paid = payments[k]?.paid || 0;
+              const balance = Math.max(expectedPerStudent - paid, 0);
+              return (
+                <div className="bg-slate-50 rounded-xl p-3 grid grid-cols-3 gap-2 text-center">
+                  <div><p className="text-[10px] font-black uppercase text-slate-400">Expected</p><p className="font-black text-slate-700">₦{expectedPerStudent.toLocaleString()}</p></div>
+                  <div><p className="text-[10px] font-black uppercase text-slate-400">Paid</p><p className="font-black text-emerald-700">₦{paid.toLocaleString()}</p></div>
+                  <div><p className="text-[10px] font-black uppercase text-slate-400">Balance</p><p className="font-black text-red-700">₦{balance.toLocaleString()}</p></div>
+                </div>
+              );
+            })()}
+            <Field label="Amount Received (₦)">
+              <Inp type="number" value={payAmount} onChange={(e: any) => setPayAmount(e.target.value)} placeholder="0" autoFocus />
+            </Field>
+            <Field label="Note (optional)">
+              <Inp value={payNote} onChange={(e: any) => setPayNote(e.target.value)} placeholder="e.g. Receipt #1234" />
+            </Field>
+          </div>
+          <div className="px-6 pb-6 grid grid-cols-2 gap-2">
+            <Btn variant="ghost" onClick={() => setPayingStudent(null)}>Cancel</Btn>
+            <Btn variant="primary" onClick={recordPayment} disabled={!payAmount}><Check size={13}/>Record</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+});
+
+// Read fee structures and payments straight from the same localStorage keys
+// the FeesTab writes to, so the dashboard always stays in sync.
+const FeesOverviewCard = memo(({ schoolSettings, classRolls, entries, setActiveTab }: {
+  schoolSettings: SchoolSettings;
+  classRolls: Record<string, RollStudent[]>;
+  entries: Entry[];
+  setActiveTab: (t: string) => void;
+}) => {
+  const session = schoolSettings?.session || "2024/2025";
+  const term = schoolSettings?.term || "First Term";
+  const periodKey = `${session}__${term}`;
+
+  // Re-read on each render of dashboard. Keep it simple and reliable.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const onStorage = () => setTick(t => t + 1);
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const overview = useMemo(() => {
+    let structures: Record<string, Record<string, { tuition: number; items: { label: string; amount: number }[] }>> = {};
+    let payments: Record<string, { paid: number; history: any[] }> = {};
+    try { structures = JSON.parse(localStorage.getItem(FEE_STRUCT_LS) || "{}"); } catch {}
+    try { payments = JSON.parse(localStorage.getItem(FEES_LS) || "{}"); } catch {}
+
+    const classes = [...new Set([
+      ...Object.keys(classRolls).filter(c => (classRolls[c] || []).length > 0),
+      ...entries.map(e => e.studentClass),
+    ])].sort();
+
+    let expectedTotal = 0, collectedTotal = 0;
+    let paidInFull = 0, partial = 0, outstanding = 0, totalEnrolled = 0;
+    const perClass: { className: string; expected: number; collected: number; balance: number; pct: number; students: number; structured: boolean }[] = [];
+
+    classes.forEach(cls => {
+      const struct = structures[cls]?.[periodKey];
+      const expectedPerStudent = struct ? (struct.tuition || 0) + struct.items.reduce((s, i) => s + (i.amount || 0), 0) : 0;
+      const roll = classRolls[cls] || [];
+      const studentNames = roll.length > 0
+        ? roll.map(r => r.name)
+        : [...new Set(entries.filter(e => e.studentClass === cls).map(e => e.studentName))];
+      totalEnrolled += studentNames.length;
+
+      const classExpected = expectedPerStudent * studentNames.length;
+      let classCollected = 0;
+      studentNames.forEach(name => {
+        const k = `${cls}|${name}|${periodKey}`;
+        const p = payments[k]?.paid || 0;
+        classCollected += Math.min(p, expectedPerStudent || p);
+        if (expectedPerStudent <= 0) return;
+        if (p <= 0) outstanding++;
+        else if (p >= expectedPerStudent) paidInFull++;
+        else partial++;
+      });
+
+      expectedTotal += classExpected;
+      collectedTotal += classCollected;
+      perClass.push({
+        className: cls,
+        expected: classExpected,
+        collected: classCollected,
+        balance: Math.max(classExpected - classCollected, 0),
+        pct: classExpected > 0 ? Math.round((classCollected / classExpected) * 100) : 0,
+        students: studentNames.length,
+        structured: !!struct,
+      });
+    });
+
+    const collectionRate = expectedTotal > 0 ? Math.round((collectedTotal / expectedTotal) * 100) : 0;
+    return {
+      expectedTotal, collectedTotal, balance: Math.max(expectedTotal - collectedTotal, 0),
+      paidInFull, partial, outstanding, totalEnrolled, collectionRate,
+      perClass: perClass.sort((a, b) => b.expected - a.expected),
+    };
+  }, [tick, classRolls, entries, periodKey]); // tick re-evaluates when storage changes
+
+  return (
+    <Card>
+      <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
+        <Wallet size={14} className="text-emerald-500" />
+        <p className="text-sm font-black uppercase text-slate-600">Fees Overview · {term}</p>
+        <span className={`ml-auto text-xs font-black px-2 py-0.5 rounded-md ${
+          overview.collectionRate >= 80 ? "bg-emerald-100 text-emerald-700" :
+          overview.collectionRate >= 50 ? "bg-amber-100 text-amber-700" :
+          "bg-red-100 text-red-700"
+        }`}>{overview.collectionRate}% collected</span>
+        <button onClick={() => setActiveTab("fees")} className="text-xs font-black text-blue-600 hover:text-blue-700">Manage →</button>
+      </div>
+
+      {overview.expectedTotal === 0 ? (
+        <div className="px-5 py-6 text-center">
+          <p className="text-xs text-slate-400 font-bold mb-2">No fee structures set yet for this term.</p>
+          <Btn variant="outline" size="sm" onClick={() => setActiveTab("fees")}><PlusCircle size={12}/>Set Fee Structure</Btn>
+        </div>
+      ) : (
+        <>
+          {/* Top KPIs */}
+          <div className="grid grid-cols-3 gap-0 border-b border-slate-100">
+            <div className="px-4 py-4 border-r border-slate-100">
+              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Expected</p>
+              <p className="text-lg font-black text-slate-800 mt-1">₦{overview.expectedTotal.toLocaleString()}</p>
+            </div>
+            <div className="px-4 py-4 border-r border-slate-100">
+              <p className="text-[10px] font-black uppercase text-emerald-600 tracking-widest">Collected</p>
+              <p className="text-lg font-black text-emerald-700 mt-1">₦{overview.collectedTotal.toLocaleString()}</p>
+            </div>
+            <div className="px-4 py-4">
+              <p className="text-[10px] font-black uppercase text-red-600 tracking-widest">Outstanding</p>
+              <p className="text-lg font-black text-red-700 mt-1">₦{overview.balance.toLocaleString()}</p>
+            </div>
+          </div>
+
+          {/* Status counts */}
+          <div className="grid grid-cols-3 gap-0 border-b border-slate-100 text-center">
+            <div className="px-4 py-3 border-r border-slate-100">
+              <p className="text-2xl font-black text-emerald-700">{overview.paidInFull}</p>
+              <p className="text-[10px] font-black uppercase text-emerald-600 tracking-widest">Paid in Full</p>
+            </div>
+            <div className="px-4 py-3 border-r border-slate-100">
+              <p className="text-2xl font-black text-amber-700">{overview.partial}</p>
+              <p className="text-[10px] font-black uppercase text-amber-600 tracking-widest">Partial</p>
+            </div>
+            <div className="px-4 py-3">
+              <p className="text-2xl font-black text-red-700">{overview.outstanding}</p>
+              <p className="text-[10px] font-black uppercase text-red-600 tracking-widest">Outstanding</p>
+            </div>
+          </div>
+
+          {/* Per-class progress */}
+          <div className="divide-y divide-slate-50 max-h-[260px] overflow-y-auto">
+            {overview.perClass.map(c => (
+              <button key={c.className} onClick={() => setActiveTab("fees")}
+                className="w-full px-5 py-3 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors text-left">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-black text-slate-800 truncate">{c.className}</p>
+                    {!c.structured && <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-200 text-slate-500">NO STRUCTURE</span>}
+                    <span className="text-[10px] text-slate-400 font-bold">{c.students} student{c.students === 1 ? "" : "s"}</span>
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className={`h-full ${c.pct >= 80 ? "bg-emerald-500" : c.pct >= 50 ? "bg-amber-500" : "bg-red-400"}`} style={{ width: `${c.pct}%` }} />
+                    </div>
+                    <span className="text-[10px] font-black text-slate-500 min-w-[32px] text-right">{c.pct}%</span>
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xs font-black text-emerald-700">₦{c.collected.toLocaleString()}</p>
+                  <p className="text-[10px] text-slate-400 font-bold">/ ₦{c.expected.toLocaleString()}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+});
+
+const ResourcesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) => void }) => {
+  const { state } = useApp();
+  const [selectedStandard, setSelectedStandard] = useState("NAPPS");
+  const [syncStatus, setSyncStatus] = useState<Record<string, { synced: boolean; lastSync?: string }>>({});
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [selectedSection, setSelectedSection] = useState<"curriculum" | "notes" | "sources">("curriculum");
+  const [selectedLevel, setSelectedLevel] = useState("Lower Primary");
+  const [selectedSubject, setSelectedSubject] = useState("");
+  const [searchNotes, setSearchNotes] = useState("");
+  const [downloadingPDF, setDownloadingPDF] = useState<string | null>(null);
+  const [coverageFilter, setCoverageFilter] = useState<string>("All");
+  const [sourceSearch, setSourceSearch] = useState("");
+  const [savedResources, setSavedResources] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem("saved_resources");
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { return new Set(); }
+  });
+
+  const toggleSaveResource = (id: string) => {
+    setSavedResources(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try { localStorage.setItem("saved_resources", JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  };
+
+  const filteredSources = useMemo(() => {
+    return RESOURCE_SOURCES.filter(src => {
+      const matchesCoverage = coverageFilter === "All" || src.coverage.includes(coverageFilter);
+      const matchesSearch = !sourceSearch ||
+        src.name.toLowerCase().includes(sourceSearch.toLowerCase()) ||
+        src.description.toLowerCase().includes(sourceSearch.toLowerCase()) ||
+        src.type.toLowerCase().includes(sourceSearch.toLowerCase());
+      return matchesCoverage && matchesSearch;
+    });
+  }, [coverageFilter, sourceSearch]);
+
+  const handleSync = async (standard: string) => {
+    setIsSyncing(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      setSyncStatus(prev => ({
+        ...prev,
+        [standard]: { synced: true, lastSync: new Date().toLocaleString() }
+      }));
+      showToast(`Successfully synced with ${standard} curriculum standards`, "success");
+    } catch {
+      showToast(`Failed to sync with ${standard}`, "error");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleDownloadCurriculum = async (level: string, data: any) => {
+    setDownloadingPDF(`curr-${level}`);
+    try {
+      const ok = await downloadCurriculumGuidePDF(level, data);
+      if (ok) showToast(`Downloaded NAPPS Curriculum Guide for ${level}`, "success");
+      else showToast("Failed to generate PDF", "error");
+    } finally {
+      setDownloadingPDF(null);
+    }
+  };
+
+  const handleDownloadNotes = async (level: string, subject: string, notes: any[]) => {
+    setDownloadingPDF(`notes-${level}-${subject}`);
+    try {
+      const ok = await downloadENotePDF(level, subject, notes);
+      if (ok) showToast(`Downloaded E-Notes for ${level} - ${subject}`, "success");
+      else showToast("Failed to generate PDF", "error");
+    } finally {
+      setDownloadingPDF(null);
+    }
+  };
+
+  const standards = [
+    { id: "NAPPS", name: "NAPPS", description: "National Association of Proprietors of Private Schools", icon: "🏫" },
+    { id: "NERDC", name: "NERDC", description: "Nigerian Educational Research and Development Council", icon: "📚" },
+    { id: "WAEC", name: "WAEC", description: "West African Examinations Council", icon: "📝" },
+    { id: "NECO", name: "NECO", description: "National Examinations Council", icon: "🎓" },
+  ];
+
+  return (
+    <div className="space-y-6 max-w-6xl mx-auto">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-black text-slate-900">Curriculum Resources</h2>
+          <p className="text-sm text-slate-500 mt-1">Sync curriculum, access e-notes & external resources</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setSelectedSection("curriculum")}
+            className={`px-4 py-2.5 min-h-[48px] rounded-lg text-xs font-black uppercase transition-all ${
+              selectedSection === "curriculum"
+                ? "bg-blue-600 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            Curriculum Sync
+          </button>
+          <button
+            onClick={() => setSelectedSection("notes")}
+            className={`px-4 py-2.5 min-h-[48px] rounded-lg text-xs font-black uppercase transition-all ${
+              selectedSection === "notes"
+                ? "bg-blue-600 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            E-Notes
+          </button>
+          <button
+            onClick={() => setSelectedSection("sources")}
+            className={`px-4 py-2.5 min-h-[48px] rounded-lg text-xs font-black uppercase transition-all ${
+              selectedSection === "sources"
+                ? "bg-blue-600 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            External Sources
+          </button>
+        </div>
+      </div>
+
+      {selectedSection === "curriculum" ? (
+        <>
+          <Card className="p-6 border-2 border-slate-100">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Current Curriculum Structure</h3>
+                <p className="text-xs text-slate-400 mt-1">Based on your school's class and subject configuration</p>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-full">
+                <CheckCircle size={14} className="text-emerald-600" />
+                <span className="text-xs font-black text-emerald-700">Active</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {state.schoolSettings?.curriculumLevels?.map(level => (
+                <div key={level} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                  <div className="flex items-center gap-2 mb-3">
+                    <GraduationCap size={18} className="text-blue-600" />
+                    <h4 className="font-black text-slate-900">{level}</h4>
+                  </div>
+                  <p className="text-xs text-slate-500">{CURRICULUM[level]?.length || 0} classes configured</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p-6 border-2 border-slate-100">
+            <div className="mb-6">
+              <h3 className="text-lg font-black text-slate-900">Educational Body Standards Sync</h3>
+              <p className="text-xs text-slate-400 mt-1">Sync curriculum standards with accredited educational bodies</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {standards.map(std => (
+                <div key={std.id} className="bg-slate-50 rounded-xl p-5 border border-slate-100">
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="text-2xl">{std.icon}</span>
+                    <div>
+                      <h4 className="font-black text-slate-900">{std.name}</h4>
+                      <p className="text-xs text-slate-500">{std.description}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {syncStatus[std.id]?.synced ? (
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-full">
+                        <CheckCircle size={14} className="text-emerald-600" />
+                        <span className="text-xs font-black text-emerald-700">Synced</span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleSync(std.id)}
+                        disabled={isSyncing}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-black uppercase hover:bg-blue-700 transition-all disabled:opacity-50"
+                      >
+                        {isSyncing ? "Syncing..." : "Sync"}
+                      </button>
+                    )}
+                    {std.id === "NAPPS" && (
+                      <button
+                        onClick={() => setSelectedStandard(std.id)}
+                        className="px-4 py-2 border-2 border-slate-200 rounded-lg text-xs font-black uppercase hover:bg-slate-50 transition-all"
+                      >
+                        View
+                      </button>
+                    )}
+                  </div>
+                  {syncStatus[std.id]?.lastSync && (
+                    <p className="text-[10px] text-slate-400 mt-2">Last sync: {syncStatus[std.id].lastSync}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {selectedStandard === "NAPPS" && (
+            <Card className="p-6 border-2 border-slate-100">
+              <div className="mb-6">
+                <h3 className="text-lg font-black text-slate-900">NAPPS Curriculum Standards</h3>
+                <p className="text-xs text-slate-400 mt-1">National Association of Proprietors of Private Schools - Approved Curriculum</p>
+              </div>
+              <div className="space-y-4">
+                {Object.entries(NAPPS_CURRICULUM).map(([key, data]) => (
+                  <div key={key} className="bg-slate-50 rounded-xl p-5 border border-slate-100">
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                      <div>
+                        <h4 className="font-black text-slate-900">{key}</h4>
+                        <p className="text-xs text-slate-500">{data.description}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-[10px] font-black">{data.classes.length} Classes</span>
+                        <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-[10px] font-black">{data.subjects.length} Subjects</span>
+                        <button
+                          onClick={() => handleDownloadCurriculum(key, data)}
+                          disabled={downloadingPDF === `curr-${key}`}
+                          className="ml-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] font-black uppercase hover:bg-blue-700 transition-all flex items-center gap-1 disabled:opacity-50"
+                        >
+                          {downloadingPDF === `curr-${key}` ? (
+                            <>Generating...</>
+                          ) : (
+                            <><FileText size={12} /> Download PDF</>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Classes</p>
+                        <div className="flex flex-wrap gap-1">
+                          {data.classes.map(cls => (
+                            <span key={cls} className="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-medium text-slate-600">{cls}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Subjects</p>
+                        <div className="flex flex-wrap gap-1">
+                          {data.subjects.slice(0, 8).map(sub => (
+                            <span key={sub} className="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-medium text-slate-600">{sub}</span>
+                          ))}
+                          {data.subjects.length > 8 && (
+                            <span className="px-2 py-1 bg-slate-100 rounded text-[10px] font-medium text-slate-500">+{data.subjects.length - 8} more</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </>
+      ) : selectedSection === "notes" ? (
+        <>
+          <Card className="p-6 border-2 border-slate-100">
+            <div className="mb-6">
+              <h3 className="text-lg font-black text-slate-900">NAPPS E-Notes</h3>
+              <p className="text-xs text-slate-400 mt-1">Educational notes and resources aligned with NAPPS curriculum</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-400 mb-2">Curriculum Level</label>
+                <Sel value={selectedLevel} onChange={(e: any) => { setSelectedLevel(e.target.value); setSelectedSubject(""); }}>
+                  {Object.keys(E_NOTES).map(level => <option key={level}>{level}</option>)}
+                </Sel>
+              </div>
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-400 mb-2">Subject</label>
+                <Sel value={selectedSubject} onChange={(e: any) => setSelectedSubject(e.target.value)} disabled={!selectedLevel}>
+                  <option value="">Select level first</option>
+                  {selectedLevel && Object.keys(E_NOTES[selectedLevel] || {}).map(sub => <option key={sub}>{sub}</option>)}
+                </Sel>
+              </div>
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-400 mb-2">Search Topics</label>
+                <input
+                  type="text"
+                  value={searchNotes}
+                  onChange={(e) => setSearchNotes(e.target.value)}
+                  placeholder="Search topics..."
+                  className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-medium focus:border-blue-500 outline-none transition-all"
+                />
+              </div>
+            </div>
+
+            {selectedLevel && selectedSubject ? (
+              <div className="space-y-4">
+                {E_NOTES[selectedLevel]?.[selectedSubject] && E_NOTES[selectedLevel][selectedSubject].length > 0 && (
+                  <div className="flex justify-end mb-2">
+                    <button
+                      onClick={() => handleDownloadNotes(selectedLevel, selectedSubject, E_NOTES[selectedLevel][selectedSubject])}
+                      disabled={downloadingPDF === `notes-${selectedLevel}-${selectedSubject}`}
+                      className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-black uppercase hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
+                    >
+                      {downloadingPDF === `notes-${selectedLevel}-${selectedSubject}` ? (
+                        <>Generating PDF...</>
+                      ) : (
+                        <><FileText size={14} /> Download All as PDF</>
+                      )}
+                    </button>
+                  </div>
+                )}
+                {E_NOTES[selectedLevel]?.[selectedSubject]?.filter(note =>
+                  !searchNotes ||
+                  note.title.toLowerCase().includes(searchNotes.toLowerCase()) ||
+                  note.topics.some(topic => topic.toLowerCase().includes(searchNotes.toLowerCase()))
+                ).map((note, idx) => (
+                  <div key={idx} className="bg-white rounded-xl p-5 border border-slate-100 hover:border-blue-200 transition-all">
+                    <div className="flex items-start justify-between mb-3 gap-2">
+                      <h4 className="font-black text-slate-900 flex-1">{note.title}</h4>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-[10px] font-black">
+                          {note.topics.length} Topics
+                        </span>
+                        <button
+                          onClick={() => handleDownloadNotes(selectedLevel, `${selectedSubject}_${note.title}`, [note])}
+                          className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-[10px] font-black hover:bg-emerald-100 transition-all flex items-center gap-1"
+                          title="Download this note as PDF"
+                        >
+                          <FileText size={10} /> PDF
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-slate-600 mb-4">{note.content}</p>
+                    <div>
+                      <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Topics Covered</p>
+                      <div className="flex flex-wrap gap-1">
+                        {note.topics.map((topic, tIdx) => (
+                          <span key={tIdx} className="px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[10px] font-medium text-emerald-700">{topic}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <BookOpen size={48} className="text-slate-300 mx-auto mb-3" />
+                <p className="text-sm text-slate-500 font-medium">Select a curriculum level and subject to view e-notes</p>
+              </div>
+            )}
+          </Card>
+        </>
+      ) : (
+        <>
+          <Card className="p-0 border-2 border-slate-100 overflow-hidden">
+            <div className="sticky top-0 bg-white z-10 border-b border-slate-100 p-4 space-y-3">
+              <div>
+                <h3 className="text-lg font-black text-slate-900">External Curriculum Resources</h3>
+                <p className="text-xs text-slate-400 mt-1">Curated educational platforms for Nigerian schools</p>
+              </div>
+
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={sourceSearch}
+                  onChange={(e) => setSourceSearch(e.target.value)}
+                  placeholder="Search resources..."
+                  className="w-full pl-10 pr-4 py-3 min-h-[48px] bg-slate-50 border-2 border-slate-100 rounded-xl font-medium focus:border-blue-500 outline-none transition-all"
+                />
+              </div>
+
+              <div className="flex gap-2 flex-wrap">
+                {["All", "Nursery", "Primary", "Secondary"].map(filter => (
+                  <button
+                    key={filter}
+                    onClick={() => setCoverageFilter(filter)}
+                    className={`px-4 py-2 min-h-[40px] rounded-full text-xs font-black transition-all ${
+                      coverageFilter === filter
+                        ? "bg-blue-600 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4 space-y-3">
+              {filteredSources.length === 0 ? (
+                <div className="text-center py-12">
+                  <BookOpen size={48} className="text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm text-slate-500 font-medium">No resources match your filters</p>
+                </div>
+              ) : (
+                filteredSources.map(src => {
+                  const isSaved = savedResources.has(src.id);
+                  return (
+                    <div key={src.id} className="bg-white border-2 border-slate-100 rounded-xl p-4 hover:border-blue-200 transition-all">
+                      <div className="flex items-start gap-3">
+                        <div className="text-3xl flex-shrink-0">{src.icon}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <h4 className="font-black text-slate-900 truncate">{src.name}</h4>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black flex-shrink-0 ${src.badgeColor}`}>
+                              {src.badge}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600 mb-3">{src.description}</p>
+
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {src.coverage.map(cov => (
+                              <span key={cov} className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">
+                                {cov}
+                              </span>
+                            ))}
+                            <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-medium">
+                              {src.type}
+                            </span>
+                            {src.id === "nerdc" && (
+                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px] font-black">
+                                ✓ NERDC Aligned
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex gap-2 flex-wrap">
+                            <a
+                              href={src.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => showToast(`Opening ${src.name}...`, "success")}
+                              className="flex-1 min-h-[48px] px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-black uppercase hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+                            >
+                              <Eye size={14} /> Visit Site
+                            </a>
+                            <button
+                              onClick={() => {
+                                toggleSaveResource(src.id);
+                                showToast(isSaved ? "Removed from library" : "Saved to library", "success");
+                              }}
+                              className={`min-h-[48px] px-4 py-2 rounded-lg text-xs font-black uppercase transition-all flex items-center gap-2 border-2 ${
+                                isSaved
+                                  ? "bg-amber-50 border-amber-300 text-amber-700"
+                                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                              }`}
+                              title={isSaved ? "Remove from library" : "Save to library"}
+                            >
+                              <BookMarked size={14} /> {isSaved ? "Saved" : "Save"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </Card>
+
+          <Card className="p-5 border-2 border-blue-100 bg-blue-50">
+            <div className="flex gap-3">
+              <Info size={20} className="text-blue-600 flex-shrink-0 mt-0.5" />
+              <div className="space-y-2">
+                <h4 className="font-black text-blue-900 text-sm">How Resources Work</h4>
+                <ul className="text-xs text-blue-700 space-y-1 font-medium">
+                  <li>• <strong>Deep Links:</strong> Click "Visit Site" to open resources in a new tab</li>
+                  <li>• <strong>Save to Library:</strong> Bookmark resources for quick access later</li>
+                  <li>• <strong>Offline Use:</strong> Download PDFs from E-Notes section for offline access</li>
+                  <li>• <strong>NERDC Aligned:</strong> Resources marked with this badge follow official Nigerian curriculum</li>
+                </ul>
+              </div>
+            </div>
+          </Card>
+
+          {savedResources.size > 0 && (
+            <Card className="p-5 border-2 border-amber-100 bg-amber-50">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <BookMarked size={20} className="text-amber-600" />
+                  <div>
+                    <h4 className="font-black text-amber-900 text-sm">Your Saved Library</h4>
+                    <p className="text-xs text-amber-700">{savedResources.size} resource{savedResources.size !== 1 ? 's' : ''} saved</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setSavedResources(new Set());
+                    try { localStorage.removeItem("saved_resources"); } catch {}
+                    showToast("Library cleared", "success");
+                  }}
+                  className="px-4 py-2 min-h-[40px] bg-white border-2 border-amber-300 text-amber-700 rounded-lg text-xs font-black uppercase hover:bg-amber-100 transition-all"
+                >
+                  Clear All
+                </button>
+              </div>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+});
 
 const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPinRef }: {
   logoUrl: string | null;
@@ -2256,6 +3382,16 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
               </Card>
             </div>
           )}
+          {sec === "signatures" && (
+            <DefaultSignaturesPanel
+              initialTeacher={schoolSettings.defaultTeacherSignature || ""}
+              initialPrincipal={schoolSettings.defaultPrincipalSignature || ""}
+              onSave={(t, p) => {
+                dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { defaultTeacherSignature: t, defaultPrincipalSignature: p } });
+                showToast("Default signatures saved", "success");
+              }}
+            />
+          )}
           {sec === "security" && (
             <Card className="p-6 space-y-5">
               <div>
@@ -2409,13 +3545,19 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings }:
               <div className="min-h-10 text-sm text-slate-700 italic border-b border-dashed border-slate-200 pb-2 mb-3">
                 {curC[f] || <span className="text-slate-300 not-italic text-xs">No remark entered</span>}
               </div>
-              <div className="flex items-end justify-between">
-                <div>
-                  <p className="text-xs font-black uppercase text-slate-400 mb-0.5">Signature</p>
-                  <p className="italic text-base" style={{ fontFamily:`${tpl.fontFamily},serif`, color: tpl.accentColor }}>{curC[sf] || "_____________________"}</p>
+              <div className="flex items-end justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black uppercase text-slate-400 mb-1">Signature</p>
+                  {curC[sf] && typeof curC[sf] === "string" && curC[sf].startsWith("data:image") ? (
+                    <img src={curC[sf]} alt="signature" style={{ maxHeight: "48px", maxWidth: "100%", objectFit: "contain" }} />
+                  ) : curC[sf] ? (
+                    <p className="italic text-base" style={{ fontFamily:`${tpl.fontFamily},serif`, color: tpl.accentColor }}>{curC[sf]}</p>
+                  ) : (
+                    <p className="italic text-xs text-slate-300">_____________________</p>
+                  )}
                 </div>
                 {role === "principal" && tpl.showStamp && (
-                  <div className="w-16 h-10 border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center">
+                  <div className="w-16 h-10 border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center flex-shrink-0">
                     <p className="text-xs text-slate-300 font-bold">Stamp</p>
                   </div>
                 )}
@@ -3273,13 +4415,25 @@ function TimetableView({
               </tr>
             </thead>
             <tbody>
-              {timetable.periods.map(p => (
-                <tr key={p.id}>
+              {timetable.periods.map(p => {
+                const isBreak = ["sbr","lbr","br"].includes(p.id) || /break|lunch/i.test(p.label);
+                const isAssembly = ["asm","cls"].includes(p.id) || /assembly|closing/i.test(p.label);
+                const isNonAcademic = isBreak || isAssembly;
+                return (
+                <tr key={p.id} className={isNonAcademic ? "bg-amber-50/40" : ""}>
                   <td className="px-2 py-2 align-top">
-                    <p className="font-black text-slate-700">{p.label}</p>
+                    <p className={`font-black ${isBreak ? "text-amber-700" : isAssembly ? "text-indigo-700" : "text-slate-700"}`}>{p.label}</p>
                     <p className="text-[10px] text-slate-400">{p.start}–{p.end}</p>
                   </td>
-                  {timetable.days.map(d => {
+                  {isNonAcademic ? (
+                    <td colSpan={timetable.days.length} className="align-middle">
+                      <div className={`text-center text-xs font-black uppercase tracking-widest py-3 rounded-lg ${
+                        isBreak ? "bg-amber-100 text-amber-700" : "bg-indigo-100 text-indigo-700"
+                      }`}>
+                        {isBreak ? "🍎 " : "🔔 "}{p.label}
+                      </div>
+                    </td>
+                  ) : timetable.days.map(d => {
                     const c = cellOf(d, p.id);
                     const mine = c?.teacherName && c.teacherName === currentActor;
                     const dim = !isAdmin && myOnly && !mine;
@@ -3311,7 +4465,7 @@ function TimetableView({
                     );
                   })}
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>
@@ -3650,7 +4804,9 @@ export default function App() {
     { id:"attendance", label:"Attendance", icon:CalendarDays,     show:can("scoreEntry")||isAdmin,            primary:false },
     { id:"timetable",  label:"Timetable",  icon:CalendarClock,    show:true,                                  primary:false },
     { id:"inbox",      label:"Inbox",      icon:Inbox,            show:true,                                  primary:false },
+    { id:"fees",       label:"Fees",       icon:DollarSign,       show:isAdmin,                               primary:false },
     { id:"staff",      label:"Staff",      icon:Users,            show:isAdmin,                               primary:false },
+    { id:"resources",  label:"Resources",  icon:BookOpen,         show:isAdmin,                               primary:false },
     { id:"settings",   label:"Settings",   icon:Settings,         show:isAdmin,                               primary:false },
   ].filter(t => t.show), [can, isAdmin]);
 
@@ -4161,6 +5317,9 @@ export default function App() {
                     </Card>
                   </div>
 
+                  {/* ── Fees Overview (admin-only) ─────────────────────────────── */}
+                  {isAdmin && <FeesOverviewCard schoolSettings={schoolSettings} classRolls={appState.classRolls} entries={entries} setActiveTab={setActiveTab} />}
+
                   {/* ── Staff sign-in roll (admin-only daily presence log) ────── */}
                   {isAdmin && (() => {
                     const today = new Date().toISOString().slice(0, 10);
@@ -4610,16 +5769,40 @@ export default function App() {
                       ? <EmptyState icon={FileText} title="No students found" subtitle="Add scores to see students here" />
                       : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {filteredStudents.map(s => (
-                            <button key={s.id} onClick={() => openReport(s)}
-                              className="p-5 bg-white border-2 border-slate-100 rounded-2xl flex items-center justify-between text-left group hover:border-blue-400 hover:shadow-md transition-all">
-                              <div>
-                                <p className="font-black text-sm uppercase text-slate-900">{s.name}</p>
-                                <p className="text-xs font-bold text-slate-400 mt-0.5">{s.class}</p>
-                              </div>
-                              <FileText size={18} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
-                            </button>
-                          ))}
+                          {filteredStudents.map(s => {
+                            const sc = appState.comments[s.id] || {};
+                            const checks = [
+                              (s.records?.length || 0) > 0,
+                              !!(sc.daysOpen && sc.daysPresent),
+                              !!sc.teacher,
+                              !!sc.principal,
+                              !!sc.teacherSig,
+                              !!sc.principalSig,
+                            ];
+                            const done = checks.filter(Boolean).length;
+                            const pct = Math.round((done / checks.length) * 100);
+                            const barColor = pct === 100 ? "bg-emerald-500" : pct >= 50 ? "bg-blue-500" : "bg-amber-500";
+                            return (
+                              <button key={s.id} onClick={() => openReport(s)}
+                                className="p-5 bg-white border-2 border-slate-100 rounded-2xl text-left group hover:border-blue-400 hover:shadow-md transition-all">
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-black text-sm uppercase text-slate-900 truncate">{s.name}</p>
+                                    <p className="text-xs font-bold text-slate-400 mt-0.5">{s.class}</p>
+                                  </div>
+                                  {pct === 100
+                                    ? <CheckCircle size={18} className="text-emerald-500 flex-shrink-0"/>
+                                    : <FileText size={18} className="text-slate-300 group-hover:text-blue-500 transition-colors flex-shrink-0" />}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className={`h-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <span className={`text-[10px] font-black ${pct === 100 ? "text-emerald-600" : pct >= 50 ? "text-blue-600" : "text-amber-600"}`}>{pct}%</span>
+                                </div>
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
                   </>
@@ -4629,22 +5812,66 @@ export default function App() {
                       className="flex items-center gap-2 text-xs font-black uppercase text-slate-400 hover:text-slate-700 transition-colors">
                       <X size={13} />Back to Students
                     </button>
-                    <Card className="overflow-hidden">
-                      <div className="bg-blue-600 px-6 py-4 flex items-center gap-3">
-                        <PenTool size={16} className="text-white/80" />
-                        <p className="text-white font-black uppercase tracking-widest text-sm">Report Editor — {activeReport.name}</p>
+                    <Card className="overflow-hidden shadow-xl">
+                      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <PenTool size={16} className="text-white/80" />
+                          <p className="text-white font-black uppercase tracking-widest text-sm">Report Editor — {activeReport.name}</p>
+                        </div>
+                        <div className="px-3 py-1 bg-white/20 rounded-full">
+                          <span className="text-white text-xs font-black uppercase">{activeReport.class}</span>
+                        </div>
                       </div>
-                      <div className="p-6 space-y-5">
-                        <div>
-                          <p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-3">Attendance</p>
-                          <div className="grid grid-cols-3 gap-3">
+                      {(() => {
+                        const checks = [
+                          { label: "Scores", done: (activeReport.records?.length || 0) > 0 },
+                          { label: "Attendance", done: !!(curC.daysOpen && curC.daysPresent) },
+                          { label: "Teacher Remark", done: !!curC.teacher },
+                          { label: "Principal Remark", done: !!curC.principal },
+                          { label: "Teacher Signature", done: !!curC.teacherSig },
+                          { label: "Principal Signature", done: !!curC.principalSig },
+                        ];
+                        const completed = checks.filter(c => c.done).length;
+                        const pct = Math.round((completed / checks.length) * 100);
+                        const barColor = pct === 100 ? "bg-emerald-500" : pct >= 50 ? "bg-blue-500" : "bg-amber-500";
+                        return (
+                          <div className="px-6 py-4 bg-slate-50 border-b-2 border-slate-100">
+                            <div className="flex items-center justify-between mb-3">
+                              <p className="text-xs font-black uppercase text-slate-500 tracking-wide">Report Completion</p>
+                              <span className={`text-sm font-black ${pct === 100 ? "text-emerald-600" : pct >= 50 ? "text-blue-600" : "text-amber-600"}`}>
+                                {completed}/{checks.length} · {pct}%
+                              </span>
+                            </div>
+                            <div className="h-2 bg-slate-200 rounded-full overflow-hidden mb-3">
+                              <div className={`h-full ${barColor} transition-all duration-500`} style={{ width: `${pct}%` }} />
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {checks.map(c => (
+                                <span key={c.label} className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black uppercase ${
+                                  c.done ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"
+                                }`}>
+                                  {c.done ? <Check size={10}/> : <X size={10}/>}
+                                  {c.label}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      <div className="p-6 space-y-6">
+                        <Card className="p-5 border-2 border-slate-100 bg-slate-50">
+                          <div className="flex items-center gap-2 mb-4">
+                            <CalendarDays size={16} className="text-blue-600" />
+                            <p className="text-sm font-black uppercase text-slate-900">Attendance Record</p>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4">
                             {([
                               ["daysOpen",    "Days Opened",  "slate"],
                               ["daysPresent", "Days Present", "emerald"],
                               ["daysAbsent",  "Days Absent",  "red"],
                             ] as const).map(([f, l, c]) => (
                               <div key={f}>
-                                <label className="block text-xs font-black uppercase text-slate-400 mb-1.5">{l}</label>
+                                <label className="block text-xs font-black uppercase text-slate-400 mb-2">{l}</label>
                                 <input
                                   type="number" min="0" max="365" placeholder="0"
                                   value={curC[f] || ""}
@@ -4654,39 +5881,66 @@ export default function App() {
                                       dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:f, value:v });
                                   }}
                                   onKeyDown={e => ["-","e","E","+"].includes(e.key) && e.preventDefault()}
-                                  className={`w-full px-3 py-3 rounded-xl border-2 font-black text-center text-xl outline-none transition-all ${c === "emerald" ? "bg-emerald-50 border-emerald-100 focus:border-emerald-400" : c === "red" ? "bg-red-50 border-red-100 focus:border-red-400" : "bg-slate-50 border-slate-100 focus:border-slate-400"}`}
+                                  className={`w-full px-4 py-4 rounded-xl border-2 font-black text-center text-xl outline-none transition-all shadow-sm ${c === "emerald" ? "bg-emerald-50 border-emerald-100 focus:border-emerald-400" : c === "red" ? "bg-red-50 border-red-100 focus:border-red-400" : "bg-slate-50 border-slate-100 focus:border-slate-400"}`}
                                 />
                               </div>
                             ))}
                           </div>
                           {attRate !== null && (
-                            <p className={`mt-2 text-center text-sm font-black ${attRate >= 75 ? "text-emerald-600" : "text-red-500"}`}>
-                              Attendance Rate: {attRate}% {attRate >= 75 ? "✓" : "⚠"}
-                            </p>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                          {([
-                            ["teacher",   "Class Teacher's Remark", "teacherSig",   "Teacher Signature"],
-                            ["principal", "Principal's Remark",     "principalSig", "Principal's Signature"],
-                          ] as const).map(([f, l, sf, sl]) => (
-                            <div key={f} className="space-y-2">
-                              <label className="block text-xs font-black uppercase text-slate-400 tracking-wide">{l}</label>
-                              <textarea
-                                value={curC[f] || ""}
-                                onChange={e => dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:f, value:e.target.value })}
-                                rows={3} placeholder="Enter remark…"
-                                className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-medium focus:border-blue-500 outline-none transition-all resize-none"
-                              />
-                              <input
-                                value={curC[sf] || ""}
-                                onChange={e => dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:sf, value:e.target.value })}
-                                placeholder={sl}
-                                className="w-full px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-xs font-black uppercase tracking-wide focus:border-blue-500 outline-none transition-all"
-                              />
+                            <div className={`mt-4 p-3 rounded-xl text-center font-black ${attRate >= 75 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                              Attendance Rate: {attRate}% {attRate >= 75 ? "✓ Excellent" : "⚠ Needs Attention"}
                             </div>
-                          ))}
-                        </div>
+                          )}
+                        </Card>
+                        <Card className="p-5 border-2 border-slate-100 bg-slate-50">
+                          <div className="flex items-center gap-2 mb-4">
+                            <MessageSquare size={16} className="text-blue-600" />
+                            <p className="text-sm font-black uppercase text-slate-900">Remarks & Signatures</p>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            {([
+                              ["teacher",   "Class Teacher's Remark", "teacherSig",   "Teacher Signature"],
+                              ["principal", "Principal's Remark",     "principalSig", "Principal's Signature"],
+                            ] as const).map(([f, l, sf, sl]) => (
+                              <div key={f} className="space-y-3 p-4 bg-white rounded-xl border border-slate-200">
+                                <label className="block text-xs font-black uppercase text-slate-400 tracking-wide">{l}</label>
+                                <div className="flex gap-2">
+                                  <Sel
+                                    value={Object.keys(BUILTIN_REMARKS).find(key => BUILTIN_REMARKS[key as keyof typeof BUILTIN_REMARKS] === curC[f]) || "custom"}
+                                    onChange={(e: any) => {
+                                      const selected = e.target.value;
+                                      if (selected === "custom") {
+                                        // Keep current text
+                                      } else {
+                                        dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:f, value:BUILTIN_REMARKS[selected as keyof typeof BUILTIN_REMARKS] });
+                                      }
+                                    }}
+                                    className="flex-1"
+                                  >
+                                    <option value="custom">Custom Remark</option>
+                                    <option value="excellent">Excellent Performance</option>
+                                    <option value="veryGood">Very Good Performance</option>
+                                    <option value="good">Good Performance</option>
+                                    <option value="fair">Fair Performance</option>
+                                    <option value="poor">Below Average</option>
+                                  </Sel>
+                                </div>
+                                <textarea
+                                  value={curC[f] || ""}
+                                  onChange={e => dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:f, value:e.target.value })}
+                                  rows={3} placeholder="Enter remark…"
+                                  className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-medium focus:border-blue-500 outline-none transition-all resize-none"
+                                />
+                                <label className="block text-xs font-black uppercase text-slate-400 tracking-wide">{sl}</label>
+                                <SignaturePad
+                                  value={curC[sf] || ""}
+                                  onChange={(val) => dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:sf, value:val })}
+                                  onClear={() => dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:sf, value:"" })}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
                         {can("printReports") && (
                           <div className="grid grid-cols-2 gap-3">
                             <Btn variant="primary" size="lg" onClick={() => setShowPrint(true)}>
@@ -4735,6 +5989,15 @@ export default function App() {
                 />
               )}
 
+              {/* FEES */}
+              {activeTab === "fees" && isAdmin && (
+                <FeesTab showToast={showToast} />
+              )}
+
+              {/* RESOURCES */}
+              {activeTab === "resources" && isAdmin && (
+                <ResourcesTab showToast={showToast} />
+              )}
 
               {/* STAFF */}
               {activeTab === "staff" && isAdmin && (() => {
