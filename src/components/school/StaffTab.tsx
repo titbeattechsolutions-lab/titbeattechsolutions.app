@@ -223,13 +223,6 @@ export default function StaffTab() {
               )}
             </div>
 
-            {/* Signature */}
-            <div>
-              <p className="section-title mb-2">Default Signature</p>
-              <p className="text-xs text-muted-foreground mb-3">Draw or update your signature to be used in staff reports</p>
-              <SignaturePad value={form.signature} onChange={(sig) => setForm((f) => ({ ...f, signature: sig }))} />
-            </div>
-
             <div className="flex gap-3 pt-2">
               <button onClick={() => setShowForm(false)}
                 className="flex-1 py-3 rounded-xl border-2 border-border text-sm font-bold text-muted-foreground">Cancel</button>
