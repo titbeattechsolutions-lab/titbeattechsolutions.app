@@ -8,8 +8,9 @@ import AttendanceTab from "@/components/school/AttendanceTab";
 import StaffTab from "@/components/school/StaffTab";
 import ReportsTab from "@/components/school/ReportsTab";
 import ESignatureTab from "@/components/school/ESignatureTab";
+import ActivityTab from "@/components/school/ActivityTab";
 import SettingsTab from "@/components/school/SettingsTab";
-import { LayoutDashboard, ClipboardList, CalendarDays, Users, FileText, PenTool, Settings } from "lucide-react";
+import { LayoutDashboard, ClipboardList, CalendarDays, Users, FileText, PenTool, Clock, Settings } from "lucide-react";
 
 const TABS = [
   { id: "dashboard", label: "Home", icon: LayoutDashboard },
@@ -18,6 +19,7 @@ const TABS = [
   { id: "reports", label: "Reports", icon: FileText },
   { id: "staff", label: "Staff", icon: Users },
   { id: "esignature", label: "Signature", icon: PenTool },
+  { id: "activity", label: "Activity", icon: Clock },
   { id: "settings", label: "Settings", icon: Settings },
 ] as const;
 
@@ -36,6 +38,51 @@ export default function SchoolApp() {
     return () => clearTimeout(saveTimer.current);
   }, [state]);
 
+  // Track login/logout
+  useEffect(() => {
+    const getSessionInfo = () => {
+      try {
+        const session = JSON.parse(localStorage.getItem("school_staff_session") || "{}");
+        return {
+          staffId: session.staffId,
+          staffName: session.staffName,
+          staffRole: session.staffRole,
+        };
+      } catch {
+        return null;
+      }
+    };
+
+    const sessionInfo = getSessionInfo();
+    if (sessionInfo) {
+      // Track login on mount
+      dispatch({
+        type: "TRACK_LOGIN",
+        payload: {
+          staffId: sessionInfo.staffId,
+          staffName: sessionInfo.staffName,
+          staffRole: sessionInfo.staffRole,
+          event: "login",
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      // Track logout on unmount
+      return () => {
+        dispatch({
+          type: "TRACK_LOGOUT",
+          payload: {
+            staffId: sessionInfo.staffId,
+            staffName: sessionInfo.staffName,
+            staffRole: sessionInfo.staffRole,
+            event: "logout",
+            timestamp: new Date().toISOString(),
+          },
+        });
+      };
+    }
+  }, [dispatch]);
+
   const ctxValue = { state, dispatch, showToast };
 
   return (
@@ -49,6 +96,7 @@ export default function SchoolApp() {
           {tab === "reports" && <ReportsTab />}
           {tab === "staff" && <StaffTab />}
           {tab === "esignature" && <ESignatureTab />}
+          {tab === "activity" && <ActivityTab />}
           {tab === "settings" && <SettingsTab />}
         </div>
 

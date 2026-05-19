@@ -50,6 +50,17 @@ export interface LogEntry {
   ts: string;
 }
 
+export interface ActivityLog {
+  id: string;
+  staffId: string;
+  staffName: string;
+  staffRole: string;
+  event: "login" | "logout";
+  timestamp: string;
+  ip?: string;
+  device?: string;
+}
+
 export interface EmailJSConfig {
   serviceId: string;
   templateId: string;
@@ -69,6 +80,7 @@ export interface AppState {
   entries: ScoreEntry[];
   bin: (ScoreEntry & { deletedAt: string })[];
   logs: LogEntry[];
+  activityLogs: ActivityLog[];
   comments: Record<string, Record<string, string>>;
   attendance: AttendanceRecord[];
   classRolls: Record<string, { id: string; name: string }[]>;
@@ -82,6 +94,7 @@ export const initialState: AppState = {
   entries: [],
   bin: [],
   logs: [],
+  activityLogs: [],
   comments: {},
   attendance: [],
   classRolls: {},
@@ -134,7 +147,9 @@ export type AppAction =
   | { type: "DELETE_ROLL_STUDENT"; className: string; studentId: string }
   | { type: "SET_COMMENT"; studentId: string; field: string; value: string }
   | { type: "SET_SCHOOL_SETTINGS"; payload: Partial<SchoolSettings> }
-  | { type: "SET_ADMIN_PIN"; pin: string };
+  | { type: "SET_ADMIN_PIN"; pin: string }
+  | { type: "TRACK_LOGIN"; payload: Omit<ActivityLog, "id"> }
+  | { type: "TRACK_LOGOUT"; payload: Omit<ActivityLog, "id"> };
 
 function mkLog(action: string, student: string, subject: string, detail = ""): LogEntry {
   return { id: uid(), action, student, subject, detail, ts: new Date().toISOString() };
@@ -217,6 +232,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, schoolSettings: { ...state.schoolSettings, ...action.payload } };
     case "SET_ADMIN_PIN":
       return { ...state, adminPin: action.pin };
+    case "TRACK_LOGIN":
+    case "TRACK_LOGOUT":
+      return {
+        ...state,
+        activityLogs: [{ id: uid(), ...action.payload }, ...state.activityLogs].slice(0, 500),
+      };
     default:
       return state;
   }
@@ -237,8 +258,8 @@ export function loadFromStorage(): AppState {
 
 export function saveToStorage(state: AppState) {
   try {
-    const { schoolSettings, staffList, entries, bin, logs, comments, attendance, classRolls, adminPin } = state;
-    localStorage.setItem(DB_KEY, JSON.stringify({ schoolSettings, staffList, entries, bin, logs, comments, attendance, classRolls, adminPin }));
+    const { schoolSettings, staffList, entries, bin, logs, activityLogs, comments, attendance, classRolls, adminPin } = state;
+    localStorage.setItem(DB_KEY, JSON.stringify({ schoolSettings, staffList, entries, bin, logs, activityLogs, comments, attendance, classRolls, adminPin }));
   } catch (e) {
     console.warn("Save failed", e);
   }
