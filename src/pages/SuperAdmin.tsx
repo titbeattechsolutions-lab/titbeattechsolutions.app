@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { logAuthEvent } from "@/lib/auth-logger";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -93,6 +94,16 @@ export default function SuperAdmin() {
   }, [isSuperAdmin, loadTenants]);
 
   const signOut = async () => {
+    // Get current user for logging
+    const { data } = await supabase.auth.getSession();
+    if (data.session?.user) {
+      await logAuthEvent({
+        authType: "super_admin",
+        eventType: "logout",
+        userId: data.session.user.id,
+      });
+    }
+    
     await supabase.auth.signOut();
     navigate("/auth", { replace: true });
   };

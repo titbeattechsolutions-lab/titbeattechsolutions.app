@@ -1,6 +1,7 @@
 import { useReducer, useEffect, useRef, useState, useCallback } from "react";
 import { appReducer, loadFromStorage, saveToStorage, AppCtx } from "@/lib/school-store";
 import { useToastHook } from "@/hooks/use-app-toast";
+import { logAuthEvent } from "@/lib/auth-logger";
 import AppToast from "@/components/school/AppToast";
 import DashboardTab from "@/components/school/DashboardTab";
 import ScoresTab from "@/components/school/ScoresTab";
@@ -67,6 +68,13 @@ export default function SchoolApp() {
         },
       });
 
+      // Log staff login to database
+      logAuthEvent({
+        authType: "staff",
+        eventType: "login",
+        staffId: sessionInfo.staffId,
+      }).catch(err => console.warn("Failed to log staff login:", err));
+
       // Track logout on unmount
       return () => {
         dispatch({
@@ -79,6 +87,13 @@ export default function SchoolApp() {
             timestamp: new Date().toISOString(),
           },
         });
+
+        // Log staff logout to database
+        logAuthEvent({
+          authType: "staff",
+          eventType: "logout",
+          staffId: sessionInfo.staffId,
+        }).catch(err => console.warn("Failed to log staff logout:", err));
       };
     }
   }, [dispatch]);

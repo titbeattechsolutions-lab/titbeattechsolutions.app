@@ -59,6 +59,7 @@ export interface ActivityLog {
   timestamp: string;
   ip?: string;
   device?: string;
+  lastLoginAt?: string; // ISO timestamp of when this staff last logged in
 }
 
 export interface EmailJSConfig {

@@ -9,6 +9,7 @@ import {
   daysRemaining,
   type TenantSession,
 } from "@/lib/tenant-client";
+import { logAuthEvent } from "@/lib/auth-logger";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LogOut, CloudOff, Loader2, Cloud, CloudUpload } from "lucide-react";
@@ -235,7 +236,17 @@ export default function TenantApp() {
     };
   }, [phase, session, dispatchRehydrate]);
 
-  const signOut = () => {
+  const signOut = async () => {
+    // Log the tenant logout
+    if (session) {
+      await logAuthEvent({
+        authType: "tenant",
+        eventType: "logout",
+        tenantId: session.tenantId,
+        sessionToken: session.sessionToken,
+      });
+    }
+    
     clearTenantSession();
     localStorage.removeItem(DB_KEY);
     navigate("/", { replace: true });

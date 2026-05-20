@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { logAuthEvent } from "@/lib/auth-logger";
 import { Shield } from "lucide-react";
 
 function Spinner() {
@@ -31,8 +32,18 @@ export default function Auth() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
+      
+      // Log successful login
+      if (data.user) {
+        await logAuthEvent({
+          authType: "super_admin",
+          eventType: "login",
+          userId: data.user.id,
+        });
+      }
+      
       navigate("/admin", { replace: true });
     } catch (err) {
       toast({ title: "Sign-in failed", description: (err as Error).message, variant: "destructive" });
