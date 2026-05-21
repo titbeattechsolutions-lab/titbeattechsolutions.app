@@ -871,6 +871,9 @@ function appReducer(state: AppState, action: any): AppState {
       else next[action.key] = action.cell;
       return { ...state, timetable: { ...state.timetable, cells: next } };
     }
+    case "SET_TIMETABLE_CELLS": {
+      return { ...state, timetable: { ...state.timetable, cells: action.cells } };
+    }
     case "SET_TIMETABLE_PERIODS":
       return { ...state, timetable: { ...state.timetable, periods: action.periods } };
     case "ADD_NOTIFICATION":
@@ -4356,20 +4359,95 @@ function TimetableView({
   dispatch: React.Dispatch<any>;
   showToast: (msg: string, type?: string) => void;
 }) {
-  const allClasses = useMemo(() => {
+  // Helper: Get curriculum category for a class
+  const getCategoryForClass = (cls: string): string => {
+    for (const [cat, data] of Object.entries(CURRICULUM)) {
+      if ((data as any).classes.includes(cls)) return cat;
+    }
+    return "";
+  };
+
+  // Helper: Determine SS department (Art, Science, Commercial)
+  const getSSClassDepartment = (cls: string): "Art" | "Science" | "Commercial" | null => {
+    if (!cls.startsWith("SS ")) return null;
+    // Placeholder logic—educators can configure this; for now, cycle through
+    const ssNum = parseInt(cls.match(/\d/)?.[0] || "1");
+    const deps = ["Science", "Art", "Commercial"] as const;
+    return deps[ssNum % 3];
+  };
+
+  // Helper: Group classes by curriculum and handle SS departments
+  const groupedClasses = useMemo(() => {
     const fromRolls = Object.keys(classRolls);
     const fromCells = Object.keys(timetable.cells).map(k => k.split("|")[0]);
-    const all = [...new Set([...fromRolls, ...fromCells])].filter(Boolean).sort();
+    const all = [...new Set([...fromRolls, ...fromCells])].filter(Boolean);
     if (all.length === 0) {
-      // fall back to curriculum classes
-      return Object.values(CURRICULUM).flatMap((c: any) => c.classes);
+      all.push(...Object.values(CURRICULUM).flatMap((c: any) => c.classes));
     }
-    return all;
+    
+    // Group by category
+    const groups: Record<string, string[]> = {};
+    all.forEach(cls => {
+      const cat = getCategoryForClass(cls);
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(cls);
+    });
+
+    // For SS, further group by department
+    if (groups["Senior Secondary"]) {
+      const byDept: Record<string, string[]> = { "Science": [], "Art": [], "Commercial": [] };
+      groups["Senior Secondary"].forEach(cls => {
+        const dept = getSSClassDepartment(cls) || "Science";
+        byDept[dept].push(cls);
+      });
+      groups["Senior Secondary (Science)"] = byDept.Science;
+      groups["Senior Secondary (Art)"] = byDept.Art;
+      groups["Senior Secondary (Commercial)"] = byDept.Commercial;
+      delete groups["Senior Secondary"];
+    }
+
+    return groups;
   }, [classRolls, timetable.cells]);
+
+  // Helper: Default subject assignments for a class
+  const getDefaultSubjectsForClass = (cls: string): string[] => {
+    const cat = getCategoryForClass(cls);
+    const curriculum = CURRICULUM[cat] as any;
+    return curriculum?.subjects || [];
+  };
+
+  // Helper: Generate auto-fill for a class
+  const generateAutoFill = (cls: string) => {
+    const subjects = getDefaultSubjectsForClass(cls);
+    const periods = timetable.periods.filter(p => !["sbr","lbr","br","asm","cls"].includes(p.id) && !/break|lunch|assembly|closing/i.test(p.label));
+    const days = timetable.days;
+    
+    const newCells = { ...timetable.cells };
+    let subjectIndex = 0;
+    
+    periods.forEach((period, pIdx) => {
+      days.forEach((day, dIdx) => {
+        if (subjectIndex < subjects.length) {
+          const key = `${cls}|${day}|${period.id}`;
+          if (!newCells[key]) { // Only fill empty slots
+            newCells[key] = { subject: subjects[subjectIndex], teacherName: "" };
+            subjectIndex = (subjectIndex + 1) % subjects.length; // Cycle through subjects
+          }
+        }
+      });
+    });
+    
+    return newCells;
+  };
+
+  const allClasses = useMemo(() => {
+    return Object.values(groupedClasses).flat().sort();
+  }, [groupedClasses]);
 
   const [activeClass, setActiveClass] = useState<string>(allClasses[0] || "");
   const [editing, setEditing] = useState<{ key: string; subject: string; teacherName: string } | null>(null);
   const [myOnly, setMyOnly] = useState(false);
+  const [showAutoSet, setShowAutoSet] = useState(false);
 
   useEffect(() => {
     if (!activeClass && allClasses.length) setActiveClass(allClasses[0]);
@@ -4379,38 +4457,57 @@ function TimetableView({
     timetable.cells[`${activeClass}|${day}|${periodId}`];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-black text-slate-900 uppercase">Timetable</h1>
-          <p className="text-sm text-slate-400">Weekly class schedule {isAdmin ? "— tap a cell to edit" : "— read-only"}</p>
+          <p className="text-xs sm:text-sm text-slate-400">Weekly class schedule {isAdmin ? "— tap a cell to edit" : "— read-only"}</p>
         </div>
         {!isAdmin && (
           <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
             <input type="checkbox" checked={myOnly} onChange={e => setMyOnly(e.target.checked)} />
-            My periods only
+            My periods
           </label>
         )}
       </div>
 
-      <Card className="p-4 space-y-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-xs font-black uppercase text-slate-400">Class:</p>
-          {allClasses.map(c => (
-            <button key={c} onClick={() => setActiveClass(c)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all ${activeClass === c ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
-              {c}
-            </button>
-          ))}
+      <Card className="p-3 sm:p-4 space-y-3">
+        {/* Class Selection - Mobile-friendly Dropdown */}
+        <div className="space-y-2">
+          <label className="text-xs font-black uppercase text-slate-500">Select Class:</label>
+          <select 
+            value={activeClass} 
+            onChange={e => setActiveClass(e.target.value)}
+            className="w-full px-3 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-lg text-sm font-bold focus:border-blue-500 outline-none"
+          >
+            {Object.entries(groupedClasses).map(([category, classes]) => (
+              <optgroup key={category} label={category}>
+                {(classes as string[]).sort().map(cls => (
+                  <option key={cls} value={cls}>{cls}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
         </div>
 
-        <div className="overflow-x-auto -mx-4 px-4">
-          <table className="w-full text-xs border-separate border-spacing-1 min-w-[640px]">
+        {/* Auto-Set Button for Admins */}
+        {isAdmin && (
+          <button
+            onClick={() => setShowAutoSet(true)}
+            className="w-full px-3 py-2 bg-emerald-50 border-2 border-emerald-200 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-all"
+          >
+            ⚡ Auto-Set Timetable for {activeClass}
+          </button>
+        )}
+
+        {/* Timetable Grid - Mobile Responsive */}
+        <div className="overflow-x-auto -mx-3 sm:-mx-4 px-3 sm:px-4">
+          <table className="w-full text-[11px] sm:text-xs border-separate border-spacing-0.5 sm:border-spacing-1 min-w-[640px]">
             <thead>
               <tr>
-                <th className="text-left text-slate-400 font-black uppercase px-2">Period</th>
+                <th className="text-left text-slate-400 font-black uppercase px-1 sm:px-2 py-1">Period</th>
                 {timetable.days.map(d => (
-                  <th key={d} className="text-slate-500 font-black uppercase">{d}</th>
+                  <th key={d} className="text-slate-500 font-black uppercase px-1 py-1">{d}</th>
                 ))}
               </tr>
             </thead>
@@ -4421,16 +4518,16 @@ function TimetableView({
                 const isNonAcademic = isBreak || isAssembly;
                 return (
                 <tr key={p.id} className={isNonAcademic ? "bg-amber-50/40" : ""}>
-                  <td className="px-2 py-2 align-top">
-                    <p className={`font-black ${isBreak ? "text-amber-700" : isAssembly ? "text-indigo-700" : "text-slate-700"}`}>{p.label}</p>
-                    <p className="text-[10px] text-slate-400">{p.start}–{p.end}</p>
+                  <td className="px-1 sm:px-2 py-1 align-top">
+                    <p className={`font-black text-[10px] sm:text-xs ${isBreak ? "text-amber-700" : isAssembly ? "text-indigo-700" : "text-slate-700"}`}>{p.label}</p>
+                    <p className="text-[9px] text-slate-400">{p.start}–{p.end}</p>
                   </td>
                   {isNonAcademic ? (
                     <td colSpan={timetable.days.length} className="align-middle">
-                      <div className={`text-center text-xs font-black uppercase tracking-widest py-3 rounded-lg ${
+                      <div className={`text-center text-[10px] sm:text-xs font-black uppercase tracking-widest py-2 sm:py-3 rounded-lg ${
                         isBreak ? "bg-amber-100 text-amber-700" : "bg-indigo-100 text-indigo-700"
                       }`}>
-                        {isBreak ? "🍎 " : "🔔 "}{p.label}
+                        {isBreak ? "🍎" : "🔔"} {p.label}
                       </div>
                     </td>
                   ) : timetable.days.map(d => {
@@ -4446,7 +4543,7 @@ function TimetableView({
                             subject: c?.subject || "",
                             teacherName: c?.teacherName || "",
                           })}
-                          className={`w-full min-h-[56px] p-2 rounded-lg text-left transition-all border-2 ${
+                          className={`w-full min-h-[48px] sm:min-h-[56px] p-1 sm:p-2 rounded-lg text-left transition-all border-2 text-[10px] sm:text-xs ${
                             dim ? "opacity-30" :
                             mine ? "bg-emerald-50 border-emerald-300" :
                             c ? "bg-blue-50 border-blue-100" : "bg-slate-50 border-dashed border-slate-200"
@@ -4454,11 +4551,11 @@ function TimetableView({
                         >
                           {c ? (
                             <>
-                              <p className="font-black text-slate-800 leading-tight">{c.subject || "—"}</p>
-                              {c.teacherName && <p className="text-[10px] text-slate-500 mt-0.5 truncate">{c.teacherName}</p>}
+                              <p className="font-black text-slate-800 leading-tight line-clamp-1">{c.subject || "—"}</p>
+                              {c.teacherName && <p className="text-[9px] text-slate-500 mt-0.5 truncate">{c.teacherName}</p>}
                             </>
                           ) : (
-                            <p className="text-[10px] text-slate-400 italic">{isAdmin ? "Tap to set" : "—"}</p>
+                            <p className="text-[9px] text-slate-400 italic">{isAdmin ? "Tap to set" : "—"}</p>
                           )}
                         </button>
                       </td>
@@ -4471,6 +4568,29 @@ function TimetableView({
         </div>
       </Card>
 
+      {/* Auto-Set Modal */}
+      {showAutoSet && (
+        <Modal onBgClick={() => setShowAutoSet(false)}>
+          <MHead icon={CalendarClock} title="Auto-Set Timetable" subtitle={`Generate default schedule for ${activeClass}`} color="bg-emerald-600" onClose={() => setShowAutoSet(false)} />
+          <div className="p-6 space-y-4">
+            <p className="text-sm text-slate-600">This will auto-fill empty slots with subjects from the curriculum for <strong>{activeClass}</strong>. You can customize individual cells afterward.</p>
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded text-sm text-blue-700">
+              <p className="font-semibold mb-1">ℹ Subjects will be cycled through {timetable.periods.filter(p => !["sbr","lbr","br","asm","cls"].includes(p.id) && !/break|lunch|assembly|closing/i.test(p.label)).length} academic periods.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Btn variant="ghost" onClick={() => setShowAutoSet(false)}>Cancel</Btn>
+              <Btn variant="primary" onClick={() => {
+                const newCells = generateAutoFill(activeClass);
+                dispatch({ type: "SET_TIMETABLE_CELLS", cells: newCells });
+                showToast(`Timetable auto-filled for ${activeClass}!`);
+                setShowAutoSet(false);
+              }}>Auto-Fill</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Edit Cell Modal */}
       {editing && (
         <Modal onBgClick={() => setEditing(null)}>
           <MHead icon={CalendarClock} title="Edit Timetable Slot" subtitle={editing.key.replace(/\|/g, " · ")} color="bg-blue-600" onClose={() => setEditing(null)} />
