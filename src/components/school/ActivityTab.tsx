@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useApp } from "@/lib/school-store";
 import type { ActivityLog } from "@/lib/school-store";
+import LoginActivityDashboard from "@/components/LoginActivityDashboard";
 import { LogIn, LogOut, Filter, Clock } from "lucide-react";
 
 export default function ActivityTab() {
@@ -159,6 +160,19 @@ export default function ActivityTab() {
           </div>
         )}
       </div>
+
+      {/* Database-recorded login activity */}
+      {currentStaffId && (
+        <div className="border-t p-4 space-y-3">
+          <h3 className="text-sm font-semibold">Server Activity Record</h3>
+          <LoginActivityDashboard
+            authType="staff"
+            identifier={currentStaffId}
+            limit={10}
+            showIpAddress={false}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { logAuthEvent } from "@/lib/auth-logger";
+import LoginActivityDashboard from "@/components/LoginActivityDashboard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,6 +49,7 @@ export default function SuperAdmin() {
   const [authChecked, setAuthChecked] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -62,6 +64,7 @@ export default function SuperAdmin() {
         return;
       }
       setUserEmail(session.user.email ?? null);
+      setUserId(session.user.id);
       supabase
         .rpc("has_role", { _user_id: session.user.id, _role: "super_admin" })
         .then(({ data }) => {
@@ -197,6 +200,18 @@ export default function SuperAdmin() {
         <SecurityChecksSection />
         <TokenAuditSection />
         <TenantAuthAuditSection />
+        
+        {userId && (
+          <div className="space-y-2">
+            <h2 className="font-semibold">Your Login Activity</h2>
+            <LoginActivityDashboard
+              authType="super_admin"
+              identifier={userId}
+              limit={20}
+              showIpAddress={true}
+            />
+          </div>
+        )}
       </div>
 
       {payOpen && (

@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useApp } from "@/lib/school-store";
+import LoginActivityDashboard from "@/components/LoginActivityDashboard";
 import { GraduationCap, Users, BookOpen, ClipboardList, TrendingUp } from "lucide-react";
 
 export default function DashboardTab() {
