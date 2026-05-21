@@ -4900,6 +4900,7 @@ export default function App() {
         await persistAdminPin(adminPinRef.current);
       }
       setAuth({ loggedIn: true, user: null });
+      setActiveTab("dashboard");
       logSignIn("Admin", "Administrator");
       return;
     }
@@ -4919,6 +4920,7 @@ export default function App() {
     }
 
     setAuth({ loggedIn: true, user: s });
+    setActiveTab("dashboard");
     logSignIn(s.name, s.role);
     if (s.status === "restricted") showToast("Account restricted — limited access.", "warning");
   }, [loginId, loginPass, staffList, showToast]);
