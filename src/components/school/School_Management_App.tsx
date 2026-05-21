@@ -4359,79 +4359,30 @@ function TimetableView({
   dispatch: React.Dispatch<any>;
   showToast: (msg: string, type?: string) => void;
 }) {
-  // Helper: Get curriculum category for a class
-  const getCategoryForClass = (cls: string): string => {
-    for (const [cat, data] of Object.entries(CURRICULUM)) {
-      if ((data as any).classes.includes(cls)) return cat;
+  // Helper: Get subjects for a class from curriculum
+  const getSubjectsForClass = (cls: string): string[] => {
+    for (const cat of Object.values(CURRICULUM)) {
+      if ((cat as any).classes.includes(cls)) return (cat as any).subjects;
     }
-    return "";
+    return [];
   };
 
-  // Helper: Determine SS department (Art, Science, Commercial)
-  const getSSClassDepartment = (cls: string): "Art" | "Science" | "Commercial" | null => {
-    if (!cls.startsWith("SS ")) return null;
-    // Placeholder logic—educators can configure this; for now, cycle through
-    const ssNum = parseInt(cls.match(/\d/)?.[0] || "1");
-    const deps = ["Science", "Art", "Commercial"] as const;
-    return deps[ssNum % 3];
-  };
-
-  // Helper: Group classes by curriculum and handle SS departments
-  const groupedClasses = useMemo(() => {
-    const fromRolls = Object.keys(classRolls);
-    const fromCells = Object.keys(timetable.cells).map(k => k.split("|")[0]);
-    const all = [...new Set([...fromRolls, ...fromCells])].filter(Boolean);
-    if (all.length === 0) {
-      all.push(...Object.values(CURRICULUM).flatMap((c: any) => c.classes));
-    }
-    
-    // Group by category
-    const groups: Record<string, string[]> = {};
-    all.forEach(cls => {
-      const cat = getCategoryForClass(cls);
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(cls);
-    });
-
-    // For SS, further group by department
-    if (groups["Senior Secondary"]) {
-      const byDept: Record<string, string[]> = { "Science": [], "Art": [], "Commercial": [] };
-      groups["Senior Secondary"].forEach(cls => {
-        const dept = getSSClassDepartment(cls) || "Science";
-        byDept[dept].push(cls);
-      });
-      groups["Senior Secondary (Science)"] = byDept.Science;
-      groups["Senior Secondary (Art)"] = byDept.Art;
-      groups["Senior Secondary (Commercial)"] = byDept.Commercial;
-      delete groups["Senior Secondary"];
-    }
-
-    return groups;
-  }, [classRolls, timetable.cells]);
-
-  // Helper: Default subject assignments for a class
-  const getDefaultSubjectsForClass = (cls: string): string[] => {
-    const cat = getCategoryForClass(cls);
-    const curriculum = CURRICULUM[cat] as any;
-    return curriculum?.subjects || [];
-  };
-
-  // Helper: Generate auto-fill for a class
+  // Helper: Generate auto-fill for a class using curriculum subjects
   const generateAutoFill = (cls: string) => {
-    const subjects = getDefaultSubjectsForClass(cls);
+    const subjects = getSubjectsForClass(cls);
     const periods = timetable.periods.filter(p => !["sbr","lbr","br","asm","cls"].includes(p.id) && !/break|lunch|assembly|closing/i.test(p.label));
     const days = timetable.days;
     
     const newCells = { ...timetable.cells };
     let subjectIndex = 0;
     
-    periods.forEach((period, pIdx) => {
-      days.forEach((day, dIdx) => {
+    periods.forEach((period) => {
+      days.forEach((day) => {
         if (subjectIndex < subjects.length) {
           const key = `${cls}|${day}|${period.id}`;
           if (!newCells[key]) { // Only fill empty slots
             newCells[key] = { subject: subjects[subjectIndex], teacherName: "" };
-            subjectIndex = (subjectIndex + 1) % subjects.length; // Cycle through subjects
+            subjectIndex = (subjectIndex + 1) % subjects.length;
           }
         }
       });
@@ -4440,9 +4391,16 @@ function TimetableView({
     return newCells;
   };
 
+  // Get all classes - same as score entry form
   const allClasses = useMemo(() => {
-    return Object.values(groupedClasses).flat().sort();
-  }, [groupedClasses]);
+    const fromRolls = Object.keys(classRolls);
+    const fromCells = Object.keys(timetable.cells).map(k => k.split("|")[0]);
+    const all = [...new Set([...fromRolls, ...fromCells])].filter(Boolean).sort();
+    if (all.length === 0) {
+      return ALL_CLASSES;
+    }
+    return all;
+  }, [classRolls, timetable.cells]);
 
   const [activeClass, setActiveClass] = useState<string>(allClasses[0] || "");
   const [editing, setEditing] = useState<{ key: string; subject: string; teacherName: string } | null>(null);
@@ -4480,12 +4438,8 @@ function TimetableView({
             onChange={e => setActiveClass(e.target.value)}
             className="w-full px-3 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-lg text-sm font-bold focus:border-blue-500 outline-none"
           >
-            {Object.entries(groupedClasses).map(([category, classes]) => (
-              <optgroup key={category} label={category}>
-                {(classes as string[]).sort().map(cls => (
-                  <option key={cls} value={cls}>{cls}</option>
-                ))}
-              </optgroup>
+            {allClasses.map(cls => (
+              <option key={cls} value={cls}>{cls}</option>
             ))}
           </select>
         </div>
