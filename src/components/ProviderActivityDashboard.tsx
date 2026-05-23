@@ -46,14 +46,23 @@ export default function ProviderActivityDashboard() {
           .limit(150),
       ]);
 
-      if (loginErr) throw loginErr;
-      if (activityErr) throw activityErr;
+      if (loginErr || activityErr) {
+        const message = loginErr?.message || activityErr?.message || "Failed to load provider activity";
+        console.error("Provider activity query error", { loginErr, activityErr });
+        throw new Error(message);
+      }
 
       setAccessLogs((logins ?? []) as ActivityRecord[]);
       setActivityLogs((activities ?? []) as ActivityRecord[]);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load provider activity");
+      const message = err instanceof Error
+        ? err.message
+        : typeof err === "object" && err !== null && "message" in err
+          ? String((err as any).message)
+          : String(err);
+      console.error("Provider activity load failed", err);
+      setError(message || "Failed to load provider activity");
       setAccessLogs([]);
       setActivityLogs([]);
     } finally {
