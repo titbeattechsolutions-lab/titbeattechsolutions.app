@@ -1103,9 +1103,9 @@ const PinAuth = ({ title, subtitle, headerColor = "bg-blue-600", icon: Icon, chi
               ref={ref}
               type={show ? "text" : "password"}
               value={pin}
-              maxLength={8}
+              maxLength={32}
               placeholder="••••••"
-              onChange={e => { setPin(e.target.value.replace(/\D/g, "")); setErr(""); }}
+              onChange={e => { setPin(e.target.value); setErr(""); }}
               onKeyDown={e => e.key === "Enter" && verify()}
               className={`w-full px-4 py-3 bg-slate-50 border-2 ${err ? "border-red-300" : "border-slate-100"} rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-blue-500 outline-none transition-all`}
             />
@@ -3372,9 +3372,9 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
                     <input
                       type="password"
                       value={clearPin}
-                      maxLength={8}
+                      maxLength={32}
                       placeholder="Admin PIN"
-                      onChange={e => { setClearPin(e.target.value.replace(/\D/g,"")); setClearPinErr(""); }}
+                      onChange={e => { setClearPin(e.target.value); setClearPinErr(""); }}
                       className="flex-1 px-3 py-2.5 bg-white border-2 border-red-200 rounded-xl text-sm font-black text-center tracking-widest focus:border-red-400 outline-none transition-all"
                     />
                     <Btn variant="danger" size="sm" onClick={handleClearDB} disabled={clearPin.length < 4}>
@@ -3413,16 +3413,16 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
                 <p className="text-xs text-amber-700 font-medium">Keep this PIN private. Never share it with anyone — it grants full administrative access.</p>
               </div>
               {(["cur", "nxt", "cnf"] as const).map((fk, i) => {
-                const labels = { cur: "Current PIN", nxt: "New PIN (min 4 digits)", cnf: "Confirm New PIN" };
+                const labels = { cur: "Current PIN", nxt: "New PIN (min 4 characters)", cnf: "Confirm New PIN" };
                 return (
                   <Field key={fk} label={labels[fk]}>
                     <div className="relative">
                       <input
                         type={pinSh[fk] ? "text" : "password"}
                         value={pinF[fk]}
-                        maxLength={8}
+                        maxLength={32}
                         placeholder="••••••"
-                        onChange={e => setPinF(p => ({ ...p, [fk]: e.target.value.replace(/\D/g, "") }))}
+                        onChange={e => setPinF(p => ({ ...p, [fk]: e.target.value }))}
                         className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-blue-500 outline-none transition-all pr-11"
                       />
                       <button type="button" onClick={() => setPinSh(s => ({ ...s, [fk]: !s[fk] }))} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -5213,22 +5213,22 @@ export default function App() {
         <div className="text-center mb-6">
           <SchoolLogo logoUrl={schoolLogo} size="lg" className="mx-auto mb-4" />
           <h2 className="text-xl font-black text-slate-900">Set Admin PIN</h2>
-          <p className="text-xs text-slate-500 mt-2">First-time setup. Choose a private PIN of at least 4 digits. Keep it safe — it grants full administrative access and cannot be recovered.</p>
+          <p className="text-xs text-slate-500 mt-2">First-time setup. Choose a strong password of at least 4 characters — letters, numbers and symbols are all supported. Keep it private; it grants full administrative access and cannot be recovered.</p>
         </div>
         <div className="space-y-4">
           <Field label="New Admin PIN" error={setupErr}>
-            <input type="password" inputMode="numeric" maxLength={8} value={setupPin.nxt}
-              onChange={e => { setSetupPin(p => ({ ...p, nxt: e.target.value.replace(/\D/g, "") })); setSetupErr(""); }}
-              placeholder="••••••" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-blue-500 outline-none" />
+            <input type="password" maxLength={32} value={setupPin.nxt}
+              onChange={e => { setSetupPin(p => ({ ...p, nxt: e.target.value })); setSetupErr(""); }}
+              placeholder="Min 4 characters" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-blue-500 outline-none" />
           </Field>
           <Field label="Confirm PIN">
-            <input type="password" inputMode="numeric" maxLength={8} value={setupPin.cnf}
-              onChange={e => { setSetupPin(p => ({ ...p, cnf: e.target.value.replace(/\D/g, "") })); setSetupErr(""); }}
-              placeholder="••••••" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-blue-500 outline-none" />
+            <input type="password" maxLength={32} value={setupPin.cnf}
+              onChange={e => { setSetupPin(p => ({ ...p, cnf: e.target.value })); setSetupErr(""); }}
+              placeholder="Re-enter password" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-blue-500 outline-none" />
           </Field>
           <Btn variant="primary" size="lg" className="w-full" onClick={async () => {
-            if (setupPin.nxt.length < 4) return setSetupErr("PIN must be at least 4 digits.");
-            if (setupPin.nxt !== setupPin.cnf) return setSetupErr("PINs do not match.");
+            if (setupPin.nxt.length < 4) return setSetupErr("Password must be at least 4 characters.");
+            if (setupPin.nxt !== setupPin.cnf) return setSetupErr("Passwords do not match.");
             await persistAdminPin(setupPin.nxt);
             setSetupPin({ nxt: "", cnf: "" });
             setNeedsAdminSetup(false);

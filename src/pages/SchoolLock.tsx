@@ -80,7 +80,7 @@ export default function SchoolLock() {
     e.preventDefault();
     if (!pending) return;
     if (adminPin.length < 4) {
-      toast({ title: "PIN too short", description: "Use at least 4 digits.", variant: "destructive" });
+      toast({ title: "Password too short", description: "Use at least 4 characters.", variant: "destructive" });
       return;
     }
     if (adminPin !== confirmPin) {
@@ -230,9 +230,9 @@ export default function SchoolLock() {
                   <div style={{ position: "relative" }}>
                     <input
                       id="adminPin" className="auth-input"
-                      type={showPin ? "text" : "password"} inputMode="numeric"
+                      type={showPin ? "text" : "password"}
                       value={adminPin} onChange={(e) => setAdminPinInput(e.target.value)}
-                      required autoFocus placeholder="Enter your admin PIN"
+                      required autoFocus placeholder="Enter your admin password"
                     />
                     <button type="button" onClick={() => setShowPin(p => !p)}
                       style={{ position: "absolute", right: "1rem", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 0 }}>
@@ -255,13 +255,13 @@ export default function SchoolLock() {
             {step === "set-admin" && (
               <form onSubmit={handleSetAdmin} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                 <div className="auth-notice" style={{ textAlign: "left", marginBottom: "0.5rem" }}>
-                  🔐 First-time setup — create your school's admin PIN. Keep it private.
+                  🔐 First-time setup — create your school’s admin password. Letters, numbers and symbols are allowed. Keep it private.
                 </div>
 
                 <div>
                   <label className="auth-label" htmlFor="newPin">New Admin PIN</label>
                   <div style={{ position: "relative" }}>
-                    <input id="newPin" className="auth-input" type={showPin ? "text" : "password"} inputMode="numeric" minLength={4} value={adminPin} onChange={(e) => setAdminPinInput(e.target.value)} required autoFocus placeholder="Minimum 4 digits" />
+                    <input id="newPin" className="auth-input" type={showPin ? "text" : "password"} minLength={4} value={adminPin} onChange={(e) => setAdminPinInput(e.target.value)} required autoFocus placeholder="Min 4 characters" />
                     <button type="button" onClick={() => setShowPin(p => !p)} style={{ position: "absolute", right: "1rem", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 0 }}>{showPin ? "Hide" : "Show"}</button>
                   </div>
                 </div>
@@ -269,7 +269,7 @@ export default function SchoolLock() {
                 <div>
                   <label className="auth-label" htmlFor="confirmPin">Confirm PIN</label>
                   <div style={{ position: "relative" }}>
-                    <input id="confirmPin" className="auth-input" type={showConfirm ? "text" : "password"} inputMode="numeric" minLength={4} value={confirmPin} onChange={(e) => setConfirmPin(e.target.value)} required placeholder="Re-enter PIN" />
+                    <input id="confirmPin" className="auth-input" type={showConfirm ? "text" : "password"} minLength={4} value={confirmPin} onChange={(e) => setConfirmPin(e.target.value)} required placeholder="Re-enter password" />
                     <button type="button" onClick={() => setShowConfirm(p => !p)} style={{ position: "absolute", right: "1rem", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 0 }}>{showConfirm ? "Hide" : "Show"}</button>
                   </div>
                   {confirmPin && adminPin && confirmPin !== adminPin && (
