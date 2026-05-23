@@ -12,12 +12,18 @@ interface ActivityRecord {
   auth_type?: string;
   user_id?: string;
   tenant_id?: string;
+  tenant_name?: string;
   staff_id?: string;
   ip_address?: string | null;
   action?: string;
   details?: string | null;
   timestamp: string;
   created_at?: string;
+}
+
+interface TenantInfo {
+  id: string;
+  school_name: string;
 }
 
 export default function ProviderActivityDashboard() {
@@ -33,27 +39,68 @@ export default function ProviderActivityDashboard() {
     setError(null);
 
     try {
-      const [{ data: logins, error: loginErr }, { data: activities, error: activityErr }] = await Promise.all([
-        supabase
-          .from("login_logs")
-          .select("*")
-          .order("timestamp", { ascending: false })
-          .limit(100),
-        supabase
-          .from("tenant_activity_logs")
-          .select("*")
-          .order("timestamp", { ascending: false })
-          .limit(150),
-      ]);
+      const tenantListPromise = supabase.from("tenants").select("id, school_name");
+      const loginPromise = supabase
+        .from("login_logs")
+        .select("*")
+        .order("timestamp", { ascending: false })
+        .limit(100);
 
-      if (loginErr || activityErr) {
-        const message = loginErr?.message || activityErr?.message || "Failed to load provider activity";
-        console.error("Provider activity query error", { loginErr, activityErr });
-        throw new Error(message);
+      const [tenantListResult, loginResult] = await Promise.all([tenantListPromise, loginPromise]);
+      if (tenantListResult.error) {
+        throw tenantListResult.error;
+      }
+      if (loginResult.error) {
+        throw loginResult.error;
       }
 
-      setAccessLogs((logins ?? []) as ActivityRecord[]);
-      setActivityLogs((activities ?? []) as ActivityRecord[]);
+      const tenants = (tenantListResult.data ?? []) as TenantInfo[];
+      const tenantNameMap = Object.fromEntries(tenants.map((tenant) => [tenant.id, tenant.school_name]));
+
+      let activityRows: ActivityRecord[] = [];
+      const { data: directActivityData, error: directActivityError } = await supabase
+        .from("tenant_activity_logs")
+        .select("*")
+        .order("timestamp", { ascending: false })
+        .limit(150);
+
+      if (!directActivityError && directActivityData) {
+        activityRows = (directActivityData as ActivityRecord[]).map((row) => ({
+          ...row,
+          tenant_name: tenantNameMap[row.tenant_id ?? ""] ?? undefined,
+        }));
+      } else {
+        console.warn("Direct tenant_activity_logs query failed, falling back to per-tenant RPC", directActivityError);
+        const tenantsWithRecords = await Promise.allSettled(
+          tenants.map(async (tenant) => {
+            const { data: rpcData, error: rpcError } = await supabase.rpc("get_tenant_activity_logs", {
+              _tenant_id: tenant.id,
+              _limit: 50,
+            });
+            if (rpcError) {
+              throw rpcError;
+            }
+            return (rpcData ?? []).map((row: any) => ({
+              ...row,
+              tenant_id: tenant.id,
+              tenant_name: tenant.school_name,
+            }));
+          })
+        );
+
+        const fallbackRecords = tenantsWithRecords
+          .filter((result): result is PromiseFulfilledResult<ActivityRecord[]> => result.status === "fulfilled")
+          .flatMap((result) => result.value);
+
+        if (fallbackRecords.length === 0) {
+          throw directActivityError || new Error("No tenant activity records could be loaded.");
+        }
+
+        activityRows = fallbackRecords;
+      }
+
+      setAccessLogs((loginResult.data ?? []) as ActivityRecord[]);
+      setActivityLogs(activityRows);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
       const message = err instanceof Error
