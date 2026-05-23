@@ -53,12 +53,43 @@ export default function ProviderActivityDashboard() {
         .order("timestamp", { ascending: false })
         .limit(100);
 
-      const accessRows = !accessResult.error && accessResult.data
-        ? (accessResult.data as ActivityRecord[]).map((row) => ({
-            ...row,
-            tenant_name: tenantNameMap[row.tenant_id ?? ""] ?? undefined,
-          }))
-        : [];
+      let accessRows: ActivityRecord[] = [];
+      if (!accessResult.error && accessResult.data) {
+        accessRows = (accessResult.data as ActivityRecord[]).map((row) => ({
+          ...row,
+          tenant_name: tenantNameMap[row.tenant_id ?? ""] ?? undefined,
+        }));
+      } else {
+        console.warn("recent_login_activity view unavailable, falling back to per-tenant login history", accessResult.error);
+        const tenantAccessResults = await Promise.allSettled(
+          tenants.map(async (tenant) => {
+            const { data: rpcData, error: rpcError } = await supabase.rpc("get_login_history", {
+              _auth_type: "tenant",
+              _identifier: tenant.id,
+              _limit: 50,
+            });
+            if (rpcError) {
+              throw rpcError;
+            }
+            return (rpcData ?? []).map((row: any) => ({
+              id: String(row.id),
+              event_type: row.event_type,
+              auth_type: "tenant",
+              tenant_id: tenant.id,
+              tenant_name: tenant.school_name,
+              timestamp: row.timestamp,
+              ip_address: row.ip_address,
+              user_id: tenant.id,
+            }));
+          })
+        );
+
+        accessRows = tenantAccessResults
+          .filter((result): result is PromiseFulfilledResult<ActivityRecord[]> => result.status === "fulfilled")
+          .flatMap((result) => result.value)
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+          .slice(0, 100);
+      }
 
       let activityRows: ActivityRecord[] = [];
       const { data: directActivityData, error: directActivityError } = await supabase
@@ -100,10 +131,6 @@ export default function ProviderActivityDashboard() {
         }
 
         activityRows = fallbackRecords;
-      }
-
-      if (accessRows.length === 0 && !accessResult.error) {
-        // If the access view exists but returned no rows, keep empty.
       }
 
       if (accessResult.error) {
