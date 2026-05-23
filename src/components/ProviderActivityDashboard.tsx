@@ -39,23 +39,26 @@ export default function ProviderActivityDashboard() {
     setError(null);
 
     try {
-      const tenantListPromise = supabase.from("tenants").select("id, school_name");
-      const loginPromise = supabase
-        .from("login_logs")
-        .select("*")
-        .order("timestamp", { ascending: false })
-        .limit(100);
-
-      const [tenantListResult, loginResult] = await Promise.all([tenantListPromise, loginPromise]);
+      const tenantListResult = await supabase.from("tenants").select("id, school_name");
       if (tenantListResult.error) {
         throw tenantListResult.error;
-      }
-      if (loginResult.error) {
-        throw loginResult.error;
       }
 
       const tenants = (tenantListResult.data ?? []) as TenantInfo[];
       const tenantNameMap = Object.fromEntries(tenants.map((tenant) => [tenant.id, tenant.school_name]));
+
+      const accessResult = await supabase
+        .from("recent_login_activity" as any)
+        .select("*")
+        .order("timestamp", { ascending: false })
+        .limit(100);
+
+      const accessRows = !accessResult.error && accessResult.data
+        ? (accessResult.data as ActivityRecord[]).map((row) => ({
+            ...row,
+            tenant_name: tenantNameMap[row.tenant_id ?? ""] ?? undefined,
+          }))
+        : [];
 
       let activityRows: ActivityRecord[] = [];
       const { data: directActivityData, error: directActivityError } = await supabase
@@ -99,7 +102,15 @@ export default function ProviderActivityDashboard() {
         activityRows = fallbackRecords;
       }
 
-      setAccessLogs((loginResult.data ?? []) as ActivityRecord[]);
+      if (accessRows.length === 0 && !accessResult.error) {
+        // If the access view exists but returned no rows, keep empty.
+      }
+
+      if (accessResult.error) {
+        console.warn("Unable to load recent login activity view", accessResult.error);
+      }
+
+      setAccessLogs(accessRows);
       setActivityLogs(activityRows);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
