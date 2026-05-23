@@ -4395,11 +4395,8 @@ function TimetableView({
   const allClasses = useMemo(() => {
     const fromRolls = Object.keys(classRolls);
     const fromCells = Object.keys(timetable.cells).map(k => k.split("|")[0]);
-    const all = [...new Set([...fromRolls, ...fromCells])].filter(Boolean).sort();
-    if (all.length === 0) {
-      return ALL_CLASSES;
-    }
-    return all;
+    const extra = [...new Set([...fromRolls, ...fromCells].filter(Boolean).filter(c => !ALL_CLASSES.includes(c)))];
+    return [...ALL_CLASSES, ...extra];
   }, [classRolls, timetable.cells]);
 
   const [activeClass, setActiveClass] = useState<string>(allClasses[0] || "");
@@ -4442,6 +4439,28 @@ function TimetableView({
               <option key={cls} value={cls}>{cls}</option>
             ))}
           </select>
+        </div>
+
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            {Object.entries(CURRICULUM).map(([section, data]) => (
+              <div key={section} className="space-y-2">
+                <p className="text-xs font-black uppercase text-slate-500 tracking-wide">{section}</p>
+                <div className="flex flex-wrap gap-2">
+                  {data.classes.map((cls: string) => (
+                    <button
+                      key={cls}
+                      type="button"
+                      onClick={() => setActiveClass(cls)}
+                      className={`px-3 py-2 rounded-full text-[11px] font-black uppercase transition-all ${activeClass === cls ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                    >
+                      {cls}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Auto-Set Button for Admins */}
@@ -4737,7 +4756,26 @@ function InboxView({
 // Main App
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [appState, dispatch] = useReducer(appReducer, initialState);
+  const [appState, dispatchRaw] = useReducer(appReducer, initialState);
+  const dispatch = useCallback((action: any) => {
+    dispatchRaw(action);
+    // Background sync to Supabase
+    if (["ADD_ENTRY", "DELETE_ENTRY", "RESTORE_ENTRY", "SAVE_STAFF", "SET_STAFF_STATUS", "BULK_SAVE_ATTENDANCE", "SAVE_CLASS_ROLL"].includes(action.type)) {
+      import("@/lib/activity-sync").then(({ syncActivityLog }) => {
+        const actor = action.actor || action.payload?.enteredBy || action.payload?.name || "System";
+        let actionStr = action.type;
+        let details = "";
+        switch (action.type) {
+          case "ADD_ENTRY": actionStr = "Added Score"; details = `${action.payload.subject} for ${action.payload.studentName}`; break;
+          case "DELETE_ENTRY": actionStr = "Deleted Score"; details = `ID: ${action.id}`; break;
+          case "SAVE_STAFF": actionStr = "Updated Staff"; details = `Staff: ${action.payload.name}`; break;
+          case "BULK_SAVE_ATTENDANCE": actionStr = "Saved Attendance"; details = `${action.payload.length} records`; break;
+          case "SAVE_CLASS_ROLL": actionStr = "Saved Class Roll"; details = `Class: ${action.className}`; break;
+        }
+        syncActivityLog(null, actor, actionStr, details).catch(() => {});
+      }).catch(() => {});
+    }
+  }, []);
   const { toast, showToast } = useToast();
   const adminPinRef = useRef<string>(typeof window !== "undefined" ? (localStorage.getItem(ADMIN_PIN_KEY) || "") : "");
   const [needsAdminSetup, setNeedsAdminSetup] = useState<boolean>(!adminPinRef.current);

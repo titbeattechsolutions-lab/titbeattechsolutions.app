@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { logAuthEvent } from "@/lib/auth-logger";
 import LoginActivityDashboard from "@/components/LoginActivityDashboard";
+import TenantActivityAudit from "@/components/TenantActivityAudit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 // hashPin no longer needed — server-side bcrypt via create_tenant_v2 RPC
-import { Plus, LogOut, Copy, RefreshCw, ShieldCheck, ShieldOff, KeyRound, DollarSign, History, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Eye, EyeOff, Ban, ShieldAlert } from "lucide-react";
+import { Plus, LogOut, Copy, RefreshCw, ShieldCheck, ShieldOff, KeyRound, DollarSign, History, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Eye, EyeOff, Ban, ShieldAlert, Activity } from "lucide-react";
 
 interface Tenant {
   id: string;
@@ -241,6 +242,7 @@ function StatCard({ label, value, tone }: { label: string; value: number; tone?:
 }
 
 function TenantRow({ tenant, onChanged, onRecordPayment }: { tenant: Tenant; onChanged: () => void; onRecordPayment: () => void }) {
+  const [activityOpen, setActivityOpen] = useState(false);
   const d = daysLeft(tenant.subscription_ends_at);
   const statusColor =
     tenant.status === "active" ? "default"
@@ -298,6 +300,9 @@ function TenantRow({ tenant, onChanged, onRecordPayment }: { tenant: Tenant; onC
           {tenant.notes && <div className="text-xs text-muted-foreground mt-1 italic">{tenant.notes}</div>}
         </div>
         <div className="flex gap-1 flex-wrap">
+          <Button size="sm" variant="outline" onClick={() => setActivityOpen(true)}>
+            <Activity className="w-3 h-3 mr-1" /> Activity
+          </Button>
           <Button size="sm" variant="outline" onClick={onRecordPayment}>
             <DollarSign className="w-3 h-3 mr-1" /> Record payment
           </Button>
@@ -314,6 +319,16 @@ function TenantRow({ tenant, onChanged, onRecordPayment }: { tenant: Tenant; onC
           )}
         </div>
       </div>
+
+      <Dialog open={activityOpen} onOpenChange={setActivityOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Activity & Audit — {tenant.school_name}</DialogTitle>
+            <DialogDescription>Comprehensive view of tenant usage and access logs</DialogDescription>
+          </DialogHeader>
+          <TenantActivityAudit tenantId={tenant.id} />
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
