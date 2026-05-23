@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { logAuthEvent } from "@/lib/auth-logger";
 import LoginActivityDashboard from "@/components/LoginActivityDashboard";
 import TenantActivityAudit from "@/components/TenantActivityAudit";
+import ProviderActivityDashboard from "@/components/ProviderActivityDashboard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,6 +57,7 @@ export default function SuperAdmin() {
   const [createOpen, setCreateOpen] = useState(false);
   const [newPin, setNewPin] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState<Tenant | null>(null);
+  const [globalActivityOpen, setGlobalActivityOpen] = useState(false);
 
   // Auth gate
   useEffect(() => {
@@ -153,7 +155,10 @@ export default function SuperAdmin() {
               <p className="text-xs text-muted-foreground">{userEmail}</p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={() => setGlobalActivityOpen(true)}>
+              <Activity className="w-4 h-4 mr-1" /> Live activity
+            </Button>
             <Button variant="outline" size="sm" onClick={loadTenants} disabled={loading}>
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
             </Button>
@@ -222,6 +227,16 @@ export default function SuperAdmin() {
           onRecorded={() => { setPayOpen(null); loadTenants(); }}
         />
       )}
+
+      <Dialog open={globalActivityOpen} onOpenChange={setGlobalActivityOpen}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Provider live activity</DialogTitle>
+            <DialogDescription>Track all tenant and staff activity in real time with timestamps.</DialogDescription>
+          </DialogHeader>
+          <ProviderActivityDashboard />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
