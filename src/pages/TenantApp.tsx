@@ -42,6 +42,7 @@ export default function TenantApp() {
   const lastSerialized = useRef<string>("");
   const localRev = useRef<number>(0);
   const isSyncing = useRef<boolean>(false);
+  const signedOut = useRef<boolean>(false);
 
   // Helper to safely dispatch storage event
   const dispatchRehydrate = useCallback((data: string) => {
@@ -126,7 +127,7 @@ export default function TenantApp() {
     if (phase !== "ready" || !session) return;
 
     const pushIfChanged = async () => {
-      if (isSyncing.current) return;
+      if (isSyncing.current || signedOut.current) return;
 
       const current = localStorage.getItem(DB_KEY) ?? "{}";
       if (current === lastSerialized.current) return;
@@ -237,19 +238,21 @@ export default function TenantApp() {
   }, [phase, session, dispatchRehydrate]);
 
   const signOut = async () => {
-    // Log the tenant logout
+    // Mark signed-out FIRST so the unmount cleanup's pushIfChanged is a no-op
+    // (otherwise it would push an empty {} to remote and wipe the tenant's data).
+    signedOut.current = true;
     if (session) {
-      await logAuthEvent({
+      // Fire-and-forget so a slow audit log can't delay sign-out.
+      logAuthEvent({
         authType: "tenant",
         eventType: "logout",
         tenantId: session.tenantId,
         sessionToken: session.sessionToken,
-      });
+      }).catch(() => {});
     }
-    
     clearTenantSession();
-    localStorage.removeItem(DB_KEY);
     navigate("/", { replace: true });
+    localStorage.removeItem(DB_KEY);
   };
 
   // Loading / Error / Expired States
@@ -323,13 +326,17 @@ export default function TenantApp() {
       )}
 
       {!showBanner && (
-        <div className="fixed bottom-2 right-2 z-50 text-[10px] bg-white/90 backdrop-blur border border-slate-200 rounded-full px-2 py-1 shadow-sm flex items-center gap-1 text-slate-600">
+        <div className="fixed bottom-2 right-2 z-50 text-[10px] bg-white/90 backdrop-blur border border-slate-200 rounded-full px-2 py-1 shadow-sm flex items-center gap-2 text-slate-600">
           <SyncIcon className={`w-3 h-3 ${syncPhase === "pulling" || syncPhase === "pushing" ? "animate-pulse text-blue-500" : syncPhase === "error" ? "text-red-500" : "text-emerald-500"}`} />
           {syncLabel}
+          <span className="w-px h-3 bg-slate-200" />
+          <button onClick={signOut} className="text-slate-400 hover:text-red-500 transition-colors" title="Sign out of school portal">
+            <LogOut className="w-3 h-3" />
+          </button>
         </div>
       )}
 
-      <App tenantSchoolName={session?.schoolName} />
+      <App tenantSchoolName={session?.schoolName} tenantId={session?.tenantId} onTenantSignOut={signOut} />
     </div>
   );
 }

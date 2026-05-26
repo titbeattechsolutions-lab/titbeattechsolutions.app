@@ -3,7 +3,6 @@
 // After verification, the server returns a short-lived session token used for all subsequent calls.
 
 import { supabase } from "@/integrations/supabase/client";
-import { logAuthEvent } from "@/lib/auth-logger";
 
 const SESSION_KEY = "schoolapp_tenant_session_v2";
 
@@ -51,14 +50,6 @@ export async function verifySchoolPin(pin: string): Promise<Omit<TenantSession, 
     trialStartedAt: row.trial_started_at,
     hasAdminPin: row.has_admin_pin,
   };
-  
-  // Log the tenant login
-  await logAuthEvent({
-    authType: "tenant",
-    eventType: "login",
-    tenantId: session.tenantId,
-    sessionToken: session.sessionToken,
-  });
   
   return session;
 }

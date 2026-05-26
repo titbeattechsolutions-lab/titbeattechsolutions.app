@@ -54,6 +54,7 @@ export default function SuperAdmin() {
   const [userId, setUserId] = useState<string | null>(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [newPin, setNewPin] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState<Tenant | null>(null);
@@ -100,16 +101,12 @@ export default function SuperAdmin() {
   }, [isSuperAdmin, loadTenants]);
 
   const signOut = async () => {
-    // Get current user for logging
-    const { data } = await supabase.auth.getSession();
-    if (data.session?.user) {
-      await logAuthEvent({
-        authType: "super_admin",
-        eventType: "logout",
-        userId: data.session.user.id,
-      });
-    }
-    
+    setSigningOut(true);
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user) {
+        logAuthEvent({ authType: "super_admin", eventType: "logout", userId: data.session.user.id }).catch(() => {});
+      }
+    });
     await supabase.auth.signOut();
     navigate("/auth", { replace: true });
   };
@@ -119,18 +116,8 @@ export default function SuperAdmin() {
   }
 
   if (!isSuperAdmin) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <Card className="p-6 max-w-md text-center space-y-3">
-          <ShieldOff className="w-10 h-10 mx-auto text-destructive" />
-          <h2 className="text-xl font-bold">Access denied</h2>
-          <p className="text-sm text-muted-foreground">
-            {userEmail} is not a super admin. Only the provider account can access this panel.
-          </p>
-          <Button variant="outline" onClick={signOut}>Sign out</Button>
-        </Card>
-      </div>
-    );
+    navigate("/auth", { replace: true });
+    return null;
   }
 
   const stats = {
@@ -162,8 +149,8 @@ export default function SuperAdmin() {
             <Button variant="outline" size="sm" onClick={loadTenants} disabled={loading}>
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
             </Button>
-            <Button variant="outline" size="sm" onClick={signOut}>
-              <LogOut className="w-4 h-4 mr-1" /> Sign out
+            <Button variant="outline" size="sm" onClick={signOut} disabled={signingOut}>
+              <LogOut className="w-4 h-4 mr-1" /> {signingOut ? "Signing out…" : "Sign out"}
             </Button>
           </div>
         </header>

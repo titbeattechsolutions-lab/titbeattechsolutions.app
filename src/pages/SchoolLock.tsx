@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { logAuthEvent } from "@/lib/auth-logger";
 import { toast } from "@/hooks/use-toast";
 import {
   verifySchoolPin,
@@ -72,7 +73,9 @@ export default function SchoolLock() {
       toast({ title: "Wrong admin PIN", variant: "destructive" });
       return;
     }
-    saveTenantSession({ ...pending, isAdmin: true, hasAdminPin: true });
+    const confirmedSession = { ...pending, isAdmin: true, hasAdminPin: true };
+    saveTenantSession(confirmedSession);
+    logAuthEvent({ authType: "tenant", eventType: "login", tenantId: confirmedSession.tenantId, sessionToken: confirmedSession.sessionToken }).catch(() => {});
     navigate("/app", { replace: true });
   };
 
@@ -94,7 +97,9 @@ export default function SchoolLock() {
       toast({ title: "Could not set PIN", description: "Already set — contact provider.", variant: "destructive" });
       return;
     }
-    saveTenantSession({ ...pending, isAdmin: true, hasAdminPin: true });
+    const confirmedSession = { ...pending, isAdmin: true, hasAdminPin: true };
+    saveTenantSession(confirmedSession);
+    logAuthEvent({ authType: "tenant", eventType: "login", tenantId: confirmedSession.tenantId, sessionToken: confirmedSession.sessionToken }).catch(() => {});
     toast({ title: "Admin PIN created", description: "Welcome!" });
     navigate("/app", { replace: true });
   };

@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useCallback, memo, useReducer, createContext, useContext, useEffect } from "react";
+import { logAuthEvent } from "@/lib/auth-logger";
 import { NAPPS_CURRICULUM } from "./data/nappsCurriculum";
 import { E_NOTES } from "./data/eNotes";
 import { RESOURCE_SOURCES } from "./data/resourceSources";
@@ -4755,7 +4756,7 @@ function InboxView({
 // ─────────────────────────────────────────────────────────────────────────────
 // Main App
 // ─────────────────────────────────────────────────────────────────────────────
-export default function App() {
+export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: () => void; tenantId?: string } = {}) {
   const [appState, dispatchRaw] = useReducer(appReducer, initialState);
   const dispatch = useCallback((action: any) => {
     dispatchRaw(action);
@@ -4940,6 +4941,7 @@ export default function App() {
       setAuth({ loggedIn: true, user: null });
       setActiveTab("dashboard");
       logSignIn("Admin", "Administrator");
+      logAuthEvent({ authType: "staff", eventType: "login", tenantId, staffId: "admin" }).catch(() => {});
       return;
     }
 
@@ -4960,6 +4962,7 @@ export default function App() {
     setAuth({ loggedIn: true, user: s });
     setActiveTab("dashboard");
     logSignIn(s.name, s.role);
+    logAuthEvent({ authType: "staff", eventType: "login", tenantId, staffId: s.id }).catch(() => {});
     if (s.status === "restricted") showToast("Account restricted — limited access.", "warning");
   }, [loginId, loginPass, staffList, showToast]);
 
@@ -6343,9 +6346,11 @@ export default function App() {
             <div className="grid grid-cols-2 gap-3">
               <Btn variant="ghost" size="lg" onClick={() => setShowLogout(false)}>Stay</Btn>
               <Btn variant="danger" size="lg" onClick={() => {
+                logAuthEvent({ authType: "staff", eventType: "logout", tenantId, staffId: auth.user?.id ?? "admin" }).catch(() => {});
                 setAuth({ loggedIn:false, user:null });
                 setLoginId("admin"); setLoginPass(""); setShowLogout(false);
                 setActiveTab("dashboard"); setActiveReport(null); setMenuOpen(false);
+                if (onTenantSignOut) onTenantSignOut();
               }}>
                 <LogOut size={15} />Sign Out
               </Btn>
