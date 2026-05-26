@@ -143,6 +143,9 @@ export default function SuperAdmin() {
             </div>
           </div>
           <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={() => navigate("/superadmin")}>
+              <ShieldAlert className="w-4 h-4 mr-1" /> School Portal
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setGlobalActivityOpen(true)}>
               <Activity className="w-4 h-4 mr-1" /> Live activity
             </Button>

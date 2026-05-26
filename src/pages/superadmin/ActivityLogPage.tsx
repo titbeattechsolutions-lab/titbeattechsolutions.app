@@ -1,0 +1,219 @@
+import { useEffect, useState, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { RefreshCw, Loader2, ChevronLeft, ChevronRight, Search } from "lucide-react";
+
+interface ActivityLog {
+  id: number;
+  school_id: string | null;
+  action: string;
+  performed_by: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+  school_name?: string | null;
+}
+
+const PAGE_SIZE = 50;
+
+const ACTION_COLORS: Record<string, string> = {
+  provision:       "bg-violet-100 text-violet-700",
+  suspend:         "bg-red-100 text-red-600",
+  reactivate:      "bg-emerald-100 text-emerald-700",
+  plan_change:     "bg-blue-100 text-blue-700",
+  student_add:     "bg-sky-100 text-sky-700",
+  student_import:  "bg-sky-100 text-sky-700",
+  teacher_add:     "bg-indigo-100 text-indigo-700",
+  attendance_save: "bg-amber-100 text-amber-700",
+  result_save:     "bg-orange-100 text-orange-700",
+  fee_create:      "bg-teal-100 text-teal-700",
+  payment_success: "bg-emerald-100 text-emerald-700",
+};
+
+export default function ActivityLogPage() {
+  const { toast } = useToast();
+
+  const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
+
+  const [search, setSearch] = useState("");
+  const [filterAction, setFilterAction] = useState("all");
+  const [filterSchoolId, setFilterSchoolId] = useState("all");
+  const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
+
+  // Load distinct schools for filter dropdown
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from("schools")
+      .select("id,name")
+      .order("name")
+      .then(({ data }: { data: { id: string; name: string }[] | null }) => {
+        setSchools(data ?? []);
+      });
+  }, []);
+
+  const load = useCallback(async (p = 0) => {
+    setLoading(true);
+    const from = p * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let query = (supabase as any)
+      .from("activity_logs")
+      .select("*", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (filterAction !== "all") query = query.eq("action", filterAction);
+    if (filterSchoolId !== "all") query = query.eq("school_id", filterSchoolId);
+
+    const { data, error, count } = await query;
+    setLoading(false);
+
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" }); return;
+    }
+
+    setLogs((data ?? []) as ActivityLog[]);
+    setTotal(count ?? 0);
+    setHasMore((count ?? 0) > to + 1);
+    setPage(p);
+  }, [filterAction, filterSchoolId, toast]);
+
+  useEffect(() => { load(0); }, [load]);
+
+  const displayed = search
+    ? logs.filter((l) =>
+        l.action.toLowerCase().includes(search.toLowerCase()) ||
+        JSON.stringify(l.details ?? "").toLowerCase().includes(search.toLowerCase())
+      )
+    : logs;
+
+  const distinctActions = Array.from(new Set(logs.map((l) => l.action))).sort();
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">Activity Log</h1>
+          <p className="text-sm text-slate-500">
+            Page {page + 1} · {total.toLocaleString()} total entries
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => load(page)} disabled={loading}>
+          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+        </Button>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-3 flex-wrap">
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Input
+            className="pl-8 h-8 w-52 text-sm"
+            placeholder="Search action or details…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <Select value={filterAction} onValueChange={(v) => { setFilterAction(v); setPage(0); }}>
+          <SelectTrigger className="w-44 h-8 text-sm"><SelectValue placeholder="All Actions" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Actions</SelectItem>
+            {distinctActions.map((a) => (
+              <SelectItem key={a} value={a}>{a}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={filterSchoolId} onValueChange={(v) => { setFilterSchoolId(v); setPage(0); }}>
+          <SelectTrigger className="w-52 h-8 text-sm"><SelectValue placeholder="All Schools" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Schools</SelectItem>
+            {schools.map((s) => (
+              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Log table */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+        {loading ? (
+          <div className="flex justify-center py-12"><Loader2 className="animate-spin text-slate-400" /></div>
+        ) : displayed.length === 0 ? (
+          <p className="text-center text-slate-400 py-12 text-sm">No activity logs found</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                {["Time", "Action", "School", "Performed By", "Details"].map((h) => (
+                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {displayed.map((log) => (
+                <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
+                    {new Date(log.created_at).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ACTION_COLORS[log.action] ?? "bg-slate-100 text-slate-600"}`}>
+                      {log.action}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-500">
+                    {log.school_name ?? (log.school_id ? <span className="font-mono">{log.school_id.slice(0, 8)}…</span> : <span className="text-slate-300">platform</span>)}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-500 font-mono">
+                    {log.performed_by ? log.performed_by.slice(0, 8) + "…" : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-600 max-w-xs">
+                    {log.details ? (
+                      <details className="cursor-pointer">
+                        <summary className="text-slate-400 hover:text-slate-600">View</summary>
+                        <pre className="mt-1 text-xs bg-slate-50 rounded p-2 overflow-auto max-h-32 whitespace-pre-wrap">
+                          {JSON.stringify(log.details, null, 2)}
+                        </pre>
+                      </details>
+                    ) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Pagination */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-slate-400">
+          Showing rows {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
+        </p>
+        <div className="flex gap-2">
+          <Button
+            variant="outline" size="sm"
+            disabled={page === 0 || loading}
+            onClick={() => load(page - 1)}
+          >
+            <ChevronLeft size={14} className="mr-1" /> Previous
+          </Button>
+          <Button
+            variant="outline" size="sm"
+            disabled={!hasMore || loading}
+            onClick={() => load(page + 1)}
+          >
+            Next <ChevronRight size={14} className="ml-1" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
