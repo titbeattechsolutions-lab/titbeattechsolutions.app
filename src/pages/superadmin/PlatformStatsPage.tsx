@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, School, Users, GraduationCap, CreditCard } from "lucide-react";
+import SessionLog from "@/components/SessionLog";
 
 interface Stats {
   totalSchools: number;
@@ -109,6 +110,16 @@ export default function PlatformStatsPage() {
           ))}
         </div>
       </div>
+
+      {/* Platform Session Activity */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Platform Session Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SessionLog superadmin />
+        </CardContent>
+      </Card>
     </div>
   );
 }

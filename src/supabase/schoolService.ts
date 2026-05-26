@@ -700,6 +700,128 @@ export async function getTeacherClasses(
   });
 }
 
+// ─── Timetable ────────────────────────────────────────────────────────
+
+export interface TimetableSlot {
+  id: string;
+  school_id: string;
+  class_id: string;
+  class_name: string;
+  academic_year: string;
+  term: "first" | "second" | "third";
+  day: "monday" | "tuesday" | "wednesday" | "thursday" | "friday";
+  period_number: number;
+  period_type: "lesson" | "short_break" | "long_break" | "assembly" | "lunch" | "closing";
+  start_time: string;
+  end_time: string;
+  subject_id: string | null;
+  subject_name: string | null;
+  teacher_id: string | null;
+  teacher_name: string | null;
+  room: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getTimetable(
+  schoolId: string | null,
+  classId: string,
+  term: string,
+  academicYear: string
+): Promise<TimetableSlot[]> {
+  const sid = requireSchoolId(schoolId);
+  const { data, error } = await db()
+    .from("timetable")
+    .select("*")
+    .eq("school_id", sid)
+    .eq("class_id", classId)
+    .eq("term", term)
+    .eq("academic_year", academicYear)
+    .order("day")
+    .order("period_number");
+  throwIfError(error, "getTimetable");
+  return (data ?? []) as TimetableSlot[];
+}
+
+export async function saveTimetableSlot(
+  schoolId: string | null,
+  slot: Omit<TimetableSlot, "id" | "school_id" | "created_at" | "updated_at"> & { id?: string }
+): Promise<TimetableSlot> {
+  const sid = requireSchoolId(schoolId);
+  const payload = { ...slot, school_id: sid };
+  const { data, error } = await db()
+    .from("timetable")
+    .upsert(payload, { onConflict: "school_id,class_id,day,period_number,academic_year,term" })
+    .select()
+    .single();
+  throwIfError(error, "saveTimetableSlot");
+  return data as TimetableSlot;
+}
+
+export async function bulkSaveTimetable(
+  schoolId: string | null,
+  slots: (Omit<TimetableSlot, "id" | "school_id" | "created_at" | "updated_at"> & { id?: string })[]
+): Promise<TimetableSlot[]> {
+  const sid = requireSchoolId(schoolId);
+  const payloads = slots.map((s) => ({ ...s, school_id: sid }));
+  const { data, error } = await db()
+    .from("timetable")
+    .upsert(payloads, { onConflict: "school_id,class_id,day,period_number,academic_year,term" })
+    .select();
+  throwIfError(error, "bulkSaveTimetable");
+  return (data ?? []) as TimetableSlot[];
+}
+
+export async function deleteTimetableSlot(
+  schoolId: string | null,
+  slotId: string
+): Promise<void> {
+  const sid = requireSchoolId(schoolId);
+  const { error } = await db()
+    .from("timetable")
+    .delete()
+    .eq("school_id", sid)
+    .eq("id", slotId);
+  throwIfError(error, "deleteTimetableSlot");
+}
+
+// ─── Attendance RPCs ───────────────────────────────────────────────────
+
+export interface AttendanceSummaryRow {
+  total_classes_with_attendance: number;
+  total_present: number;
+  total_absent: number;
+  attendance_rate: number;
+}
+
+export interface AttendanceByClassRow {
+  class_id: string;
+  class_name: string;
+  present_count: number;
+  absent_count: number;
+  taken_by_name: string;
+  taken_at: string;
+}
+
+export async function getTodayAttendanceSummary(
+  schoolId: string | null
+): Promise<AttendanceSummaryRow | null> {
+  const sid = requireSchoolId(schoolId);
+  const { data, error } = await db().rpc("get_today_attendance_summary", { p_school_id: sid });
+  throwIfError(error, "getTodayAttendanceSummary");
+  return (data?.[0] ?? null) as AttendanceSummaryRow | null;
+}
+
+export async function getTodayAttendanceByClass(
+  schoolId: string | null
+): Promise<AttendanceByClassRow[]> {
+  const sid = requireSchoolId(schoolId);
+  const { data, error } = await db().rpc("get_today_attendance_by_class", { p_school_id: sid });
+  throwIfError(error, "getTodayAttendanceByClass");
+  return (data ?? []) as AttendanceByClassRow[];
+}
+
 // ─── Activity Logs ────────────────────────────────────────────────────
 
 export async function getRecentActivity(

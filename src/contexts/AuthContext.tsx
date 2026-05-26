@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -24,6 +24,23 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+async function insertSessionLog(
+  action: "login" | "logout",
+  profile: AuthProfile
+): Promise<void> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from("session_logs").insert({
+      user_id:   profile.userId,
+      school_id: profile.schoolId ?? null,
+      user_name: [profile.firstName, profile.lastName].filter(Boolean).join(" ") || profile.email || profile.userId,
+      role:      profile.role,
+      action,
+      device:    navigator.userAgent.slice(0, 200),
+    });
+  } catch { /* non-critical — never block auth flow */ }
+}
 
 async function fetchProfile(userId: string, email: string | null): Promise<AuthProfile> {
   // First try fetching from public.profiles (Phase 2 table)
@@ -62,6 +79,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const profileRef = useRef<AuthProfile | null>(null);
+  // Track whether we already logged a login for this session to avoid duplicates
+  const loggedLoginRef = useRef<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -71,6 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (s?.user) {
         fetchProfile(s.user.id, s.user.email ?? null).then((p) => {
           setProfile(p);
+          profileRef.current = p;
           setLoading(false);
         });
       } else {
@@ -78,17 +99,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
         setLoading(true);
         fetchProfile(s.user.id, s.user.email ?? null).then((p) => {
           setProfile(p);
+          profileRef.current = p;
           setLoading(false);
+          // Log login once per session id
+          if (event === "SIGNED_IN" && loggedLoginRef.current !== s.access_token) {
+            loggedLoginRef.current = s.access_token ?? null;
+            insertSessionLog("login", p);
+          }
         });
       } else {
         setProfile(null);
+        profileRef.current = null;
         setLoading(false);
       }
     });
@@ -97,6 +125,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    if (profileRef.current) {
+      await insertSessionLog("logout", profileRef.current);
+    }
     await supabase.auth.signOut();
   };
 

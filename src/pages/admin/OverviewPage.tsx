@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Users, GraduationCap, BookOpen, CalendarDays, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import AttendanceWidget from "@/components/dashboard/AttendanceWidget";
+import SessionLog from "@/components/SessionLog";
 
 const TERM_LABELS = { first: "1st Term", second: "2nd Term", third: "3rd Term" };
 
@@ -123,6 +125,23 @@ export default function OverviewPage() {
               ))}
             </ul>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Live attendance widget */}
+      <Card>
+        <CardContent className="pt-5">
+          <AttendanceWidget />
+        </CardContent>
+      </Card>
+
+      {/* Session log */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Recent Logins &amp; Logouts</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SessionLog />
         </CardContent>
       </Card>
     </div>

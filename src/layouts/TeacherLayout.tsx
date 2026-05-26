@@ -6,13 +6,14 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { BookOpen, ClipboardCheck, BarChart2, UserCircle, Menu, X, LogOut } from "lucide-react";
+import { BookOpen, ClipboardCheck, BarChart2, UserCircle, CalendarClock, Menu, X, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { to: "/teacher/classes",    label: "My Classes",  icon: BookOpen },
   { to: "/teacher/attendance", label: "Attendance",  icon: ClipboardCheck },
   { to: "/teacher/results",    label: "Results",     icon: BarChart2 },
+  { to: "/teacher/timetable",  label: "Timetable",   icon: CalendarClock },
   { to: "/teacher/profile",    label: "Profile",     icon: UserCircle },
 ];
 
