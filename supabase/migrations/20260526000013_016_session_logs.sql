@@ -22,12 +22,17 @@ ALTER TABLE public.session_logs ENABLE ROW LEVEL SECURITY;
 -- School admin reads only their school's logs
 CREATE POLICY "session_logs_read_admin"
   ON public.session_logs FOR SELECT
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (
+    school_id = (SELECT school_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('school_admin','principal','superadmin')
+  );
 
 -- Superadmin reads all logs across every school
 CREATE POLICY "session_logs_read_superadmin"
   ON public.session_logs FOR SELECT
-  USING (public.has_role(auth.uid(), 'super_admin'::app_role));
+  USING (
+    (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'superadmin'
+  );
 
 -- Any authenticated user can insert their own log entry
 CREATE POLICY "session_logs_insert"

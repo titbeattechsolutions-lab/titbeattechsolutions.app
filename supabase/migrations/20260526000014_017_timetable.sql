@@ -35,22 +35,38 @@ ALTER TABLE public.timetable ENABLE ROW LEVEL SECURITY;
 -- All teaching staff can read their school's timetable
 CREATE POLICY "timetable_read_staff"
   ON public.timetable FOR SELECT
-  USING (school_id = auth.school_id() AND auth.is_teacher());
+  USING (
+    school_id = (SELECT school_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid())
+        IN ('superadmin','school_admin','principal','head_teacher','teacher')
+  );
 
 -- School admins can insert timetable entries
 CREATE POLICY "timetable_insert"
   ON public.timetable FOR INSERT
-  WITH CHECK (school_id = auth.school_id() AND auth.is_school_admin());
+  WITH CHECK (
+    school_id = (SELECT school_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid())
+        IN ('superadmin','school_admin','principal')
+  );
 
 -- School admins can update timetable entries
 CREATE POLICY "timetable_update"
   ON public.timetable FOR UPDATE
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (
+    school_id = (SELECT school_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid())
+        IN ('superadmin','school_admin','principal')
+  );
 
 -- School admins can delete timetable entries
 CREATE POLICY "timetable_delete"
   ON public.timetable FOR DELETE
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (
+    school_id = (SELECT school_id FROM public.profiles WHERE id = auth.uid())
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid())
+        IN ('superadmin','school_admin','principal')
+  );
 
 CREATE TRIGGER trg_timetable_updated
   BEFORE UPDATE ON public.timetable
