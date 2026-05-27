@@ -647,6 +647,15 @@ export async function getMyTeacherProfile(
   return data as Teacher | null;
 }
 
+export async function getStudentProfile(
+  _schoolId: string | null,
+  _authUserId: string
+): Promise<Student | null> {
+  // Students are not yet linked via auth_user_id in this schema.
+  // Returns null so callers fall back to class-picker mode.
+  return null;
+}
+
 export async function getTeacherClasses(
   schoolId: string | null,
   teacher: Teacher

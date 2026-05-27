@@ -8,22 +8,27 @@ import {
 } from "@/supabase/schoolService";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Plus, Trash2, Printer, RefreshCw } from "lucide-react";
+import { Loader2, Plus, Trash2, Printer, RefreshCw, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday"] as const;
 type Day = typeof DAYS[number];
 
-const PERIOD_COLORS: Record<string, string> = {
-  lesson:      "bg-white border border-slate-200",
-  short_break: "bg-yellow-50 border border-yellow-200",
-  long_break:  "bg-orange-50 border border-orange-200",
-  assembly:    "bg-blue-50 border border-blue-200",
-  lunch:       "bg-green-50 border border-green-200",
-  closing:     "bg-red-50 border border-red-200",
+const DAY_LABELS: Record<string, string> = {
+  monday: "Monday", tuesday: "Tuesday", wednesday: "Wednesday",
+  thursday: "Thursday", friday: "Friday",
+};
+
+const BREAK_BAND_STYLES: Record<string, string> = {
+  short_break: "bg-yellow-100 border border-yellow-300 text-yellow-800",
+  long_break:  "bg-orange-100 border border-orange-300 text-orange-800",
+  assembly:    "bg-blue-100 border border-blue-300 text-blue-800",
+  lunch:       "bg-green-100 border border-green-300 text-green-800",
+  closing:     "bg-red-100 border border-red-300 text-red-800",
 };
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -31,19 +36,30 @@ const PERIOD_LABELS: Record<string, string> = {
   assembly: "Assembly", lunch: "Lunch Break", closing: "Closing",
 };
 
-const DEFAULT_PERIODS: Omit<TimetableSlot, "id"|"school_id"|"class_id"|"class_name"|"academic_year"|"term"|"subject_id"|"subject_name"|"teacher_id"|"teacher_name"|"room"|"notes"|"created_at"|"updated_at">[] = [
-  { day: "monday", period_number: 1,  period_type: "assembly",    start_time: "08:00", end_time: "08:30" },
-  { day: "monday", period_number: 2,  period_type: "lesson",      start_time: "08:30", end_time: "09:10" },
-  { day: "monday", period_number: 3,  period_type: "lesson",      start_time: "09:10", end_time: "09:50" },
-  { day: "monday", period_number: 4,  period_type: "lesson",      start_time: "09:50", end_time: "10:30" },
-  { day: "monday", period_number: 5,  period_type: "short_break", start_time: "10:30", end_time: "10:45" },
-  { day: "monday", period_number: 6,  period_type: "lesson",      start_time: "10:45", end_time: "11:25" },
-  { day: "monday", period_number: 7,  period_type: "lesson",      start_time: "11:25", end_time: "12:05" },
-  { day: "monday", period_number: 8,  period_type: "lesson",      start_time: "12:05", end_time: "12:45" },
-  { day: "monday", period_number: 9,  period_type: "lunch",       start_time: "12:45", end_time: "13:30" },
-  { day: "monday", period_number: 10, period_type: "lesson",      start_time: "13:30", end_time: "14:10" },
-  { day: "monday", period_number: 11, period_type: "lesson",      start_time: "14:10", end_time: "14:50" },
-  { day: "monday", period_number: 12, period_type: "closing",     start_time: "14:50", end_time: "15:00" },
+const TERM_LABELS: Record<string, string> = {
+  first: "First Term", second: "Second Term", third: "Third Term",
+};
+
+interface DefaultPeriod {
+  period_number: number;
+  period_type: TimetableSlot["period_type"];
+  start_time: string;
+  end_time: string;
+}
+
+const DEFAULT_PERIODS: DefaultPeriod[] = [
+  { period_number: 1,  period_type: "assembly",    start_time: "08:00", end_time: "08:30" },
+  { period_number: 2,  period_type: "lesson",      start_time: "08:30", end_time: "09:10" },
+  { period_number: 3,  period_type: "lesson",      start_time: "09:10", end_time: "09:50" },
+  { period_number: 4,  period_type: "lesson",      start_time: "09:50", end_time: "10:30" },
+  { period_number: 5,  period_type: "short_break", start_time: "10:30", end_time: "10:45" },
+  { period_number: 6,  period_type: "lesson",      start_time: "10:45", end_time: "11:25" },
+  { period_number: 7,  period_type: "lesson",      start_time: "11:25", end_time: "12:05" },
+  { period_number: 8,  period_type: "lesson",      start_time: "12:05", end_time: "12:45" },
+  { period_number: 9,  period_type: "lunch",       start_time: "12:45", end_time: "13:30" },
+  { period_number: 10, period_type: "lesson",      start_time: "13:30", end_time: "14:10" },
+  { period_number: 11, period_type: "lesson",      start_time: "14:10", end_time: "14:50" },
+  { period_number: 12, period_type: "closing",     start_time: "14:50", end_time: "15:00" },
 ];
 
 interface SlotDraft {
@@ -55,6 +71,11 @@ interface SlotDraft {
   end_time: string;
   notes: string;
 }
+
+const EMPTY_DRAFT: SlotDraft = {
+  period_type: "lesson", subject_id: "", teacher_id: "",
+  room: "", start_time: "", end_time: "", notes: "",
+};
 
 export default function TimetablePage() {
   const { schoolId } = useAuth();
@@ -68,16 +89,17 @@ export default function TimetablePage() {
   const [loadingInit, setLoadingInit] = useState(true);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingAll, setSavingAll] = useState(false);
 
   const [selectedClassId, setSelectedClassId] = useState("");
-  const [selectedTerm, setSelectedTerm] = useState<"first"|"second"|"third">("first");
+  const [selectedTerm, setSelectedTerm] = useState<"first" | "second" | "third">("first");
   const [selectedYear, setSelectedYear] = useState("");
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<{ day: Day; period_number: number; existing?: TimetableSlot } | null>(null);
-  const [draft, setDraft] = useState<SlotDraft>({ period_type: "lesson", subject_id: "", teacher_id: "", room: "", start_time: "", end_time: "", notes: "" });
+  const [draft, setDraft] = useState<SlotDraft>(EMPTY_DRAFT);
 
-  // Load classes, subjects, teachers
+  // ── Load initial data ──────────────────────────────────────────────
   useEffect(() => {
     if (!schoolId) return;
     setLoadingInit(true);
@@ -88,335 +110,572 @@ export default function TimetablePage() {
         setTeachers(tchs);
         if (cls.length) setSelectedClassId(cls[0].id);
       })
-      .catch((e) => toast({ title: "Error", description: e.message, variant: "destructive" }))
+      .catch((e) => toast({ title: "Error loading data", description: e.message, variant: "destructive" }))
       .finally(() => setLoadingInit(false));
   }, [schoolId]); // eslint-disable-line
 
   useEffect(() => {
-    if (school) { setSelectedTerm(school.current_term); setSelectedYear(school.academic_year); }
+    if (school) {
+      setSelectedTerm(school.current_term);
+      setSelectedYear(school.academic_year);
+    }
   }, [school]);
 
+  // ── Load timetable slots whenever filters change ───────────────────
   const loadSlots = useCallback(async () => {
     if (!schoolId || !selectedClassId || !selectedTerm || !selectedYear) return;
     setLoadingSlots(true);
-    getTimetable(schoolId, selectedClassId, selectedTerm, selectedYear)
-      .then(setSlots)
-      .catch((e) => toast({ title: "Error loading timetable", description: e.message, variant: "destructive" }))
-      .finally(() => setLoadingSlots(false));
+    try {
+      const data = await getTimetable(schoolId, selectedClassId, selectedTerm, selectedYear);
+      setSlots(data);
+    } catch (e) {
+      toast({ title: "Error loading timetable", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setLoadingSlots(false);
+    }
   }, [schoolId, selectedClassId, selectedTerm, selectedYear]); // eslint-disable-line
 
   useEffect(() => { loadSlots(); }, [loadSlots]);
 
-  // Build a lookup: day+periodNum → slot
+  // ── Derived data ───────────────────────────────────────────────────
   const slotMap: Record<string, TimetableSlot> = {};
   slots.forEach((s) => { slotMap[`${s.day}|${s.period_number}`] = s; });
 
-  // Derive unique period numbers from slots or defaults (for the current day)
-  const periodNumbers = [...new Set(
-    (slots.length > 0 ? slots : DEFAULT_PERIODS.map((p) => ({ ...p, day: "monday" as Day })))
-      .map((s) => s.period_number)
-  )].sort((a, b) => a - b);
+  const selectedClass = classes.find((c) => c.id === selectedClassId);
 
-  const openDrawer = (day: Day, period_number: number) => {
-    const existing = slotMap[`${day}|${period_number}`];
-    setEditTarget({ day, period_number, existing });
+  // Period list: if slots exist derive from them, otherwise use DEFAULT_PERIODS structure
+  const periodNumbers = slots.length > 0
+    ? [...new Set(slots.map((s) => s.period_number))].sort((a, b) => a - b)
+    : DEFAULT_PERIODS.map((p) => p.period_number);
+
+  // For each period number, determine the canonical type + times (from any day's slot, or template)
+  const getPeriodMeta = (pn: number): { period_type: string; start_time: string; end_time: string } => {
+    const existing = DAYS.map((d) => slotMap[`${d}|${pn}`]).find(Boolean);
+    if (existing) return { period_type: existing.period_type, start_time: existing.start_time, end_time: existing.end_time };
+    const def = DEFAULT_PERIODS.find((p) => p.period_number === pn);
+    return { period_type: def?.period_type ?? "lesson", start_time: def?.start_time ?? "", end_time: def?.end_time ?? "" };
+  };
+
+  // ── Open drawer ────────────────────────────────────────────────────
+  const openDrawer = (day: Day, pn: number) => {
+    const existing = slotMap[`${day}|${pn}`];
+    const meta = getPeriodMeta(pn);
+    setEditTarget({ day, period_number: pn, existing });
     setDraft({
-      period_type:  existing?.period_type ?? "lesson",
+      period_type:  existing?.period_type ?? meta.period_type,
       subject_id:   existing?.subject_id ?? "",
       teacher_id:   existing?.teacher_id ?? "",
       room:         existing?.room ?? "",
-      start_time:   existing?.start_time ?? "",
-      end_time:     existing?.end_time ?? "",
+      start_time:   existing?.start_time ?? meta.start_time,
+      end_time:     existing?.end_time ?? meta.end_time,
       notes:        existing?.notes ?? "",
     });
     setDrawerOpen(true);
   };
 
+  // Open drawer for break/non-lesson row (any day click opens shared drawer)
+  const openBreakDrawer = (pn: number) => {
+    const meta = getPeriodMeta(pn);
+    // Use Monday's slot as the canonical slot for break editing
+    const existing = slotMap[`monday|${pn}`] ?? slotMap[`tuesday|${pn}`];
+    setEditTarget({ day: "monday", period_number: pn, existing });
+    setDraft({
+      period_type:  meta.period_type,
+      subject_id:   "",
+      teacher_id:   "",
+      room:         "",
+      start_time:   meta.start_time,
+      end_time:     meta.end_time,
+      notes:        existing?.notes ?? "",
+    });
+    setDrawerOpen(true);
+  };
+
+  // ── Save single slot ───────────────────────────────────────────────
   const handleSave = async () => {
     if (!schoolId || !editTarget || !selectedClassId) return;
     setSaving(true);
-    const cls = classes.find((c) => c.id === selectedClassId);
+    const cls = selectedClass;
     const sub = subjects.find((s) => s.id === draft.subject_id);
     const tch = teachers.find((t) => t.id === draft.teacher_id);
+    const isLesson = draft.period_type === "lesson";
+
     try {
-      const saved = await saveTimetableSlot(schoolId, {
-        ...(editTarget.existing?.id ? { id: editTarget.existing.id } : {}),
-        class_id: selectedClassId,
-        class_name: cls?.name ?? "",
-        academic_year: selectedYear,
-        term: selectedTerm,
-        day: editTarget.day,
-        period_number: editTarget.period_number,
-        period_type: draft.period_type as TimetableSlot["period_type"],
-        start_time: draft.start_time || "00:00",
-        end_time: draft.end_time || "00:00",
-        subject_id: draft.subject_id || null,
-        subject_name: sub?.name ?? null,
-        teacher_id: draft.teacher_id || null,
-        teacher_name: tch ? `${tch.first_name} ${tch.last_name}` : null,
-        room: draft.room || null,
-        notes: draft.notes || null,
-      });
+      // For non-lesson types, save the same slot across ALL days
+      const daysToSave: Day[] = isLesson ? [editTarget.day] : [...DAYS];
+
+      const saved: TimetableSlot[] = [];
+      for (const day of daysToSave) {
+        const existingForDay = slotMap[`${day}|${editTarget.period_number}`];
+        const result = await saveTimetableSlot(schoolId, {
+          ...(existingForDay?.id ? { id: existingForDay.id } : {}),
+          class_id:      selectedClassId,
+          class_name:    cls?.name ?? "",
+          academic_year: selectedYear,
+          term:          selectedTerm,
+          day,
+          period_number: editTarget.period_number,
+          period_type:   draft.period_type as TimetableSlot["period_type"],
+          start_time:    draft.start_time || "00:00",
+          end_time:      draft.end_time || "00:00",
+          subject_id:    isLesson ? (draft.subject_id || null) : null,
+          subject_name:  isLesson ? (sub?.name ?? null) : null,
+          teacher_id:    isLesson ? (draft.teacher_id || null) : null,
+          teacher_name:  isLesson ? (tch ? `${tch.first_name} ${tch.last_name}` : null) : null,
+          room:          isLesson ? (draft.room || null) : null,
+          notes:         draft.notes || null,
+        });
+        saved.push(result);
+      }
+
       setSlots((prev) => {
-        const idx = prev.findIndex((s) => s.day === saved.day && s.period_number === saved.period_number);
-        return idx >= 0 ? prev.map((s, i) => i === idx ? saved : s) : [...prev, saved];
+        let updated = [...prev];
+        saved.forEach((s) => {
+          const idx = updated.findIndex((x) => x.day === s.day && x.period_number === s.period_number);
+          if (idx >= 0) updated[idx] = s;
+          else updated.push(s);
+        });
+        return updated;
       });
-      toast({ title: "Slot saved" });
+
+      toast({ title: "Saved", description: isLesson ? "Lesson slot saved." : `${PERIOD_LABELS[draft.period_type]} updated for all days.` });
       setDrawerOpen(false);
     } catch (e) {
-      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+      toast({ title: "Error saving", description: (e as Error).message, variant: "destructive" });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (slotId: string) => {
-    if (!schoolId) return;
+  // ── Delete slot ────────────────────────────────────────────────────
+  const handleDelete = async () => {
+    if (!schoolId || !editTarget) return;
+    setSaving(true);
+    const isLesson = draft.period_type === "lesson";
     try {
-      await deleteTimetableSlot(schoolId, slotId);
-      setSlots((prev) => prev.filter((s) => s.id !== slotId));
-      toast({ title: "Slot deleted" });
+      const daysToDelete: Day[] = isLesson ? [editTarget.day] : [...DAYS];
+      for (const day of daysToDelete) {
+        const slot = slotMap[`${day}|${editTarget.period_number}`];
+        if (slot?.id) await deleteTimetableSlot(schoolId, slot.id);
+      }
+      setSlots((prev) => {
+        if (isLesson) return prev.filter((s) => !(s.day === editTarget.day && s.period_number === editTarget.period_number));
+        return prev.filter((s) => s.period_number !== editTarget.period_number);
+      });
+      toast({ title: "Deleted" });
       setDrawerOpen(false);
     } catch (e) {
-      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+      toast({ title: "Error deleting", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
+  // ── Load template ──────────────────────────────────────────────────
   const handleLoadTemplate = async () => {
-    if (!schoolId || !selectedClassId) return;
-    const cls = classes.find((c) => c.id === selectedClassId);
+    if (!schoolId || !selectedClassId || !selectedYear) {
+      toast({ title: "Select class and year first", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
+      const cls = selectedClass;
       const templateSlots = DAYS.flatMap((day) =>
         DEFAULT_PERIODS.map((p) => ({
-          class_id: selectedClassId,
-          class_name: cls?.name ?? "",
+          class_id:      selectedClassId,
+          class_name:    cls?.name ?? "",
           academic_year: selectedYear,
-          term: selectedTerm,
+          term:          selectedTerm,
           day,
           period_number: p.period_number,
-          period_type: p.period_type as TimetableSlot["period_type"],
-          start_time: p.start_time,
-          end_time: p.end_time,
-          subject_id: null, subject_name: null,
-          teacher_id: null, teacher_name: null,
-          room: null, notes: null,
+          period_type:   p.period_type,
+          start_time:    p.start_time,
+          end_time:      p.end_time,
+          subject_id:    null as null,
+          subject_name:  null as null,
+          teacher_id:    null as null,
+          teacher_name:  null as null,
+          room:          null as null,
+          notes:         null as null,
         }))
       );
       const saved = await bulkSaveTimetable(schoolId, templateSlots);
       setSlots(saved);
-      toast({ title: "Default template loaded", description: `${saved.length} periods created` });
+      toast({ title: "Template loaded", description: `${saved.length} period slots created across all 5 days.` });
     } catch (e) {
-      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+      toast({ title: "Error loading template", description: (e as Error).message, variant: "destructive" });
     } finally {
       setSaving(false);
     }
   };
 
-  if (loadingInit) return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-slate-400" /></div>;
+  // ── Save All ───────────────────────────────────────────────────────
+  const handleSaveAll = async () => {
+    if (!schoolId || slots.length === 0) return;
+    setSavingAll(true);
+    try {
+      const saved = await bulkSaveTimetable(schoolId, slots.map(({ id, school_id, created_at, updated_at, ...rest }) => ({ ...rest, id })));
+      setSlots(saved);
+      toast({ title: "All slots saved", description: `${saved.length} periods saved successfully.` });
+    } catch (e) {
+      toast({ title: "Error saving all", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setSavingAll(false);
+    }
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────
+  if (loadingInit) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="animate-spin text-slate-400" size={28} />
+      </div>
+    );
+  }
+
+  const canShowGrid = selectedClassId && selectedYear;
 
   return (
     <>
-      {/* Print styles */}
-      <style>{`@media print { .no-print { display: none !important; } }`}</style>
+      {/* ── Print styles ── */}
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          body > * { visibility: hidden; }
+          #timetable-print-area, #timetable-print-area * { visibility: visible; }
+          #timetable-print-area { position: fixed; inset: 0; padding: 24px; background: white; }
+          #timetable-print-area table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          #timetable-print-area th, #timetable-print-area td { border: 1px solid #cbd5e1; padding: 5px 7px; }
+          #timetable-print-area .break-band { text-align: center; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; padding: 6px; }
+        }
+      `}</style>
 
       <div className="space-y-5">
-        {/* Header */}
+        {/* ── Header ── */}
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <h1 className="text-xl font-bold text-slate-800">Timetable</h1>
-          <div className="flex gap-2 no-print">
+          <div>
+            <h1 className="text-xl font-bold text-slate-800">Timetable</h1>
+            <p className="text-sm text-slate-500 mt-0.5">Weekly class schedule</p>
+          </div>
+          <div className="flex flex-wrap gap-2 no-print">
             <Button variant="outline" size="sm" onClick={loadSlots} disabled={loadingSlots}>
-              <RefreshCw size={14} className={cn("mr-1", loadingSlots && "animate-spin")} /> Refresh
+              <RefreshCw size={14} className={cn("mr-1.5", loadingSlots && "animate-spin")} />
+              Refresh
+            </Button>
+            <Button
+              variant="outline" size="sm"
+              onClick={handleLoadTemplate}
+              disabled={saving || !canShowGrid}
+            >
+              {saving
+                ? <Loader2 size={14} className="mr-1.5 animate-spin" />
+                : <Plus size={14} className="mr-1.5" />}
+              Load Template
+            </Button>
+            <Button
+              variant="default" size="sm"
+              onClick={handleSaveAll}
+              disabled={savingAll || slots.length === 0}
+            >
+              {savingAll
+                ? <Loader2 size={14} className="mr-1.5 animate-spin" />
+                : <Save size={14} className="mr-1.5" />}
+              Save All
             </Button>
             <Button variant="outline" size="sm" onClick={() => window.print()}>
-              <Printer size={14} className="mr-1" /> Print
+              <Printer size={14} className="mr-1.5" />
+              Print Timetable
             </Button>
-            {slots.length === 0 && (
-              <Button size="sm" onClick={handleLoadTemplate} disabled={saving || !selectedClassId}>
-                {saving ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Plus size={14} className="mr-1" />}
-                Load Default Template
-              </Button>
-            )}
           </div>
         </div>
 
-        {/* Selectors */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 no-print">
+        {/* ── Filters ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 no-print">
           <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-500 uppercase">Class</label>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Class</label>
             <Select value={selectedClassId} onValueChange={setSelectedClassId}>
-              <SelectTrigger className="h-9"><SelectValue placeholder="Select class…" /></SelectTrigger>
-              <SelectContent>{classes.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-500 uppercase">Term</label>
-            <Select value={selectedTerm} onValueChange={(v) => setSelectedTerm(v as typeof selectedTerm)}>
-              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Select class…" />
+              </SelectTrigger>
               <SelectContent>
-                <SelectItem value="first">1st Term</SelectItem>
-                <SelectItem value="second">2nd Term</SelectItem>
-                <SelectItem value="third">3rd Term</SelectItem>
+                {classes.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-500 uppercase">Year</label>
-            <Input className="h-9" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} placeholder="e.g. 2025/2026" />
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Term</label>
+            <Select value={selectedTerm} onValueChange={(v) => setSelectedTerm(v as typeof selectedTerm)}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="first">First Term</SelectItem>
+                <SelectItem value="second">Second Term</SelectItem>
+                <SelectItem value="third">Third Term</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Academic Year</label>
+            <Input
+              className="h-9"
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              placeholder="e.g. 2025/2026"
+            />
           </div>
         </div>
 
-        {/* Grid */}
+        {/* ── Grid ── */}
         {loadingSlots ? (
-          <div className="flex justify-center py-10"><Loader2 className="animate-spin text-slate-400" /></div>
-        ) : !selectedClassId ? (
-          <p className="text-center text-slate-400 py-10 text-sm">Select a class to view its timetable.</p>
-        ) : periodNumbers.length === 0 ? (
-          <div className="text-center py-10">
-            <p className="text-slate-400 text-sm mb-3">No timetable yet for this class/term/year.</p>
-            <Button size="sm" onClick={handleLoadTemplate} disabled={saving}>
-              {saving ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Plus size={14} className="mr-1" />}
-              Load Default Template
-            </Button>
+          <div className="flex justify-center py-14">
+            <Loader2 className="animate-spin text-slate-400" size={24} />
+          </div>
+        ) : !canShowGrid ? (
+          <div className="rounded-xl border border-dashed border-slate-200 py-14 text-center">
+            <p className="text-slate-400 text-sm">Select a class and academic year to view the timetable.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs border-separate border-spacing-1 min-w-[700px]">
-              <thead>
-                <tr>
-                  <th className="text-left text-slate-400 font-semibold uppercase px-2 py-1.5 w-28">Period</th>
-                  {DAYS.map((d) => (
-                    <th key={d} className="text-slate-600 font-semibold uppercase text-center py-1.5 capitalize">{d.slice(0, 3)}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {periodNumbers.map((pn) => {
-                  // Use the first slot found for this period to get type/times (same across days)
-                  const refSlot = DAYS.map((d) => slotMap[`${d}|${pn}`]).find(Boolean);
-                  const pType = refSlot?.period_type ?? "lesson";
-                  const isNonLesson = pType !== "lesson";
-                  return (
-                    <tr key={pn}>
-                      <td className="px-2 py-1 align-middle">
-                        <p className="font-semibold text-slate-700">P{pn}</p>
-                        {refSlot && (
-                          <p className="text-slate-400 text-[10px]">
-                            {refSlot.start_time?.slice(0, 5)} – {refSlot.end_time?.slice(0, 5)}
-                          </p>
-                        )}
-                      </td>
-                      {isNonLesson ? (
-                        <td colSpan={5}>
-                          <div className={cn("rounded-lg py-2.5 text-center text-xs font-semibold tracking-wide uppercase", PERIOD_COLORS[pType])}>
-                            {PERIOD_LABELS[pType]}
-                          </div>
-                        </td>
-                      ) : (
-                        DAYS.map((day) => {
-                          const slot = slotMap[`${day}|${pn}`];
-                          return (
-                            <td key={day} className="align-top">
+          <div id="timetable-print-area">
+            {/* Print-only header */}
+            <div className="hidden print:block mb-4">
+              <p className="text-lg font-bold">{school?.name ?? "School"} — Timetable</p>
+              <p className="text-sm text-slate-600">
+                Class: <strong>{selectedClass?.name ?? "—"}</strong> &nbsp;|&nbsp;
+                {TERM_LABELS[selectedTerm]} &nbsp;|&nbsp; {selectedYear}
+              </p>
+            </div>
+
+            {periodNumbers.length === 0 ? (
+              <div className="text-center py-10">
+                <p className="text-slate-400 text-sm mb-4">No timetable yet. Load the default template to get started.</p>
+                <Button size="sm" onClick={handleLoadTemplate} disabled={saving} className="no-print">
+                  {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <Plus size={14} className="mr-1.5" />}
+                  Load Default Template
+                </Button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-xs min-w-[680px] border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="text-left px-3 py-2.5 w-28 text-slate-500 font-semibold uppercase text-[11px]">Period</th>
+                      {DAYS.map((d) => (
+                        <th key={d} className="text-center px-3 py-2.5 text-slate-600 font-semibold uppercase text-[11px]">
+                          {DAY_LABELS[d]}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {periodNumbers.map((pn, idx) => {
+                      const meta = getPeriodMeta(pn);
+                      const isBreak = meta.period_type !== "lesson";
+
+                      return (
+                        <tr key={pn} className={cn("border-b border-slate-100", idx % 2 === 0 ? "bg-white" : "bg-slate-50/50")}>
+                          {/* Period label cell */}
+                          <td className="px-3 py-2 align-middle whitespace-nowrap">
+                            <p className="font-bold text-slate-700 text-[11px]">P{pn}</p>
+                            <p className="text-slate-400 text-[10px] mt-0.5">
+                              {meta.start_time.slice(0, 5)} – {meta.end_time.slice(0, 5)}
+                            </p>
+                          </td>
+
+                          {isBreak ? (
+                            /* ── Full-width break band spanning all 5 day columns ── */
+                            <td colSpan={5} className="px-2 py-1.5">
                               <button
-                                onClick={() => openDrawer(day, pn)}
+                                onClick={() => openBreakDrawer(pn)}
                                 className={cn(
-                                  "w-full min-h-[52px] p-2 rounded-lg text-left transition-all hover:ring-2 hover:ring-blue-300",
-                                  slot ? "bg-white border border-slate-200 shadow-sm" : "bg-slate-50 border border-dashed border-slate-200 no-print"
+                                  "break-band w-full rounded-lg py-2.5 text-center text-[11px] font-semibold tracking-widest uppercase transition-all hover:opacity-80 no-print-border",
+                                  BREAK_BAND_STYLES[meta.period_type] ?? "bg-slate-100 text-slate-600"
                                 )}
                               >
-                                {slot ? (
-                                  <>
-                                    <p className="font-semibold text-slate-800 leading-tight text-[11px] line-clamp-1">{slot.subject_name ?? "—"}</p>
-                                    {slot.teacher_name && <p className="text-slate-500 text-[10px] mt-0.5 truncate">{slot.teacher_name}</p>}
-                                    {slot.room && <p className="text-slate-400 text-[10px]">Room {slot.room}</p>}
-                                  </>
-                                ) : (
-                                  <p className="text-[10px] text-slate-400 italic no-print">+ Add</p>
-                                )}
+                                {PERIOD_LABELS[meta.period_type]}
+                                <span className="ml-2 text-[10px] font-normal opacity-60 no-print">
+                                  (click to edit)
+                                </span>
                               </button>
+                              {/* Print version — no button wrapper */}
+                              <div className={cn(
+                                "break-band hidden print:flex w-full rounded-lg py-2 text-center text-[11px] font-semibold tracking-widest uppercase justify-center",
+                                BREAK_BAND_STYLES[meta.period_type] ?? "bg-slate-100 text-slate-600"
+                              )}>
+                                {PERIOD_LABELS[meta.period_type]}
+                              </div>
                             </td>
-                          );
-                        })
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                          ) : (
+                            /* ── Lesson cells — one per day ── */
+                            DAYS.map((day) => {
+                              const slot = slotMap[`${day}|${pn}`];
+                              return (
+                                <td key={day} className="px-1.5 py-1.5 align-top">
+                                  <button
+                                    onClick={() => openDrawer(day, pn)}
+                                    className={cn(
+                                      "w-full min-h-[56px] p-2 rounded-lg text-left transition-all",
+                                      "hover:ring-2 hover:ring-blue-400 hover:shadow-sm",
+                                      slot
+                                        ? "bg-white border border-slate-200 shadow-sm"
+                                        : "bg-slate-50 border border-dashed border-slate-200 no-print"
+                                    )}
+                                  >
+                                    {slot ? (
+                                      <>
+                                        <p className="font-semibold text-slate-800 text-[11px] leading-tight line-clamp-1">
+                                          {slot.subject_name ?? <span className="italic text-slate-400">No subject</span>}
+                                        </p>
+                                        {slot.teacher_name && (
+                                          <p className="text-slate-500 text-[10px] mt-0.5 truncate">{slot.teacher_name}</p>
+                                        )}
+                                        {slot.room && (
+                                          <p className="text-slate-400 text-[10px]">Rm {slot.room}</p>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <p className="text-[10px] text-slate-400 italic no-print">+ Add lesson</p>
+                                    )}
+                                  </button>
+                                </td>
+                              );
+                            })
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Edit Drawer */}
+      {/* ── Edit Drawer ── */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader>
+          <SheetHeader className="pb-2">
             <SheetTitle>
-              {editTarget ? `${editTarget.day.charAt(0).toUpperCase() + editTarget.day.slice(1)} · Period ${editTarget.period_number}` : "Edit Slot"}
+              {editTarget
+                ? `${DAY_LABELS[editTarget.day] ?? editTarget.day} · Period ${editTarget.period_number}`
+                : "Edit Slot"}
             </SheetTitle>
           </SheetHeader>
-          <div className="space-y-4 py-4">
+
+          <div className="space-y-4 py-4 px-1">
+            {/* Period Type */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-500 uppercase">Period Type</label>
-              <Select value={draft.period_type} onValueChange={(v) => setDraft((d) => ({ ...d, period_type: v }))}>
+              <label className="text-xs font-semibold text-slate-500 uppercase">Period Type</label>
+              <Select
+                value={draft.period_type}
+                onValueChange={(v) => setDraft((d) => ({ ...d, period_type: v }))}
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {Object.entries(PERIOD_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                  {Object.entries(PERIOD_LABELS).map(([k, v]) => (
+                    <SelectItem key={k} value={k}>{v}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Lesson-specific fields */}
             {draft.period_type === "lesson" && (
               <>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-500 uppercase">Subject</label>
-                  <Select value={draft.subject_id} onValueChange={(v) => setDraft((d) => ({ ...d, subject_id: v }))}>
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Subject</label>
+                  <Select
+                    value={draft.subject_id}
+                    onValueChange={(v) => setDraft((d) => ({ ...d, subject_id: v }))}
+                  >
                     <SelectTrigger><SelectValue placeholder="— None —" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="">— None —</SelectItem>
-                      {subjects.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                      {subjects.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-500 uppercase">Teacher</label>
-                  <Select value={draft.teacher_id} onValueChange={(v) => setDraft((d) => ({ ...d, teacher_id: v }))}>
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Teacher</label>
+                  <Select
+                    value={draft.teacher_id}
+                    onValueChange={(v) => setDraft((d) => ({ ...d, teacher_id: v }))}
+                  >
                     <SelectTrigger><SelectValue placeholder="— None —" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="">— None —</SelectItem>
-                      {teachers.map((t) => <SelectItem key={t.id} value={t.id}>{t.first_name} {t.last_name}</SelectItem>)}
+                      {teachers.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.first_name} {t.last_name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-500 uppercase">Room</label>
-                  <Input value={draft.room} onChange={(e) => setDraft((d) => ({ ...d, room: e.target.value }))} placeholder="e.g. B12" />
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Room</label>
+                  <Input
+                    value={draft.room}
+                    onChange={(e) => setDraft((d) => ({ ...d, room: e.target.value }))}
+                    placeholder="e.g. B12"
+                  />
                 </div>
               </>
             )}
+
+            {/* Times */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-500 uppercase">Start Time</label>
-                <Input type="time" value={draft.start_time} onChange={(e) => setDraft((d) => ({ ...d, start_time: e.target.value }))} />
+                <label className="text-xs font-semibold text-slate-500 uppercase">Start Time</label>
+                <Input
+                  type="time"
+                  value={draft.start_time}
+                  onChange={(e) => setDraft((d) => ({ ...d, start_time: e.target.value }))}
+                />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-500 uppercase">End Time</label>
-                <Input type="time" value={draft.end_time} onChange={(e) => setDraft((d) => ({ ...d, end_time: e.target.value }))} />
+                <label className="text-xs font-semibold text-slate-500 uppercase">End Time</label>
+                <Input
+                  type="time"
+                  value={draft.end_time}
+                  onChange={(e) => setDraft((d) => ({ ...d, end_time: e.target.value }))}
+                />
               </div>
             </div>
+
+            {/* Notes */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-500 uppercase">Notes</label>
-              <Input value={draft.notes} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))} placeholder="Optional" />
+              <label className="text-xs font-semibold text-slate-500 uppercase">Notes</label>
+              <Textarea
+                value={draft.notes}
+                onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
+                placeholder="Optional notes…"
+                rows={2}
+                className="resize-none"
+              />
             </div>
           </div>
-          <SheetFooter className="flex gap-2 flex-col sm:flex-row">
+
+          <SheetFooter className="flex gap-2 flex-col sm:flex-row pt-2 px-1">
             {editTarget?.existing && (
-              <Button variant="destructive" size="sm" onClick={() => handleDelete(editTarget.existing!.id)} disabled={saving} className="sm:mr-auto">
-                <Trash2 size={14} className="mr-1" /> Delete
+              <Button
+                variant="destructive" size="sm"
+                onClick={handleDelete}
+                disabled={saving}
+                className="sm:mr-auto"
+              >
+                <Trash2 size={14} className="mr-1.5" /> Delete
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={() => setDrawerOpen(false)}>Cancel</Button>
+            <Button variant="outline" size="sm" onClick={() => setDrawerOpen(false)}>
+              Cancel
+            </Button>
             <Button size="sm" onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 size={14} className="mr-1 animate-spin" /> : null} Save
+              {saving ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <Save size={14} className="mr-1.5" />}
+              Save
             </Button>
           </SheetFooter>
         </SheetContent>

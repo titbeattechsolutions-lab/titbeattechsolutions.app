@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSchool } from "@/hooks/useSchool";
 import {
-  getClasses, getMyTeacherProfile,
-  getTimetable, TimetableSlot, Class,
+  getClasses, getTimetable,
+  TimetableSlot, Class,
 } from "@/supabase/schoolService";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -36,8 +36,8 @@ const TERM_LABELS: Record<string, string> = {
   first: "First Term", second: "Second Term", third: "Third Term",
 };
 
-export default function TeacherTimetablePage() {
-  const { schoolId, user } = useAuth();
+export default function StudentTimetablePage() {
+  const { schoolId } = useAuth();
   const { school } = useSchool();
   const { toast } = useToast();
 
@@ -49,29 +49,22 @@ export default function TeacherTimetablePage() {
   const [selectedClassId, setSelectedClassId] = useState("");
   const [selectedTerm, setSelectedTerm] = useState<"first" | "second" | "third">("first");
   const [selectedYear, setSelectedYear] = useState("");
-  const [teacherId, setTeacherId] = useState<string | null>(null);
-  const [selectedClass, setSelectedClass] = useState<Class | null>(null);
 
   useEffect(() => {
-    if (!schoolId || !user) return;
+    if (!schoolId) return;
     setLoading(true);
-    Promise.all([getClasses(schoolId), getMyTeacherProfile(schoolId, user.id)])
-      .then(([cls, teacher]) => {
+    getClasses(schoolId)
+      .then((cls) => {
         setClasses(cls);
-        setTeacherId(teacher?.id ?? null);
-        if (cls.length) { setSelectedClassId(cls[0].id); setSelectedClass(cls[0]); }
+        if (cls.length) setSelectedClassId(cls[0].id);
       })
       .catch((e) => toast({ title: "Error", description: e.message, variant: "destructive" }))
       .finally(() => setLoading(false));
-  }, [schoolId, user]); // eslint-disable-line
+  }, [schoolId]); // eslint-disable-line
 
   useEffect(() => {
     if (school) { setSelectedTerm(school.current_term); setSelectedYear(school.academic_year); }
   }, [school]);
-
-  useEffect(() => {
-    setSelectedClass(classes.find((c) => c.id === selectedClassId) ?? null);
-  }, [selectedClassId, classes]);
 
   const loadSlots = useCallback(async () => {
     if (!schoolId || !selectedClassId || !selectedTerm || !selectedYear) return;
@@ -93,6 +86,8 @@ export default function TeacherTimetablePage() {
 
   const periodNumbers = [...new Set(slots.map((s) => s.period_number))].sort((a, b) => a - b);
 
+  const selectedClass = classes.find((c) => c.id === selectedClassId);
+
   const getPeriodMeta = (pn: number) => {
     const existing = DAYS.map((d) => slotMap[`${d}|${pn}`]).find(Boolean);
     return {
@@ -103,7 +98,11 @@ export default function TeacherTimetablePage() {
   };
 
   if (loading) {
-    return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-slate-400" size={24} /></div>;
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="animate-spin text-slate-400" size={26} />
+      </div>
+    );
   }
 
   return (
@@ -112,10 +111,10 @@ export default function TeacherTimetablePage() {
         @media print {
           .no-print { display: none !important; }
           body > * { visibility: hidden; }
-          #tt-teacher-print, #tt-teacher-print * { visibility: visible; }
-          #tt-teacher-print { position: fixed; inset: 0; padding: 24px; background: white; }
-          #tt-teacher-print table { width: 100%; border-collapse: collapse; font-size: 11px; }
-          #tt-teacher-print th, #tt-teacher-print td { border: 1px solid #cbd5e1; padding: 5px 7px; }
+          #tt-student-print, #tt-student-print * { visibility: visible; }
+          #tt-student-print { position: fixed; inset: 0; padding: 24px; background: white; }
+          #tt-student-print table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          #tt-student-print th, #tt-student-print td { border: 1px solid #cbd5e1; padding: 5px 7px; }
         }
       `}</style>
 
@@ -124,7 +123,7 @@ export default function TeacherTimetablePage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-xl font-bold text-slate-800">Timetable</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Read-only — your slots are highlighted in indigo</p>
+            <p className="text-sm text-slate-500 mt-0.5">Read-only class schedule</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => window.print()} className="no-print">
             <Printer size={14} className="mr-1.5" /> Print Timetable
@@ -161,13 +160,19 @@ export default function TeacherTimetablePage() {
 
         {/* Grid */}
         {loadingSlots ? (
-          <div className="flex justify-center py-10"><Loader2 className="animate-spin text-slate-400" size={22} /></div>
+          <div className="flex justify-center py-12">
+            <Loader2 className="animate-spin text-slate-400" size={22} />
+          </div>
+        ) : !selectedClassId ? (
+          <div className="rounded-xl border border-dashed border-slate-200 py-14 text-center">
+            <p className="text-slate-400 text-sm">Select a class to view its timetable.</p>
+          </div>
         ) : periodNumbers.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-200 py-14 text-center">
-            <p className="text-slate-400 text-sm">No timetable set for this class/term/year yet.</p>
+            <p className="text-slate-400 text-sm">No timetable has been set up for this class yet.</p>
           </div>
         ) : (
-          <div id="tt-teacher-print">
+          <div id="tt-student-print">
             {/* Print header */}
             <div className="hidden print:block mb-4">
               <p className="text-lg font-bold">{school?.name ?? "School"} — Timetable</p>
@@ -213,28 +218,23 @@ export default function TeacherTimetablePage() {
                         ) : (
                           DAYS.map((day) => {
                             const slot = slotMap[`${day}|${pn}`];
-                            const isMySlot = slot?.teacher_id === teacherId && teacherId !== null;
                             return (
                               <td key={day} className="px-1.5 py-1.5 align-top">
                                 <div className={cn(
                                   "min-h-[54px] p-2 rounded-lg",
-                                  slot
-                                    ? isMySlot
-                                      ? "bg-indigo-50 border border-indigo-300"
-                                      : "bg-white border border-slate-200"
-                                    : "bg-slate-50 border border-dashed border-slate-100"
+                                  slot ? "bg-white border border-slate-200" : "bg-slate-50"
                                 )}>
                                   {slot ? (
                                     <>
                                       <p className="font-semibold text-slate-800 text-[11px] line-clamp-1 leading-tight">
-                                        {slot.subject_name ?? <span className="italic text-slate-400">No subject</span>}
+                                        {slot.subject_name ?? <span className="italic text-slate-400">—</span>}
                                       </p>
                                       {slot.teacher_name && (
-                                        <p className={cn("text-[10px] mt-0.5 truncate", isMySlot ? "text-indigo-600 font-semibold" : "text-slate-500")}>
-                                          {slot.teacher_name}
-                                        </p>
+                                        <p className="text-slate-500 text-[10px] mt-0.5 truncate">{slot.teacher_name}</p>
                                       )}
-                                      {slot.room && <p className="text-slate-400 text-[10px]">Rm {slot.room}</p>}
+                                      {slot.room && (
+                                        <p className="text-slate-400 text-[10px]">Rm {slot.room}</p>
+                                      )}
                                     </>
                                   ) : (
                                     <p className="text-[10px] text-slate-300">—</p>

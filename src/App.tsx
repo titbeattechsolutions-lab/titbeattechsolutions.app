@@ -24,6 +24,8 @@ import AttendancePage from "./pages/teacher/AttendancePage";
 import ResultsPage from "./pages/teacher/ResultsPage";
 import TimetablePage from "./pages/admin/TimetablePage";
 import TeacherTimetablePage from "./pages/teacher/TimetablePage";
+import StudentPortal from "./pages/student/StudentPortal";
+import StudentTimetablePage from "./pages/student/TimetablePage";
 import SuperadminLayout from "./layouts/SuperadminLayout";
 import SchoolsListPage from "./pages/superadmin/SchoolsListPage";
 import SchoolDetailPage from "./pages/superadmin/SchoolDetailPage";
@@ -35,6 +37,7 @@ import BillingListPage from "./pages/superadmin/BillingListPage";
 const queryClient = new QueryClient();
 
 const SCHOOL_ROLES = ["school_admin", "principal", "head_teacher", "teacher"] as const;
+const STUDENT_ROLES = ["student"] as const;
 
 function Unauthorized() {
   return (
@@ -97,6 +100,18 @@ const App = () => (
               <Route path="attendance" element={<AttendancePage />} />
               <Route path="results"    element={<ResultsPage />} />
               <Route path="timetable"  element={<TeacherTimetablePage />} />
+            </Route>
+            {/* Student portal */}
+            <Route
+              path="/student"
+              element={
+                <ProtectedRoute allowedRoles={[...STUDENT_ROLES]}>
+                  <StudentPortal />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="timetable" replace />} />
+              <Route path="timetable" element={<StudentTimetablePage />} />
             </Route>
             {/* Superadmin panel (new school-layer panel) */}
             <Route
