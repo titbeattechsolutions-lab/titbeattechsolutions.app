@@ -20,7 +20,6 @@ interface SchoolRow {
   academic_year: string;
   current_term: string;
   created_at: string;
-  tenant_id: string;
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -44,7 +43,7 @@ export default function SchoolsListPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any)
       .from("schools")
-      .select("id,name,code,email,current_students,max_students,features,academic_year,current_term,created_at,tenant_id,status")
+      .select("id,name,code,email,current_students,max_students,features,academic_year,current_term,created_at,status")
       .order("created_at", { ascending: false });
     setLoading(false);
     if (error) {

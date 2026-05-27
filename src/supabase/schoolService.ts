@@ -19,7 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 export interface School {
   id: string;
-  tenant_id: string;
+  tenant_id?: string | null;
   name: string;
   code: string;
   email: string | null;
