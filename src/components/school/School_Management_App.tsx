@@ -313,17 +313,30 @@ function getDeviceId(): string {
 // ─── Persistent Database (localStorage) ──────────────────────────────────────
 const DB_KEY = "greatmind_school_db_v2";
 
+// Bump this when you change the default timetable structure so existing
+// browsers auto-upgrade instead of staying on the old cached version.
+const TIMETABLE_SCHEMA_VERSION = "tt_v2_13row";
+
 function loadDB(): Partial<AppState> {
   try {
     const raw = localStorage.getItem(DB_KEY);
     if (!raw) return {};
-    return JSON.parse(raw) as Partial<AppState>;
+    const parsed = JSON.parse(raw) as Partial<AppState> & { _timetableVersion?: string };
+    // Drop the stored timetable if its schema version is missing/outdated
+    // so the new _defaultTimetable takes over on next load.
+    if (parsed._timetableVersion !== TIMETABLE_SCHEMA_VERSION) {
+      delete parsed.timetable;
+    }
+    return parsed;
   } catch { return {}; }
 }
 
 function saveDB(state: AppState) {
   try {
-    localStorage.setItem(DB_KEY, JSON.stringify(state));
+    localStorage.setItem(DB_KEY, JSON.stringify({
+      ...state,
+      _timetableVersion: TIMETABLE_SCHEMA_VERSION,
+    }));
   } catch { /* storage full */ }
 }
 
