@@ -19,17 +19,49 @@ const DAY_LABELS: Record<string, string> = {
   thursday: "Thursday", friday: "Friday",
 };
 
-const BREAK_BAND_STYLES: Record<string, string> = {
-  short_break: "bg-yellow-100 border border-yellow-300 text-yellow-800",
-  long_break:  "bg-orange-100 border border-orange-300 text-orange-800",
-  assembly:    "bg-blue-100 border border-blue-300 text-blue-800",
-  lunch:       "bg-green-100 border border-green-300 text-green-800",
-  closing:     "bg-red-100 border border-red-300 text-red-800",
+const BREAK_BAND_BG: Record<string, string> = {
+  assembly:    "#DBEAFE",
+  short_break: "#FEF9C3",
+  long_break:  "#FFEDD5",
+  lunch:       "#DCFCE7",
+  closing:     "#FEE2E2",
 };
-
+const BREAK_BAND_TEXT: Record<string, string> = {
+  assembly:    "#1E40AF",
+  short_break: "#854D0E",
+  long_break:  "#9A3412",
+  lunch:       "#166534",
+  closing:     "#991B1B",
+};
+const BREAK_BAND_BORDER: Record<string, string> = {
+  assembly:    "#BFDBFE",
+  short_break: "#FDE68A",
+  long_break:  "#FED7AA",
+  lunch:       "#BBF7D0",
+  closing:     "#FECACA",
+};
+const PERIOD_EMOJIS: Record<string, string> = {
+  assembly: "🎒", short_break: "☕️", long_break: "☕️", lunch: "🍽️", closing: "🏠",
+};
 const PERIOD_LABELS: Record<string, string> = {
   lesson: "Lesson", short_break: "Short Break", long_break: "Long Break",
   assembly: "Assembly", lunch: "Lunch Break", closing: "Closing",
+};
+const DEFAULT_PERIOD_NUMBERS = [0,1,2,3,4,5,6,7,8,9,10,11,12];
+const DEFAULT_META: Record<number, { period_type: string; start_time: string; end_time: string }> = {
+  0:  { period_type: "assembly",    start_time: "07:30", end_time: "08:00" },
+  1:  { period_type: "lesson",      start_time: "08:00", end_time: "08:40" },
+  2:  { period_type: "lesson",      start_time: "08:40", end_time: "09:20" },
+  3:  { period_type: "lesson",      start_time: "09:20", end_time: "10:00" },
+  4:  { period_type: "short_break", start_time: "10:00", end_time: "10:20" },
+  5:  { period_type: "lesson",      start_time: "10:20", end_time: "11:00" },
+  6:  { period_type: "lesson",      start_time: "11:00", end_time: "11:40" },
+  7:  { period_type: "lesson",      start_time: "11:40", end_time: "12:20" },
+  8:  { period_type: "lunch",       start_time: "12:20", end_time: "13:00" },
+  9:  { period_type: "lesson",      start_time: "13:00", end_time: "13:40" },
+  10: { period_type: "lesson",      start_time: "13:40", end_time: "14:20" },
+  11: { period_type: "lesson",      start_time: "14:20", end_time: "15:00" },
+  12: { period_type: "closing",     start_time: "15:00", end_time: "15:10" },
 };
 
 const TERM_LABELS: Record<string, string> = {
@@ -84,17 +116,17 @@ export default function StudentTimetablePage() {
   const slotMap: Record<string, TimetableSlot> = {};
   slots.forEach((s) => { slotMap[`${s.day}|${s.period_number}`] = s; });
 
-  const periodNumbers = [...new Set(slots.map((s) => s.period_number))].sort((a, b) => a - b);
+  const periodNumbers = (() => {
+    const fromDb = slots.map((s) => s.period_number);
+    return [...new Set([...DEFAULT_PERIOD_NUMBERS, ...fromDb])].sort((a, b) => a - b);
+  })();
 
   const selectedClass = classes.find((c) => c.id === selectedClassId);
 
   const getPeriodMeta = (pn: number) => {
     const existing = DAYS.map((d) => slotMap[`${d}|${pn}`]).find(Boolean);
-    return {
-      period_type: existing?.period_type ?? "lesson",
-      start_time:  existing?.start_time ?? "",
-      end_time:    existing?.end_time ?? "",
-    };
+    if (existing) return { period_type: existing.period_type, start_time: existing.start_time, end_time: existing.end_time };
+    return DEFAULT_META[pn] ?? { period_type: "lesson", start_time: "", end_time: "" };
   };
 
   if (loading) {
@@ -209,13 +241,21 @@ export default function StudentTimetablePage() {
                           </p>
                         </td>
                         {isBreak ? (
-                          <td colSpan={5} className="px-2 py-1.5">
-                            <div className={cn(
-                              "w-full rounded-lg py-2.5 text-center text-[11px] font-semibold tracking-widest uppercase",
-                              BREAK_BAND_STYLES[meta.period_type] ?? "bg-slate-100 text-slate-600"
-                            )}>
-                              {PERIOD_LABELS[meta.period_type]}
-                            </div>
+                          <td
+                            colSpan={5}
+                            style={{
+                              background: BREAK_BAND_BG[meta.period_type] ?? "#f1f5f9",
+                              border: `1px solid ${BREAK_BAND_BORDER[meta.period_type] ?? "#e2e8f0"}`,
+                              padding: "6px 8px",
+                              textAlign: "center",
+                              fontWeight: 700,
+                              fontSize: "11px",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.08em",
+                              color: BREAK_BAND_TEXT[meta.period_type] ?? "#334155",
+                            }}
+                          >
+                            {PERIOD_EMOJIS[meta.period_type] ?? ""}{" "}{PERIOD_LABELS[meta.period_type]}
                           </td>
                         ) : (
                           DAYS.map((day) => {

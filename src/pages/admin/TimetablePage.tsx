@@ -23,17 +23,41 @@ const DAY_LABELS: Record<string, string> = {
   thursday: "Thursday", friday: "Friday",
 };
 
-const BREAK_BAND_STYLES: Record<string, string> = {
-  short_break: "bg-yellow-100 border border-yellow-300 text-yellow-800",
-  long_break:  "bg-orange-100 border border-orange-300 text-orange-800",
-  assembly:    "bg-blue-100 border border-blue-300 text-blue-800",
-  lunch:       "bg-green-100 border border-green-300 text-green-800",
-  closing:     "bg-red-100 border border-red-300 text-red-800",
+const BREAK_BAND_BG: Record<string, string> = {
+  assembly:    "#DBEAFE",
+  short_break: "#FEF9C3",
+  long_break:  "#FFEDD5",
+  lunch:       "#DCFCE7",
+  closing:     "#FEE2E2",
+};
+
+const BREAK_BAND_TEXT: Record<string, string> = {
+  assembly:    "#1E40AF",
+  short_break: "#854D0E",
+  long_break:  "#9A3412",
+  lunch:       "#166534",
+  closing:     "#991B1B",
+};
+
+const BREAK_BAND_BORDER: Record<string, string> = {
+  assembly:    "#BFDBFE",
+  short_break: "#FDE68A",
+  long_break:  "#FED7AA",
+  lunch:       "#BBF7D0",
+  closing:     "#FECACA",
 };
 
 const PERIOD_LABELS: Record<string, string> = {
   lesson: "Lesson", short_break: "Short Break", long_break: "Long Break",
   assembly: "Assembly", lunch: "Lunch Break", closing: "Closing",
+};
+
+const PERIOD_EMOJIS: Record<string, string> = {
+  assembly:    "🎒",
+  short_break: "☕️",
+  long_break:  "☕️",
+  lunch:       "🍽️",
+  closing:     "🏠",
 };
 
 const TERM_LABELS: Record<string, string> = {
@@ -144,10 +168,12 @@ export default function TimetablePage() {
 
   const selectedClass = classes.find((c) => c.id === selectedClassId);
 
-  // Period list: if slots exist derive from them, otherwise use DEFAULT_PERIODS structure
-  const periodNumbers = slots.length > 0
-    ? [...new Set(slots.map((s) => s.period_number))].sort((a, b) => a - b)
-    : DEFAULT_PERIODS.map((p) => p.period_number);
+  // Period list: ALWAYS show all 13 DEFAULT rows, plus any extra periods saved in DB
+  const periodNumbers = (() => {
+    const base = DEFAULT_PERIODS.map((p) => p.period_number);
+    const fromDb = slots.map((s) => s.period_number);
+    return [...new Set([...base, ...fromDb])].sort((a, b) => a - b);
+  })();
 
   // For each period number, determine the canonical type + times (from any day's slot, or template)
   const getPeriodMeta = (pn: number): { period_type: string; start_time: string; end_time: string } => {
@@ -341,13 +367,20 @@ export default function TimetablePage() {
       {/* ── Print styles ── */}
       <style>{`
         @media print {
+          * { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; }
           .no-print { display: none !important; }
-          body > * { visibility: hidden; }
+          nav, aside, header, [data-sidebar], [role="navigation"],
+          .sidebar, [class*="sidebar"], [class*="navbar"], [class*="nav-bar"] {
+            display: none !important;
+          }
+          body > *:not(#timetable-print-root) { visibility: hidden; }
           #timetable-print-area, #timetable-print-area * { visibility: visible; }
-          #timetable-print-area { position: fixed; inset: 0; padding: 24px; background: white; }
+          #timetable-print-area { position: fixed; inset: 0; padding: 20px; background: white; overflow: visible; }
           #timetable-print-area table { width: 100%; border-collapse: collapse; font-size: 11px; }
-          #timetable-print-area th, #timetable-print-area td { border: 1px solid #cbd5e1; padding: 5px 7px; }
-          #timetable-print-area .break-band { text-align: center; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; padding: 6px; }
+          #timetable-print-area th { background: #1e293b !important; color: white !important; padding: 6px 8px; }
+          #timetable-print-area td { border: 1px solid #cbd5e1; padding: 5px 7px; }
+          #timetable-print-area .break-band-print { text-align: center; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; padding: 7px; }
+          #timetable-print-area button { pointer-events: none; }
         }
       `}</style>
 
@@ -487,24 +520,36 @@ export default function TimetablePage() {
 
                           {isBreak ? (
                             /* ── Full-width break band spanning all 5 day columns ── */
-                            <td colSpan={5} className="px-2 py-1.5">
+                            <td
+                              colSpan={5}
+                              style={{
+                                background: BREAK_BAND_BG[meta.period_type] ?? "#f1f5f9",
+                                border: `1px solid ${BREAK_BAND_BORDER[meta.period_type] ?? "#e2e8f0"}`,
+                                padding: "6px 8px",
+                              }}
+                            >
+                              {/* Screen: clickable */}
                               <button
                                 onClick={() => openBreakDrawer(pn)}
-                                className={cn(
-                                  "break-band w-full rounded-lg py-2.5 text-center text-[11px] font-semibold tracking-widest uppercase transition-all hover:opacity-80 no-print-border",
-                                  BREAK_BAND_STYLES[meta.period_type] ?? "bg-slate-100 text-slate-600"
-                                )}
+                                className="break-band no-print w-full rounded-md py-2 text-center text-[11px] font-bold tracking-widest uppercase transition-all hover:opacity-80"
+                                style={{
+                                  color: BREAK_BAND_TEXT[meta.period_type] ?? "#334155",
+                                  background: "transparent",
+                                  border: "none",
+                                }}
                               >
+                                {PERIOD_EMOJIS[meta.period_type] ?? ""}{" "}
                                 {PERIOD_LABELS[meta.period_type]}
-                                <span className="ml-2 text-[10px] font-normal opacity-60 no-print">
+                                <span className="ml-2 text-[10px] font-normal opacity-50">
                                   (click to edit)
                                 </span>
                               </button>
-                              {/* Print version — no button wrapper */}
-                              <div className={cn(
-                                "break-band hidden print:flex w-full rounded-lg py-2 text-center text-[11px] font-semibold tracking-widest uppercase justify-center",
-                                BREAK_BAND_STYLES[meta.period_type] ?? "bg-slate-100 text-slate-600"
-                              )}>
+                              {/* Print: static div */}
+                              <div
+                                className="break-band-print hidden print:block w-full text-center"
+                                style={{ color: BREAK_BAND_TEXT[meta.period_type] ?? "#334155" }}
+                              >
+                                {PERIOD_EMOJIS[meta.period_type] ?? ""}{" "}
                                 {PERIOD_LABELS[meta.period_type]}
                               </div>
                             </td>
