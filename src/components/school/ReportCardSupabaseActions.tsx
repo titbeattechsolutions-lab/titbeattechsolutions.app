@@ -8,11 +8,11 @@
  *   3. Send to Parent button → confirmation modal → send-report-card Edge Function
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Printer, Mail, CheckCheck, Loader2, AlertTriangle } from "lucide-react";
+import { Printer, Mail, CheckCheck, Loader2, AlertTriangle, UserPen, ArrowRight } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -59,8 +59,13 @@ export default function ReportCardSupabaseActions({
   const [sending, setSending]           = useState(false);
   const [sentTo, setSentTo]             = useState<string | null>(null);
   const [sentAt, setSentAt]             = useState<string | null>(null);
-  const [showModal, setShowModal]       = useState(false);
-  const [guardianEmail, setGuardianEmail] = useState<string | null>(null);
+  const [showModal, setShowModal]             = useState(false);
+  const [guardianEmail, setGuardianEmail]       = useState<string | null>(null);
+  const [showEmailEditor, setShowEmailEditor]   = useState(false);
+  const [emailDraft, setEmailDraft]             = useState("");
+  const [savingEmail, setSavingEmail]           = useState(false);
+  const [studentDbId, setStudentDbId]           = useState<string | null>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
 
   // Look up schoolId from tenantId once on mount
   useEffect(() => {
@@ -77,26 +82,76 @@ export default function ReportCardSupabaseActions({
     })();
   }, [tenantId]);
 
-  // Reset state and fetch guardian email when active report changes
+  // Reset state and fetch guardian email + student db id when active report changes
   useEffect(() => {
     setSavedId(null);
     setSentTo(null);
     setSentAt(null);
     setGuardianEmail(null);
+    setStudentDbId(null);
+    setShowEmailEditor(false);
+    setEmailDraft("");
     if (!activeReport || !schoolId) return;
     (async () => {
       try {
         const { data } = await (supabase as any)
           .from("students")
-          .select("guardian_email")
+          .select("id, guardian_email")
           .eq("school_id", schoolId)
           .ilike("first_name || ' ' || last_name", `%${activeReport.name}%`)
           .limit(1)
           .maybeSingle();
         setGuardianEmail(data?.guardian_email ?? null);
+        setStudentDbId(data?.id ?? null);
       } catch { /* non-critical */ }
     })();
   }, [activeReport?.id, schoolId]); // eslint-disable-line
+
+  // ─── Save guardian email to students table ────────────────────────────────
+  const handleSaveGuardianEmail = useCallback(async () => {
+    const trimmed = emailDraft.trim();
+    if (!trimmed || !trimmed.includes("@")) {
+      toast({ title: "Invalid email", description: "Enter a valid email address.", variant: "destructive" });
+      return;
+    }
+    setSavingEmail(true);
+    try {
+      if (studentDbId) {
+        // Update existing student row
+        const { error } = await (supabase as any)
+          .from("students")
+          .update({ guardian_email: trimmed })
+          .eq("id", studentDbId);
+        if (error) throw error;
+      } else if (schoolId && activeReport) {
+        // No DB row yet — insert minimal student record
+        const names = activeReport.name.trim().split(/\s+/);
+        const firstName = names[0];
+        const lastName  = names.slice(1).join(" ") || "-";
+        const { data: inserted, error } = await (supabase as any)
+          .from("students")
+          .insert({
+            school_id:     schoolId,
+            first_name:    firstName,
+            last_name:     lastName,
+            guardian_email: trimmed,
+          })
+          .select("id")
+          .single();
+        if (error) throw error;
+        setStudentDbId(inserted?.id ?? null);
+      } else {
+        throw new Error("Cannot save — school not linked.");
+      }
+      setGuardianEmail(trimmed);
+      setShowEmailEditor(false);
+      toast({ title: "Parent email saved", description: trimmed });
+    } catch (e: any) {
+      toast({ title: "Save failed", description: e.message, variant: "destructive" });
+    } finally {
+      setSavingEmail(false);
+    }
+  }, [emailDraft, studentDbId, schoolId, activeReport, toast]);
 
   // ─── Normalise term value ─────────────────────────────────────────────────
   const normaliseTerm = (t: string): "first" | "second" | "third" => {
@@ -330,12 +385,69 @@ export default function ReportCardSupabaseActions({
             </div>
 
             {noEmail && (
-              <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-                <AlertTriangle size={16} className="shrink-0 mt-0.5 text-amber-500" />
-                <p>
-                  No parent email on file for this student.{" "}
-                  <span className="font-semibold">Please update the student profile first.</span>
-                </p>
+              <div className="rounded-xl bg-amber-50 border border-amber-200 overflow-hidden">
+                {/* Warning header */}
+                <div className="flex items-start gap-2.5 p-3">
+                  <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-500" />
+                  <p className="text-sm text-amber-800">
+                    No parent email on file for this student.
+                  </p>
+                </div>
+
+                {/* Inline email editor */}
+                {!showEmailEditor ? (
+                  <div className="px-3 pb-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowEmailEditor(true);
+                        setEmailDraft("");
+                        setTimeout(() => emailInputRef.current?.focus(), 60);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white text-xs font-black uppercase rounded-lg transition-colors"
+                    >
+                      <UserPen size={13} />
+                      Update Student Profile
+                      <ArrowRight size={13} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="px-3 pb-3 space-y-2">
+                    <label className="block text-xs font-black uppercase text-amber-700 tracking-wide">
+                      Parent / Guardian Email
+                    </label>
+                    <input
+                      ref={emailInputRef}
+                      type="email"
+                      value={emailDraft}
+                      onChange={e => setEmailDraft(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && handleSaveGuardianEmail()}
+                      placeholder="parent@example.com"
+                      className="w-full px-3 py-2 text-sm border-2 border-amber-300 rounded-lg bg-white outline-none focus:border-amber-500 transition-colors"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setShowEmailEditor(false); setEmailDraft(""); }}
+                        className="flex-1 py-1.5 text-xs font-bold text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveGuardianEmail}
+                        disabled={savingEmail || !emailDraft.includes("@")}
+                        className="flex-1 py-1.5 text-xs font-black uppercase text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                      >
+                        {savingEmail
+                          ? <Loader2 size={12} className="animate-spin" />
+                          : <CheckCheck size={12} />
+                        }
+                        {savingEmail ? "Saving…" : "Save Email"}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
