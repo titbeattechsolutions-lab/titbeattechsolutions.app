@@ -175,10 +175,17 @@ export default function TimetablePage() {
     return [...new Set([...base, ...fromDb])].sort((a, b) => a - b);
   })();
 
+  // Normalise DB TIME format "HH:MM:SS" → "HH:MM"
+  const normTime = (t: string) => (t ?? "").slice(0, 5);
+
   // For each period number, determine the canonical type + times (from any day's slot, or template)
   const getPeriodMeta = (pn: number): { period_type: string; start_time: string; end_time: string } => {
     const existing = DAYS.map((d) => slotMap[`${d}|${pn}`]).find(Boolean);
-    if (existing) return { period_type: existing.period_type, start_time: existing.start_time, end_time: existing.end_time };
+    if (existing) return {
+      period_type: existing.period_type,
+      start_time: normTime(existing.start_time),
+      end_time:   normTime(existing.end_time),
+    };
     const def = DEFAULT_PERIODS.find((p) => p.period_number === pn);
     return { period_type: def?.period_type ?? "lesson", start_time: def?.start_time ?? "", end_time: def?.end_time ?? "" };
   };
@@ -193,8 +200,8 @@ export default function TimetablePage() {
       subject_id:   existing?.subject_id ?? "",
       teacher_id:   existing?.teacher_id ?? "",
       room:         existing?.room ?? "",
-      start_time:   existing?.start_time ?? meta.start_time,
-      end_time:     existing?.end_time ?? meta.end_time,
+      start_time:   existing ? normTime(existing.start_time) : meta.start_time,
+      end_time:     existing ? normTime(existing.end_time)   : meta.end_time,
       notes:        existing?.notes ?? "",
     });
     setDrawerOpen(true);
@@ -203,8 +210,8 @@ export default function TimetablePage() {
   // Open drawer for break/non-lesson row (any day click opens shared drawer)
   const openBreakDrawer = (pn: number) => {
     const meta = getPeriodMeta(pn);
-    // Use Monday's slot as the canonical slot for break editing
-    const existing = slotMap[`monday|${pn}`] ?? slotMap[`tuesday|${pn}`];
+    // Find any saved slot for this period across all days
+    const existing = DAYS.map((d) => slotMap[`${d}|${pn}`]).find(Boolean);
     setEditTarget({ day: "monday", period_number: pn, existing });
     setDraft({
       period_type:  meta.period_type,
@@ -606,7 +613,12 @@ export default function TimetablePage() {
           <SheetHeader className="pb-2">
             <SheetTitle>
               {editTarget
-                ? `${DAY_LABELS[editTarget.day] ?? editTarget.day} · Period ${editTarget.period_number}`
+                ? (() => {
+                    const m = getPeriodMeta(editTarget.period_number);
+                    const isBreakRow = m.period_type !== "lesson";
+                    if (isBreakRow) return PERIOD_LABELS[m.period_type] ?? "Edit Band";
+                    return `${DAY_LABELS[editTarget.day] ?? editTarget.day} · P${editTarget.period_number}`;
+                  })()
                 : "Edit Slot"}
             </SheetTitle>
           </SheetHeader>
