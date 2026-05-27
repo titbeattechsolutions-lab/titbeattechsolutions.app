@@ -711,18 +711,19 @@ const _defaultStaff: StaffMember[] = [
 // Short Break (mid-morning) and Long Break (lunch), Closing Assembly.
 const _defaultTimetable: TimetableState = {
   periods: [
-    { id: "asm", label: "Morning Assembly", start: "07:45", end: "08:00" },
-    { id: "p1",  label: "Period 1",         start: "08:00", end: "08:40" },
-    { id: "p2",  label: "Period 2",         start: "08:40", end: "09:20" },
-    { id: "p3",  label: "Period 3",         start: "09:20", end: "10:00" },
-    { id: "sbr", label: "Short Break",      start: "10:00", end: "10:20" },
-    { id: "p4",  label: "Period 4",         start: "10:20", end: "11:00" },
-    { id: "p5",  label: "Period 5",         start: "11:00", end: "11:40" },
-    { id: "lbr", label: "Long Break / Lunch", start: "11:40", end: "12:20" },
-    { id: "p6",  label: "Period 6",         start: "12:20", end: "13:00" },
-    { id: "p7",  label: "Period 7",         start: "13:00", end: "13:40" },
-    { id: "p8",  label: "Period 8",         start: "13:40", end: "14:20" },
-    { id: "cls", label: "Closing Assembly", start: "14:20", end: "14:30" },
+    { id: "asm", label: "Assembly",    start: "07:30", end: "08:00" },
+    { id: "p1",  label: "Period 1",    start: "08:00", end: "08:40" },
+    { id: "p2",  label: "Period 2",    start: "08:40", end: "09:20" },
+    { id: "p3",  label: "Period 3",    start: "09:20", end: "10:00" },
+    { id: "sbr", label: "Short Break", start: "10:00", end: "10:20" },
+    { id: "p4",  label: "Period 4",    start: "10:20", end: "11:00" },
+    { id: "p5",  label: "Period 5",    start: "11:00", end: "11:40" },
+    { id: "p6",  label: "Period 6",    start: "11:40", end: "12:20" },
+    { id: "lbr", label: "Lunch Break", start: "12:20", end: "13:00" },
+    { id: "p7",  label: "Period 7",    start: "13:00", end: "13:40" },
+    { id: "p8",  label: "Period 8",    start: "13:40", end: "14:20" },
+    { id: "p9",  label: "Period 9",    start: "14:20", end: "15:00" },
+    { id: "cls", label: "Closing",     start: "15:00", end: "15:10" },
   ],
   days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
   cells: {},
@@ -4514,16 +4515,18 @@ function TimetableView({
 
                 return (
                 <tr key={p.id}>
-                  <td className="px-1 sm:px-2 py-1 align-top">
-                    <p className="font-black text-[10px] sm:text-xs text-slate-700">{p.label}</p>
-                    <p className="text-[9px] text-slate-400">{p.start}–{p.end}</p>
+                  <td
+                    className="px-1 sm:px-2 py-1 align-middle"
+                    style={isNonAcademic ? { background: bandBg[bandKey] } : {}}
+                  >
+                    <p className="font-black text-[10px] sm:text-xs" style={{ color: isNonAcademic ? bandText[bandKey] : undefined }}>{p.label}</p>
+                    <p className="text-[9px]" style={{ color: isNonAcademic ? bandText[bandKey] : "#94a3b8", opacity: isNonAcademic ? 0.7 : 1 }}>{p.start}–{p.end}</p>
                   </td>
                   {isNonAcademic ? (
                     <td
                       colSpan={timetable.days.length}
                       style={{
                         background: bandBg[bandKey],
-                        border: `1px solid ${bandBorder[bandKey]}`,
                         padding: "6px 8px",
                         textAlign: "center",
                         fontWeight: 700,
