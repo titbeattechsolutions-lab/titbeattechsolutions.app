@@ -4488,22 +4488,52 @@ function TimetableView({
             </thead>
             <tbody>
               {timetable.periods.map(p => {
-                const isBreak = ["sbr","lbr","br"].includes(p.id) || /break|lunch/i.test(p.label);
-                const isAssembly = ["asm","cls"].includes(p.id) || /assembly|closing/i.test(p.label);
-                const isNonAcademic = isBreak || isAssembly;
+                const isShortBreak = ["sbr","br"].includes(p.id) || /short.?break/i.test(p.label);
+                const isLongBreak  = p.id === "lbr" || /long.?break|lunch/i.test(p.label);
+                const isBreak      = isShortBreak || isLongBreak;
+                const isAssembly   = p.id === "asm" || /morning.?assembly|^assembly/i.test(p.label);
+                const isClosing    = p.id === "cls" || /closing/i.test(p.label);
+                const isNonAcademic = isBreak || isAssembly || isClosing;
+
+                const bandBg: Record<string,string> = {
+                  assembly:    "#DBEAFE", short_break: "#FEF9C3",
+                  long_break:  "#DCFCE7", closing:     "#FEE2E2",
+                };
+                const bandText: Record<string,string> = {
+                  assembly:    "#1E40AF", short_break: "#854D0E",
+                  long_break:  "#166534", closing:     "#991B1B",
+                };
+                const bandBorder: Record<string,string> = {
+                  assembly:    "#BFDBFE", short_break: "#FDE68A",
+                  long_break:  "#BBF7D0", closing:     "#FECACA",
+                };
+                const bandEmoji: Record<string,string> = {
+                  assembly: "🎒", short_break: "☕️", long_break: "🍽️", closing: "🏠",
+                };
+                const bandKey = isAssembly ? "assembly" : isShortBreak ? "short_break" : isLongBreak ? "long_break" : "closing";
+
                 return (
-                <tr key={p.id} className={isNonAcademic ? "bg-amber-50/40" : ""}>
+                <tr key={p.id}>
                   <td className="px-1 sm:px-2 py-1 align-top">
-                    <p className={`font-black text-[10px] sm:text-xs ${isBreak ? "text-amber-700" : isAssembly ? "text-indigo-700" : "text-slate-700"}`}>{p.label}</p>
+                    <p className="font-black text-[10px] sm:text-xs text-slate-700">{p.label}</p>
                     <p className="text-[9px] text-slate-400">{p.start}–{p.end}</p>
                   </td>
                   {isNonAcademic ? (
-                    <td colSpan={timetable.days.length} className="align-middle">
-                      <div className={`text-center text-[10px] sm:text-xs font-black uppercase tracking-widest py-2 sm:py-3 rounded-lg ${
-                        isBreak ? "bg-amber-100 text-amber-700" : "bg-indigo-100 text-indigo-700"
-                      }`}>
-                        {isBreak ? "🍎" : "🔔"} {p.label}
-                      </div>
+                    <td
+                      colSpan={timetable.days.length}
+                      style={{
+                        background: bandBg[bandKey],
+                        border: `1px solid ${bandBorder[bandKey]}`,
+                        padding: "6px 8px",
+                        textAlign: "center",
+                        fontWeight: 700,
+                        fontSize: "11px",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                        color: bandText[bandKey],
+                      }}
+                    >
+                      {bandEmoji[bandKey]} {p.label}
                     </td>
                   ) : timetable.days.map(d => {
                     const c = cellOf(d, p.id);
