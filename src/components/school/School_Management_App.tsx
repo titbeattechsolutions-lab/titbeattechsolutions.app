@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useCallback, memo, useReducer, createContext, useContext, useEffect } from "react";
 import { logAuthEvent } from "@/lib/auth-logger";
+import ReportCardSupabaseActions from "./ReportCardSupabaseActions";
 import { NAPPS_CURRICULUM } from "./data/nappsCurriculum";
 import { E_NOTES } from "./data/eNotes";
 import { RESOURCE_SOURCES } from "./data/resourceSources";
@@ -3463,7 +3464,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings }:
     ...(tpl.showPrincipalRemark ? [["principal", "Principal's Remark", "principalSig", "principal"] as const] : []),
   ];
   return (
-    <div id="printable-report" className="bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-lg" style={{ fontFamily: `${tpl.fontFamily},serif` }}>
+    <div id="report-print-area" className="bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-lg" style={{ fontFamily: `${tpl.fontFamily},serif` }}>
       <div className="h-1.5" style={{ backgroundColor: tpl.accentColor }} />
       <div className="px-8 pt-7 pb-5 border-b-2 flex items-center justify-between gap-4" style={{ borderColor: tpl.headerColor }}>
         <div className="flex items-center gap-4 min-w-0">
@@ -6059,7 +6060,7 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
                           </div>
                         </Card>
                         {can("printReports") && (
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-2 gap-3 no-print">
                             <Btn variant="primary" size="lg" onClick={() => setShowPrint(true)}>
                               <Printer size={16} />Print / Export PDF
                             </Btn>
@@ -6071,6 +6072,12 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
                             </Btn>
                           </div>
                         )}
+                        <ReportCardSupabaseActions
+                          activeReport={activeReport}
+                          curC={curC}
+                          schoolSettings={schoolSettings}
+                          tenantId={tenantId}
+                        />
                       </div>
                     </Card>
                     <ReportSheet report={activeReport} curC={curC} attRate={attRate} schoolLogo={schoolLogo} schoolSettings={schoolSettings} />
