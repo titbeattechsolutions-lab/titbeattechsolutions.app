@@ -126,7 +126,7 @@ CREATE OR REPLACE FUNCTION public.get_login_history(
 RETURNS TABLE (
   id          UUID,
   event_type  TEXT,
-  timestamp   TIMESTAMPTZ,
+  "timestamp" TIMESTAMPTZ,
   ip_address  TEXT,
   user_agent  TEXT
 )
@@ -138,7 +138,7 @@ AS $$
   SELECT
     sl.id,
     sl.action        AS event_type,
-    sl.created_at    AS timestamp,
+    sl.created_at    AS "timestamp",
     sl.ip_address,
     sl.device        AS user_agent
   FROM public.session_logs sl
