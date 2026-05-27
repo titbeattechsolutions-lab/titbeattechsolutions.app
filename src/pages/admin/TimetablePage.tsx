@@ -48,18 +48,19 @@ interface DefaultPeriod {
 }
 
 const DEFAULT_PERIODS: DefaultPeriod[] = [
-  { period_number: 1,  period_type: "assembly",    start_time: "08:00", end_time: "08:30" },
-  { period_number: 2,  period_type: "lesson",      start_time: "08:30", end_time: "09:10" },
-  { period_number: 3,  period_type: "lesson",      start_time: "09:10", end_time: "09:50" },
-  { period_number: 4,  period_type: "lesson",      start_time: "09:50", end_time: "10:30" },
-  { period_number: 5,  period_type: "short_break", start_time: "10:30", end_time: "10:45" },
-  { period_number: 6,  period_type: "lesson",      start_time: "10:45", end_time: "11:25" },
-  { period_number: 7,  period_type: "lesson",      start_time: "11:25", end_time: "12:05" },
-  { period_number: 8,  period_type: "lesson",      start_time: "12:05", end_time: "12:45" },
-  { period_number: 9,  period_type: "lunch",       start_time: "12:45", end_time: "13:30" },
-  { period_number: 10, period_type: "lesson",      start_time: "13:30", end_time: "14:10" },
-  { period_number: 11, period_type: "lesson",      start_time: "14:10", end_time: "14:50" },
-  { period_number: 12, period_type: "closing",     start_time: "14:50", end_time: "15:00" },
+  { period_number: 0,  period_type: "assembly",    start_time: "07:30", end_time: "08:00" },
+  { period_number: 1,  period_type: "lesson",      start_time: "08:00", end_time: "08:40" },
+  { period_number: 2,  period_type: "lesson",      start_time: "08:40", end_time: "09:20" },
+  { period_number: 3,  period_type: "lesson",      start_time: "09:20", end_time: "10:00" },
+  { period_number: 4,  period_type: "short_break", start_time: "10:00", end_time: "10:20" },
+  { period_number: 5,  period_type: "lesson",      start_time: "10:20", end_time: "11:00" },
+  { period_number: 6,  period_type: "lesson",      start_time: "11:00", end_time: "11:40" },
+  { period_number: 7,  period_type: "lesson",      start_time: "11:40", end_time: "12:20" },
+  { period_number: 8,  period_type: "lunch",       start_time: "12:20", end_time: "13:00" },
+  { period_number: 9,  period_type: "lesson",      start_time: "13:00", end_time: "13:40" },
+  { period_number: 10, period_type: "lesson",      start_time: "13:40", end_time: "14:20" },
+  { period_number: 11, period_type: "lesson",      start_time: "14:20", end_time: "15:00" },
+  { period_number: 12, period_type: "closing",     start_time: "15:00", end_time: "15:10" },
 ];
 
 interface SlotDraft {
@@ -476,7 +477,9 @@ export default function TimetablePage() {
                         <tr key={pn} className={cn("border-b border-slate-100", idx % 2 === 0 ? "bg-white" : "bg-slate-50/50")}>
                           {/* Period label cell */}
                           <td className="px-3 py-2 align-middle whitespace-nowrap">
-                            <p className="font-bold text-slate-700 text-[11px]">P{pn}</p>
+                            <p className="font-bold text-slate-700 text-[11px]">
+                              {pn === 0 ? "Asm" : isBreak ? "" : `P${pn}`}
+                            </p>
                             <p className="text-slate-400 text-[10px] mt-0.5">
                               {meta.start_time.slice(0, 5)} – {meta.end_time.slice(0, 5)}
                             </p>

@@ -201,7 +201,9 @@ export default function StudentTimetablePage() {
                     return (
                       <tr key={pn} className={cn("border-b border-slate-100", idx % 2 === 0 ? "bg-white" : "bg-slate-50/40")}>
                         <td className="px-3 py-2 align-middle whitespace-nowrap">
-                          <p className="font-bold text-slate-700 text-[11px]">P{pn}</p>
+                          <p className="font-bold text-slate-700 text-[11px]">
+                            {pn === 0 ? "Asm" : isBreak ? "" : `P${pn}`}
+                          </p>
                           <p className="text-slate-400 text-[10px] mt-0.5">
                             {meta.start_time.slice(0, 5)} – {meta.end_time.slice(0, 5)}
                           </p>
