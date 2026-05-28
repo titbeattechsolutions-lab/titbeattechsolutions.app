@@ -199,10 +199,6 @@ export default function StudentTimetablePage() {
           <div className="rounded-xl border border-dashed border-slate-200 py-14 text-center">
             <p className="text-slate-400 text-sm">Select a class to view its timetable.</p>
           </div>
-        ) : periodNumbers.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-200 py-14 text-center">
-            <p className="text-slate-400 text-sm">No timetable has been set up for this class yet.</p>
-          </div>
         ) : (
           <div id="tt-student-print">
             {/* Print header */}

@@ -112,13 +112,16 @@ export default function TimetablePage() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [slots, setSlots] = useState<TimetableSlot[]>([]);
   const [loadingInit, setLoadingInit] = useState(true);
+  const [initError, setInitError] = useState<string | null>(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingAll, setSavingAll] = useState(false);
 
   const [selectedClassId, setSelectedClassId] = useState("");
   const [selectedTerm, setSelectedTerm] = useState<"first" | "second" | "third">("first");
-  const [selectedYear, setSelectedYear] = useState("");
+  const currentYear = new Date().getFullYear();
+  const defaultYear = `${currentYear}/${currentYear + 1}`;
+  const [selectedYear, setSelectedYear] = useState(defaultYear);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<{ day: Day; period_number: number; existing?: TimetableSlot } | null>(null);
@@ -133,9 +136,13 @@ export default function TimetablePage() {
         setClasses(cls);
         setSubjects(subs);
         setTeachers(tchs);
+        setInitError(null);
         if (cls.length) setSelectedClassId(cls[0].id);
       })
-      .catch((e) => toast({ title: "Error loading data", description: e.message, variant: "destructive" }))
+      .catch((e) => {
+        setInitError(e.message);
+        toast({ title: "Error loading data", description: e.message, variant: "destructive" });
+      })
       .finally(() => setLoadingInit(false));
   }, [schoolId]); // eslint-disable-line
 
@@ -363,6 +370,21 @@ export default function TimetablePage() {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="animate-spin text-slate-400" size={28} />
+      </div>
+    );
+  }
+
+  if (initError && classes.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-4">
+        <p className="text-slate-700 font-semibold">Failed to load timetable data</p>
+        <p className="text-slate-400 text-sm max-w-xs text-center">{initError}</p>
+        <button
+          onClick={() => { setLoadingInit(true); setInitError(null); }}
+          className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
+        >
+          Retry
+        </button>
       </div>
     );
   }

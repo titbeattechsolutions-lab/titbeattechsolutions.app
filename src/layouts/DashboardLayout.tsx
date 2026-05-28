@@ -16,19 +16,14 @@ import {
   Users,
   GraduationCap,
   BookOpen,
-  ClipboardList,
-  BarChart2,
   Wallet,
   CreditCard,
-  CalendarDays,
   CalendarClock,
-  Megaphone,
   Settings,
   Menu,
   X,
   LogOut,
   ChevronRight,
-  PartyPopper,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -40,19 +35,14 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: "/school/overview",    label: "Overview",      icon: LayoutDashboard },
-  { to: "/school/students",    label: "Students",      icon: Users },
-  { to: "/school/teachers",    label: "Teachers",      icon: GraduationCap },
-  { to: "/school/classes",     label: "Classes",       icon: BookOpen },
-  { to: "/school/subjects",    label: "Subjects",      icon: ClipboardList },
-  { to: "/school/attendance",  label: "Attendance",    icon: CalendarDays },
-  { to: "/school/results",     label: "Results",       icon: BarChart2 },
-  { to: "/school/fees",        label: "Fees",          icon: Wallet,      featureKey: "fees" },
-  { to: "/school/payments",    label: "Payments",      icon: CreditCard,  featureKey: "fees" },
-  { to: "/school/timetable",   label: "Timetable",     icon: CalendarClock },
-  { to: "/school/events",      label: "Events",        icon: PartyPopper },
-  { to: "/school/announcements",label: "Announcements",icon: Megaphone },
-  { to: "/school/settings",    label: "Settings",      icon: Settings },
+  { to: "/school/overview",  label: "Overview",  icon: LayoutDashboard },
+  { to: "/school/students",  label: "Students",  icon: Users },
+  { to: "/school/teachers",  label: "Teachers",  icon: GraduationCap },
+  { to: "/school/classes",   label: "Classes",   icon: BookOpen },
+  { to: "/school/fees",      label: "Fees",      icon: Wallet,       featureKey: "fees" },
+  { to: "/school/payments",  label: "Payments",  icon: CreditCard,   featureKey: "fees" },
+  { to: "/school/timetable", label: "Timetable", icon: CalendarClock },
+  { to: "/school/settings",  label: "Settings",  icon: Settings },
 ];
 
 const PLAN_LABELS: Record<string, string> = {

@@ -195,10 +195,6 @@ export default function TeacherTimetablePage() {
         {/* Grid */}
         {loadingSlots ? (
           <div className="flex justify-center py-10"><Loader2 className="animate-spin text-slate-400" size={22} /></div>
-        ) : periodNumbers.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-200 py-14 text-center">
-            <p className="text-slate-400 text-sm">No timetable set for this class/term/year yet.</p>
-          </div>
         ) : (
           <div id="tt-teacher-print">
             {/* Print header */}
