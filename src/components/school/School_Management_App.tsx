@@ -315,7 +315,7 @@ const DB_KEY = "greatmind_school_db_v2";
 
 // Bump this when you change the default timetable structure so existing
 // browsers auto-upgrade instead of staying on the old cached version.
-const TIMETABLE_SCHEMA_VERSION = "tt_v3_napps_break";
+const TIMETABLE_SCHEMA_VERSION = "tt_v4_napps_break";
 
 function loadDB(): Partial<AppState> {
   try {
