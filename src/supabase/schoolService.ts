@@ -784,6 +784,25 @@ export async function getTimetable(
   return (data ?? []) as TimetableSlot[];
 }
 
+export async function getAllTimetableSlots(
+  schoolId: string | null,
+  term: string,
+  academicYear: string
+): Promise<TimetableSlot[]> {
+  const sid = requireSchoolId(schoolId);
+  const { data, error } = await db()
+    .from("timetable")
+    .select("*")
+    .eq("school_id", sid)
+    .eq("term", term)
+    .eq("academic_year", academicYear)
+    .order("class_name")
+    .order("day")
+    .order("period_number");
+  throwIfError(error, "getAllTimetableSlots");
+  return (data ?? []) as TimetableSlot[];
+}
+
 export async function saveTimetableSlot(
   schoolId: string | null,
   slot: Omit<TimetableSlot, "id" | "school_id" | "created_at" | "updated_at"> & { id?: string }

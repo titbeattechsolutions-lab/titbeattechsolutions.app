@@ -4364,8 +4364,29 @@ function makeNotification(args: {
 // ─────────────────────────────────────────────────────────────────────────────
 // Timetable view
 // ─────────────────────────────────────────────────────────────────────────────
+// period_number (admin dashboard) → TenantApp period id
+const PERIOD_NUM_TO_ID: Record<number, string> = {
+  0: "asm",
+  1: "p1", 2: "p2", 3: "p3", 4: "p4",
+  5: "sbr",
+  6: "p5", 7: "p6",
+  8: "lbr",
+  9: "p7", 10: "p8", 11: "p9",
+  12: "cls",
+};
+// Supabase full day name → TenantApp short day
+const SUPABASE_DAY_TO_SHORT: Record<string, string> = {
+  monday: "Mon", tuesday: "Tue", wednesday: "Wed",
+  thursday: "Thu", friday: "Fri",
+};
+// schoolSettings.term string → Supabase term enum
+const TERM_LABEL_TO_SUPABASE: Record<string, string> = {
+  "First Term": "first", "Second Term": "second", "Third Term": "third",
+};
+
 function TimetableView({
   isAdmin, currentActor, staffList, classRolls, timetable, dispatch, showToast,
+  tenantId, schoolSettings,
 }: {
   isAdmin: boolean;
   currentActor: string;
@@ -4374,6 +4395,8 @@ function TimetableView({
   timetable: TimetableState;
   dispatch: React.Dispatch<any>;
   showToast: (msg: string, type?: string) => void;
+  tenantId?: string;
+  schoolSettings: SchoolSettings;
 }) {
   // Helper: Get subjects for a class from curriculum
   const getSubjectsForClass = (cls: string): string[] => {
@@ -4417,6 +4440,37 @@ function TimetableView({
 
   const [activeClass, setActiveClass] = useState<string>(allClasses[0] || "");
   const [editing, setEditing] = useState<{ key: string; subject: string; teacherName: string } | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
+
+  // ── Sync from Supabase on mount (admin dashboard is source of truth) ──
+  useEffect(() => {
+    if (!tenantId) return;
+    const supabaseTerm = TERM_LABEL_TO_SUPABASE[schoolSettings.term] ?? "first";
+    const academicYear = schoolSettings.session ?? "";
+    if (!academicYear) return;
+    setSyncLoading(true);
+    import("@/supabase/schoolService")
+      .then(({ getAllTimetableSlots }) =>
+        getAllTimetableSlots(tenantId, supabaseTerm, academicYear)
+      )
+      .then((slots) => {
+        if (!slots.length) return;
+        const mapped: Record<string, { subject: string; teacherName: string }> = {};
+        slots.forEach((s: any) => {
+          if (!s.subject_name && !s.teacher_name) return;
+          const periodId = PERIOD_NUM_TO_ID[s.period_number as number];
+          const day = SUPABASE_DAY_TO_SHORT[s.day];
+          if (!periodId || !day) return;
+          mapped[`${s.class_name}|${day}|${periodId}`] = {
+            subject: s.subject_name ?? "",
+            teacherName: s.teacher_name ?? "",
+          };
+        });
+        dispatch({ type: "SET_TIMETABLE_CELLS", cells: mapped });
+      })
+      .catch(() => { /* fail silently — app still works offline */ })
+      .finally(() => setSyncLoading(false));
+  }, [tenantId, schoolSettings.term, schoolSettings.session]); // eslint-disable-line
   const [myOnly, setMyOnly] = useState(false);
   const [showAutoSet, setShowAutoSet] = useState(false);
 
@@ -4432,7 +4486,10 @@ function TimetableView({
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-black text-slate-900 uppercase">Timetable</h1>
-          <p className="text-xs sm:text-sm text-slate-400">Weekly class schedule {isAdmin ? "— tap a cell to edit" : "— read-only"}</p>
+          <p className="text-xs sm:text-sm text-slate-400">
+            Weekly class schedule {isAdmin ? "— tap a cell to edit" : "— read-only"}
+            {syncLoading && <span className="ml-2 inline-flex items-center gap-1 text-blue-500 text-[10px] font-bold animate-pulse">↻ syncing…</span>}
+          </p>
         </div>
         {!isAdmin && (
           <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
@@ -6144,6 +6201,8 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
                   timetable={appState.timetable}
                   dispatch={dispatch}
                   showToast={showToast}
+                  tenantId={tenantId}
+                  schoolSettings={schoolSettings}
                 />
               )}
 
