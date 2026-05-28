@@ -32,7 +32,7 @@ export default function SchoolDashboard() {
   return (
     <DashboardLayout
       schoolName={school?.name}
-      plan={school ? undefined : undefined}
+      plan={undefined}
       features={school?.features as Record<string, boolean> | undefined}
     />
   );

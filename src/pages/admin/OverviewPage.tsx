@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSchool } from "@/hooks/useSchool";
-import { getTeachers, getClasses, getRecentActivity, updateSchoolProfile } from "@/supabase/schoolService";
+import { getTeachers, getClasses, getRecentActivity, updateSchoolProfile, getStudentSummary } from "@/supabase/schoolService";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ export default function OverviewPage() {
   const { school, setSchool, loading: schoolLoading } = useSchool();
   const { toast } = useToast();
 
+  const [studentTotal, setStudentTotal] = useState<number | null>(null);
   const [teacherCount, setTeacherCount] = useState<number | null>(null);
   const [classCount, setClassCount] = useState<number | null>(null);
   const [activity, setActivity] = useState<{ id: number; action: string; details: string | null; timestamp: string }[]>([]);
@@ -30,10 +31,12 @@ export default function OverviewPage() {
       getTeachers(schoolId),
       getClasses(schoolId),
       getRecentActivity(schoolId, 10),
-    ]).then(([teachers, classes, logs]) => {
+      getStudentSummary(schoolId),
+    ]).then(([teachers, classes, logs, summary]) => {
       setTeacherCount(teachers.length);
       setClassCount(classes.length);
       setActivity(logs);
+      setStudentTotal(summary.total);
     }).catch((e) => console.error(e))
       .finally(() => setLoadingStats(false));
   }, [schoolId]);
@@ -54,7 +57,7 @@ export default function OverviewPage() {
   }
 
   const stats = [
-    { label: "Total Students",  value: school?.current_students ?? 0, icon: Users,          color: "bg-blue-50 text-blue-600" },
+    { label: "Total Students",  value: studentTotal ?? "—",           icon: Users,          color: "bg-blue-50 text-blue-600" },
     { label: "Total Teachers",  value: teacherCount ?? "—",           icon: GraduationCap,  color: "bg-emerald-50 text-emerald-600" },
     { label: "Total Classes",   value: classCount ?? "—",             icon: BookOpen,       color: "bg-purple-50 text-purple-600" },
     { label: "Current Term",    value: TERM_LABELS[school?.current_term as keyof typeof TERM_LABELS] ?? "—", icon: CalendarDays, color: "bg-amber-50 text-amber-600" },

@@ -23,8 +23,21 @@ export default function Auth() {
   const [showPass, setShowPass] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate("/admin", { replace: true });
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!data.session) return;
+      const userId = data.session.user.id;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: profileRow } = await (supabase as any)
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .maybeSingle();
+      const role = profileRow?.role ?? "unassigned";
+      if (role === "super_admin") navigate("/superadmin", { replace: true });
+      else if (role === "student") navigate("/student", { replace: true });
+      else if (["school_admin", "principal", "head_teacher", "teacher"].includes(role))
+        navigate("/school", { replace: true });
+      else navigate("/superadmin", { replace: true });
     });
   }, [navigate]);
 
@@ -35,16 +48,26 @@ export default function Auth() {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       
-      // Log successful login
       if (data.user) {
         await logAuthEvent({
           authType: "super_admin",
           eventType: "login",
           userId: data.user.id,
         });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: profileRow } = await (supabase as any)
+          .from("profiles")
+          .select("role")
+          .eq("id", data.user.id)
+          .maybeSingle();
+        const role = profileRow?.role ?? "unassigned";
+        if (role === "student") navigate("/student", { replace: true });
+        else if (["school_admin", "principal", "head_teacher", "teacher"].includes(role))
+          navigate("/school", { replace: true });
+        else navigate("/superadmin", { replace: true });
+      } else {
+        navigate("/superadmin", { replace: true });
       }
-      
-      navigate("/admin", { replace: true });
     } catch (err) {
       toast({ title: "Sign-in failed", description: (err as Error).message, variant: "destructive" });
     } finally {

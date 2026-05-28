@@ -24,7 +24,9 @@ import AttendancePage from "./pages/teacher/AttendancePage";
 import ResultsPage from "./pages/teacher/ResultsPage";
 import TimetablePage from "./pages/admin/TimetablePage";
 import TeacherTimetablePage from "./pages/teacher/TimetablePage";
+import TeacherProfilePage from "./pages/teacher/ProfilePage";
 import StudentPortal from "./pages/student/StudentPortal";
+import StudentProfilePage from "./pages/student/ProfilePage";
 import StudentTimetablePage from "./pages/student/TimetablePage";
 import SuperadminLayout from "./layouts/SuperadminLayout";
 import SchoolsListPage from "./pages/superadmin/SchoolsListPage";
@@ -100,6 +102,7 @@ const App = () => (
               <Route path="attendance" element={<AttendancePage />} />
               <Route path="results"    element={<ResultsPage />} />
               <Route path="timetable"  element={<TeacherTimetablePage />} />
+              <Route path="profile"    element={<TeacherProfilePage />} />
             </Route>
             {/* Student portal */}
             <Route
@@ -112,6 +115,7 @@ const App = () => (
             >
               <Route index element={<Navigate to="timetable" replace />} />
               <Route path="timetable" element={<StudentTimetablePage />} />
+              <Route path="profile"   element={<StudentProfilePage />} />
             </Route>
             {/* Superadmin panel (new school-layer panel) */}
             <Route

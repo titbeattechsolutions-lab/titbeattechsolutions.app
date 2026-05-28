@@ -135,23 +135,28 @@ export default function TimetablePage() {
   const [draft, setDraft] = useState<SlotDraft>(EMPTY_DRAFT);
 
   // ── Load initial data ──────────────────────────────────────────────
-  useEffect(() => {
+  const loadInit = useCallback(async () => {
     if (!schoolId) return;
     setLoadingInit(true);
-    Promise.all([getClasses(schoolId), getSubjects(schoolId), getTeachers(schoolId)])
-      .then(([cls, subs, tchs]) => {
-        setClasses(cls);
-        setSubjects(subs);
-        setTeachers(tchs);
-        setInitError(null);
-        if (cls.length) setSelectedClassId(cls[0].id);
-      })
-      .catch((e) => {
-        setInitError(e.message);
-        toast({ title: "Error loading data", description: e.message, variant: "destructive" });
-      })
-      .finally(() => setLoadingInit(false));
+    setInitError(null);
+    try {
+      const [cls, subs, tchs] = await Promise.all([
+        getClasses(schoolId), getSubjects(schoolId), getTeachers(schoolId),
+      ]);
+      setClasses(cls);
+      setSubjects(subs);
+      setTeachers(tchs);
+      if (cls.length) setSelectedClassId(cls[0].id);
+    } catch (e) {
+      const msg = (e as Error).message;
+      setInitError(msg);
+      toast({ title: "Error loading data", description: msg, variant: "destructive" });
+    } finally {
+      setLoadingInit(false);
+    }
   }, [schoolId]); // eslint-disable-line
+
+  useEffect(() => { loadInit(); }, [loadInit]);
 
   useEffect(() => {
     if (school) {
@@ -365,7 +370,7 @@ export default function TimetablePage() {
           teacher_id:    null as null,
           teacher_name:  null as null,
           room:          null as null,
-          notes:         p.period_type === "short_break" ? (null as null) : (null as null),
+          notes:         null,
         }))
       );
       const saved = await bulkSaveTimetable(schoolId, templateSlots);
@@ -408,7 +413,7 @@ export default function TimetablePage() {
         <p className="text-slate-700 font-semibold">Failed to load timetable data</p>
         <p className="text-slate-400 text-sm max-w-xs text-center">{initError}</p>
         <button
-          onClick={() => { setLoadingInit(true); setInitError(null); }}
+          onClick={loadInit}
           className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
         >
           Retry

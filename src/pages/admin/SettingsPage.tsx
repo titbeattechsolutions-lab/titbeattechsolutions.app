@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSchool } from "@/hooks/useSchool";
 import { updateSchoolProfile } from "@/supabase/schoolService";
@@ -18,6 +18,7 @@ export default function SettingsPage() {
 
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const formInitialized = useRef(false);
 
   const [form, setForm] = useState({
     name: school?.name ?? "",
@@ -32,8 +33,9 @@ export default function SettingsPage() {
     current_term: school?.current_term ?? "first",
   });
 
-  // Sync form when school loads
-  if (school && !saving && form.name === "" && school.name) {
+  // Sync form once when school data first arrives — never auto-reset after that
+  if (school && !formInitialized.current) {
+    formInitialized.current = true;
     setForm({
       name: school.name, email: school.email ?? "", phone: school.phone ?? "",
       address_street: school.address_street ?? "", address_city: school.address_city ?? "",
