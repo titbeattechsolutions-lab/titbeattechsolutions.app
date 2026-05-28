@@ -44,23 +44,29 @@ const PERIOD_EMOJIS: Record<string, string> = {
   assembly: "🎒", short_break: "☕️", long_break: "☕️", lunch: "🍽️", closing: "🏠",
 };
 const PERIOD_LABELS: Record<string, string> = {
-  lesson: "Lesson", short_break: "Short Break", long_break: "Long Break",
-  assembly: "Assembly", lunch: "Lunch Break", closing: "Closing",
+  lesson:      "Lesson",
+  short_break: "Break",
+  long_break:  "Long Break",
+  assembly:    "Assembly",
+  lunch:       "Lunch Break",
+  closing:     "Closing Time – 3:00PM (NAPPS)",
 };
+
+const DEFAULT_BREAK_LABEL = "Lesson Break";
 const DEFAULT_PERIOD_NUMBERS = [0,1,2,3,4,5,6,7,8,9,10,11,12];
 const DEFAULT_META: Record<number, { period_type: string; start_time: string; end_time: string }> = {
   0:  { period_type: "assembly",    start_time: "07:30", end_time: "08:00" },
   1:  { period_type: "lesson",      start_time: "08:00", end_time: "08:40" },
   2:  { period_type: "lesson",      start_time: "08:40", end_time: "09:20" },
   3:  { period_type: "lesson",      start_time: "09:20", end_time: "10:00" },
-  4:  { period_type: "short_break", start_time: "10:00", end_time: "10:20" },
-  5:  { period_type: "lesson",      start_time: "10:20", end_time: "11:00" },
-  6:  { period_type: "lesson",      start_time: "11:00", end_time: "11:40" },
-  7:  { period_type: "lesson",      start_time: "11:40", end_time: "12:20" },
-  8:  { period_type: "lunch",       start_time: "12:20", end_time: "13:00" },
-  9:  { period_type: "lesson",      start_time: "13:00", end_time: "13:40" },
-  10: { period_type: "lesson",      start_time: "13:40", end_time: "14:20" },
-  11: { period_type: "lesson",      start_time: "14:20", end_time: "15:00" },
+  4:  { period_type: "lesson",      start_time: "10:00", end_time: "10:40" },
+  5:  { period_type: "short_break", start_time: "10:40", end_time: "11:10" },
+  6:  { period_type: "lesson",      start_time: "11:10", end_time: "11:50" },
+  7:  { period_type: "lesson",      start_time: "11:50", end_time: "12:30" },
+  8:  { period_type: "lunch",       start_time: "12:30", end_time: "13:10" },
+  9:  { period_type: "lesson",      start_time: "13:10", end_time: "13:50" },
+  10: { period_type: "lesson",      start_time: "13:50", end_time: "14:30" },
+  11: { period_type: "lesson",      start_time: "14:30", end_time: "15:00" },
   12: { period_type: "closing",     start_time: "15:00", end_time: "15:10" },
 };
 
@@ -127,6 +133,15 @@ export default function StudentTimetablePage() {
     const existing = DAYS.map((d) => slotMap[`${d}|${pn}`]).find(Boolean);
     if (existing) return { period_type: existing.period_type, start_time: existing.start_time, end_time: existing.end_time };
     return DEFAULT_META[pn] ?? { period_type: "lesson", start_time: "", end_time: "" };
+  };
+
+  const getBreakLabel = (pn: number): string => {
+    const meta = getPeriodMeta(pn);
+    if (meta.period_type === "short_break") {
+      const existing = DAYS.map((d) => slotMap[`${d}|${pn}`]).find(Boolean);
+      return (existing as { notes?: string | null } | undefined)?.notes || DEFAULT_BREAK_LABEL;
+    }
+    return PERIOD_LABELS[meta.period_type] ?? meta.period_type;
   };
 
   if (loading) {
@@ -251,7 +266,7 @@ export default function StudentTimetablePage() {
                               color: BREAK_BAND_TEXT[meta.period_type] ?? "#334155",
                             }}
                           >
-                            {PERIOD_EMOJIS[meta.period_type] ?? ""}{" "}{PERIOD_LABELS[meta.period_type]}
+                            {PERIOD_EMOJIS[meta.period_type] ?? ""}{" "}{getBreakLabel(pn)}
                           </td>
                         ) : (
                           DAYS.map((day) => {

@@ -315,7 +315,7 @@ const DB_KEY = "greatmind_school_db_v2";
 
 // Bump this when you change the default timetable structure so existing
 // browsers auto-upgrade instead of staying on the old cached version.
-const TIMETABLE_SCHEMA_VERSION = "tt_v2_13row";
+const TIMETABLE_SCHEMA_VERSION = "tt_v3_napps_break";
 
 function loadDB(): Partial<AppState> {
   try {
@@ -720,23 +720,23 @@ const _defaultStaff: StaffMember[] = [
   { id:"s2", name:"Mr. Chidi Eze",   role:"Subject Teacher", pin:"9012", status:"active", assignedClasses:["JSS 1","JSS 2","JSS 3"],  assignedSubjects:["Mathematics"], permissions:{scoreEntry:true,viewReports:true,printReports:false,manageRecords:false}, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() },
 ];
 
-// NAPPS-Standard Timetable: Morning Assembly, 8 academic periods of 40 min,
-// Short Break (mid-morning) and Long Break (lunch), Closing Assembly.
+// NAPPS-Standard Timetable: Assembly → 4 lessons → Break (10:40-11:10) →
+// 2 lessons → Lunch → 3 lessons → Closing at 3:00PM (NAPPS).
 const _defaultTimetable: TimetableState = {
   periods: [
-    { id: "asm", label: "Assembly",    start: "07:30", end: "08:00" },
-    { id: "p1",  label: "Period 1",    start: "08:00", end: "08:40" },
-    { id: "p2",  label: "Period 2",    start: "08:40", end: "09:20" },
-    { id: "p3",  label: "Period 3",    start: "09:20", end: "10:00" },
-    { id: "sbr", label: "Short Break", start: "10:00", end: "10:20" },
-    { id: "p4",  label: "Period 4",    start: "10:20", end: "11:00" },
-    { id: "p5",  label: "Period 5",    start: "11:00", end: "11:40" },
-    { id: "p6",  label: "Period 6",    start: "11:40", end: "12:20" },
-    { id: "lbr", label: "Lunch Break", start: "12:20", end: "13:00" },
-    { id: "p7",  label: "Period 7",    start: "13:00", end: "13:40" },
-    { id: "p8",  label: "Period 8",    start: "13:40", end: "14:20" },
-    { id: "p9",  label: "Period 9",    start: "14:20", end: "15:00" },
-    { id: "cls", label: "Closing",     start: "15:00", end: "15:10" },
+    { id: "asm", label: "Assembly",                     start: "07:30", end: "08:00" },
+    { id: "p1",  label: "Period 1",                     start: "08:00", end: "08:40" },
+    { id: "p2",  label: "Period 2",                     start: "08:40", end: "09:20" },
+    { id: "p3",  label: "Period 3",                     start: "09:20", end: "10:00" },
+    { id: "p4",  label: "Period 4",                     start: "10:00", end: "10:40" },
+    { id: "sbr", label: "Lesson Break",                 start: "10:40", end: "11:10" },
+    { id: "p5",  label: "Period 5",                     start: "11:10", end: "11:50" },
+    { id: "p6",  label: "Period 6",                     start: "11:50", end: "12:30" },
+    { id: "lbr", label: "Lunch Break",                  start: "12:30", end: "13:10" },
+    { id: "p7",  label: "Period 7",                     start: "13:10", end: "13:50" },
+    { id: "p8",  label: "Period 8",                     start: "13:50", end: "14:30" },
+    { id: "p9",  label: "Period 9",                     start: "14:30", end: "15:00" },
+    { id: "cls", label: "Closing Time – 3:00PM (NAPPS)", start: "15:00", end: "15:10" },
   ],
   days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
   cells: {},

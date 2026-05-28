@@ -48,9 +48,16 @@ const BREAK_BAND_BORDER: Record<string, string> = {
 };
 
 const PERIOD_LABELS: Record<string, string> = {
-  lesson: "Lesson", short_break: "Short Break", long_break: "Long Break",
-  assembly: "Assembly", lunch: "Lunch Break", closing: "Closing",
+  lesson:      "Lesson",
+  short_break: "Break",
+  long_break:  "Long Break",
+  assembly:    "Assembly",
+  lunch:       "Lunch Break",
+  closing:     "Closing Time – 3:00PM (NAPPS)",
 };
+
+const DEFAULT_BREAK_LABEL = "Lesson Break";
+const NAPPS_CLOSING_TIME   = "15:00";
 
 const PERIOD_EMOJIS: Record<string, string> = {
   assembly:    "🎒",
@@ -76,14 +83,14 @@ const DEFAULT_PERIODS: DefaultPeriod[] = [
   { period_number: 1,  period_type: "lesson",      start_time: "08:00", end_time: "08:40" },
   { period_number: 2,  period_type: "lesson",      start_time: "08:40", end_time: "09:20" },
   { period_number: 3,  period_type: "lesson",      start_time: "09:20", end_time: "10:00" },
-  { period_number: 4,  period_type: "short_break", start_time: "10:00", end_time: "10:20" },
-  { period_number: 5,  period_type: "lesson",      start_time: "10:20", end_time: "11:00" },
-  { period_number: 6,  period_type: "lesson",      start_time: "11:00", end_time: "11:40" },
-  { period_number: 7,  period_type: "lesson",      start_time: "11:40", end_time: "12:20" },
-  { period_number: 8,  period_type: "lunch",       start_time: "12:20", end_time: "13:00" },
-  { period_number: 9,  period_type: "lesson",      start_time: "13:00", end_time: "13:40" },
-  { period_number: 10, period_type: "lesson",      start_time: "13:40", end_time: "14:20" },
-  { period_number: 11, period_type: "lesson",      start_time: "14:20", end_time: "15:00" },
+  { period_number: 4,  period_type: "lesson",      start_time: "10:00", end_time: "10:40" },
+  { period_number: 5,  period_type: "short_break", start_time: "10:40", end_time: "11:10" },
+  { period_number: 6,  period_type: "lesson",      start_time: "11:10", end_time: "11:50" },
+  { period_number: 7,  period_type: "lesson",      start_time: "11:50", end_time: "12:30" },
+  { period_number: 8,  period_type: "lunch",       start_time: "12:30", end_time: "13:10" },
+  { period_number: 9,  period_type: "lesson",      start_time: "13:10", end_time: "13:50" },
+  { period_number: 10, period_type: "lesson",      start_time: "13:50", end_time: "14:30" },
+  { period_number: 11, period_type: "lesson",      start_time: "14:30", end_time: "15:00" },
   { period_number: 12, period_type: "closing",     start_time: "15:00", end_time: "15:10" },
 ];
 
@@ -197,6 +204,16 @@ export default function TimetablePage() {
     return { period_type: def?.period_type ?? "lesson", start_time: def?.start_time ?? "", end_time: def?.end_time ?? "" };
   };
 
+  // Returns the display label for a break row (custom from notes, or default)
+  const getBreakLabel = (pn: number): string => {
+    const meta = getPeriodMeta(pn);
+    if (meta.period_type === "short_break") {
+      const existing = DAYS.map((d) => slotMap[`${d}|${pn}`]).find(Boolean);
+      return existing?.notes || DEFAULT_BREAK_LABEL;
+    }
+    return PERIOD_LABELS[meta.period_type] ?? meta.period_type;
+  };
+
   // ── Open drawer ────────────────────────────────────────────────────
   const openDrawer = (day: Day, pn: number) => {
     const existing = slotMap[`${day}|${pn}`];
@@ -240,6 +257,17 @@ export default function TimetablePage() {
     const sub = subjects.find((s) => s.id === draft.subject_id);
     const tch = teachers.find((t) => t.id === draft.teacher_id);
     const isLesson = draft.period_type === "lesson";
+
+    // NAPPS enforcement: no lesson may end after 3:00PM
+    if (isLesson && draft.end_time > NAPPS_CLOSING_TIME) {
+      toast({
+        title: "NAPPS restriction",
+        description: "Lesson periods cannot end after 3:00PM (NAPPS standard). Adjust the end time.",
+        variant: "destructive",
+      });
+      setSaving(false);
+      return;
+    }
 
     try {
       // For non-lesson types, save the same slot across ALL days
@@ -337,7 +365,7 @@ export default function TimetablePage() {
           teacher_id:    null as null,
           teacher_name:  null as null,
           room:          null as null,
-          notes:         null as null,
+          notes:         p.period_type === "short_break" ? (null as null) : (null as null),
         }))
       );
       const saved = await bulkSaveTimetable(schoolId, templateSlots);
@@ -545,6 +573,9 @@ export default function TimetablePage() {
                             <p className="text-slate-400 text-[10px] mt-0.5">
                               {meta.start_time.slice(0, 5)} – {meta.end_time.slice(0, 5)}
                             </p>
+                            {meta.period_type === "lesson" && meta.end_time > NAPPS_CLOSING_TIME && (
+                              <span className="text-[9px] font-semibold text-red-500">&#9888; After NAPPS limit</span>
+                            )}
                           </td>
 
                           {isBreak ? (
@@ -568,9 +599,9 @@ export default function TimetablePage() {
                                 }}
                               >
                                 {PERIOD_EMOJIS[meta.period_type] ?? ""}{" "}
-                                {PERIOD_LABELS[meta.period_type]}
+                                {getBreakLabel(pn)}
                                 <span className="ml-2 text-[10px] font-normal opacity-50">
-                                  (click to edit)
+                                  {meta.period_type === "closing" ? "NAPPS" : "click to edit"}
                                 </span>
                               </button>
                               {/* Print: static div */}
@@ -579,7 +610,7 @@ export default function TimetablePage() {
                                 style={{ color: BREAK_BAND_TEXT[meta.period_type] ?? "#334155" }}
                               >
                                 {PERIOD_EMOJIS[meta.period_type] ?? ""}{" "}
-                                {PERIOD_LABELS[meta.period_type]}
+                                {getBreakLabel(pn)}
                               </div>
                             </td>
                           ) : (
@@ -638,7 +669,7 @@ export default function TimetablePage() {
                 ? (() => {
                     const m = getPeriodMeta(editTarget.period_number);
                     const isBreakRow = m.period_type !== "lesson";
-                    if (isBreakRow) return PERIOD_LABELS[m.period_type] ?? "Edit Band";
+                    if (isBreakRow) return getBreakLabel(editTarget.period_number);
                     return `${DAY_LABELS[editTarget.day] ?? editTarget.day} · P${editTarget.period_number}`;
                   })()
                 : "Edit Slot"}
@@ -728,17 +759,50 @@ export default function TimetablePage() {
               </div>
             </div>
 
-            {/* Notes */}
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase">Notes</label>
-              <Textarea
-                value={draft.notes}
-                onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
-                placeholder="Optional notes…"
-                rows={2}
-                className="resize-none"
-              />
-            </div>
+            {/* Break Label config — only for configurable breaks */}
+            {draft.period_type === "short_break" && (
+              <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <label className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Break Type &amp; Label</label>
+                <Select
+                  value={draft.notes ? "custom" : "default"}
+                  onValueChange={(v) => {
+                    if (v === "default") setDraft((d) => ({ ...d, notes: "" }));
+                    else setDraft((d) => ({ ...d, notes: d.notes || DEFAULT_BREAK_LABEL }));
+                  }}
+                >
+                  <SelectTrigger className="h-8 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Lesson Break (default)</SelectItem>
+                    <SelectItem value="custom">Custom label</SelectItem>
+                  </SelectContent>
+                </Select>
+                {draft.notes !== "" && (
+                  <Input
+                    value={draft.notes}
+                    onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
+                    placeholder="e.g. Assembly Break"
+                    className="h-8 bg-white"
+                  />
+                )}
+                <p className="text-[10px] text-amber-700">This label appears on the break band row across all days.</p>
+              </div>
+            )}
+
+            {/* Notes — only for lesson/other period types */}
+            {draft.period_type !== "short_break" && (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-500 uppercase">Notes</label>
+                <Textarea
+                  value={draft.notes}
+                  onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
+                  placeholder="Optional notes…"
+                  rows={2}
+                  className="resize-none"
+                />
+              </div>
+            )}
           </div>
 
           <SheetFooter className="flex gap-2 flex-col sm:flex-row pt-2 px-1">
