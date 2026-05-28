@@ -9,6 +9,7 @@ import { Users, GraduationCap, BookOpen, CalendarDays, Loader2 } from "lucide-re
 import { useToast } from "@/hooks/use-toast";
 import AttendanceWidget from "@/components/dashboard/AttendanceWidget";
 import SessionLog from "@/components/SessionLog";
+import StudentOverviewCard from "@/components/dashboard/StudentOverviewCard";
 
 const TERM_LABELS = { first: "1st Term", second: "2nd Term", third: "3rd Term" };
 
@@ -101,6 +102,9 @@ export default function OverviewPage() {
           </Card>
         ))}
       </div>
+
+      {/* Student Overview — gender breakdown with class filter */}
+      <StudentOverviewCard />
 
       {/* Recent activity */}
       <Card>

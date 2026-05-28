@@ -216,6 +216,37 @@ export async function updateSchoolProfile(
 
 // ─── Students ─────────────────────────────────────────────────────────
 
+export interface StudentSummary {
+  total: number;
+  male: number;
+  female: number;
+  unspecified: number;
+}
+
+export async function getStudentSummary(
+  schoolId: string | null,
+  classId?: string
+): Promise<StudentSummary> {
+  const sid = requireSchoolId(schoolId);
+  let query = db()
+    .from("students")
+    .select("id, gender")
+    .eq("school_id", sid)
+    .eq("status", "active");
+
+  if (classId) query = query.eq("class_id", classId);
+
+  const { data, error } = await query;
+  throwIfError(error, "getStudentSummary");
+
+  const rows = (data ?? []) as { id: string; gender: string | null }[];
+  const total       = rows.length;
+  const male        = rows.filter((s) => s.gender === "male").length;
+  const female      = rows.filter((s) => s.gender === "female").length;
+  const unspecified = total - male - female;
+  return { total, male, female, unspecified };
+}
+
 export async function getStudents(
   schoolId: string | null,
   filters?: { class_id?: string; status?: string }
