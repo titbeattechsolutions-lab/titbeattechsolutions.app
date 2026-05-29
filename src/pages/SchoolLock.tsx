@@ -8,6 +8,7 @@ import {
   setAdminPin,
   saveTenantSession,
   loadTenantSession,
+  clearTenantSession,
   daysRemaining,
 } from "@/lib/tenant-client";
 import { GraduationCap } from "lucide-react";
@@ -39,6 +40,13 @@ export default function SchoolLock() {
     const existing = loadTenantSession();
     if (existing && (existing.status === "trial" || existing.status === "active")) {
       navigate("/app", { replace: true });
+    } else if (existing && (existing.status === "expired" || existing.status === "suspended")) {
+      clearTenantSession();
+      toast({
+        title: existing.status === "suspended" ? "Account suspended" : "Subscription expired",
+        description: "Please contact your provider to renew.",
+        variant: "destructive",
+      });
     }
   }, [navigate]);
 

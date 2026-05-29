@@ -194,13 +194,18 @@ export default function TenantApp() {
     };
 
     // Patch setItem to detect changes (only for our DB key)
-    const originalSetItem = localStorage.setItem.bind(localStorage);
-    localStorage.setItem = (key: string, value: string) => {
-      originalSetItem(key, value);
-      if (key === DB_KEY && !isSyncing.current) {
-        schedulePush();
-      }
-    };
+    const isAlreadyPatched = (localStorage as any).__patchedByTenantApp;
+    let originalSetItem = localStorage.setItem;
+    if (!isAlreadyPatched) {
+      originalSetItem = localStorage.setItem.bind(localStorage);
+      localStorage.setItem = (key: string, value: string) => {
+        originalSetItem.call(localStorage, key, value);
+        if (key === DB_KEY && !isSyncing.current) {
+          schedulePush();
+        }
+      };
+      (localStorage as any).__patchedByTenantApp = true;
+    }
 
     // Periodic pull + focus/online triggers
     pullTimer.current = setInterval(pull, PULL_INTERVAL_MS);
@@ -230,7 +235,10 @@ export default function TenantApp() {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       
-      localStorage.setItem = originalSetItem;
+      if (!isAlreadyPatched) {
+        localStorage.setItem = originalSetItem;
+        delete (localStorage as any).__patchedByTenantApp;
+      }
       
       // Final flush
       pushIfChanged();

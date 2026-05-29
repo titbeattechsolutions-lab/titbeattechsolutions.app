@@ -4225,7 +4225,7 @@ const AttendanceTab = memo(() => {
                 {hDate    && <Pill color="green">{fmtDate(hDate)}</Pill>}
                 {hStatus !== "All" && <Pill color={statColor[hStatus] || "slate"}>{hStatus}</Pill>}
                 <span className="text-xs text-slate-400 font-bold">{historyData.length} record{historyData.length !== 1 ? "s" : ""}</span>
-                <button onClick={() => { setHSearch(""); setHClass(""); setHDate(today()); setHStatus("All"); }}
+                <button onClick={() => { setHSearch(""); setHClass(""); setHDate(""); setHStatus("All"); }}
                   className="text-xs font-black uppercase text-red-400 hover:text-red-600 flex items-center gap-1">
                   <X size={11} />Clear
                 </button>
@@ -5087,7 +5087,9 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
       return showToast("Fill in all fields.", "error");
     if (entries.some(e =>
       e.studentName.toLowerCase().trim() === studentName.toLowerCase().trim() &&
-      e.studentClass === studentClass && e.subject === subject
+      e.studentClass === studentClass && e.subject === subject &&
+      (!e.term || e.term === schoolSettings.term) &&
+      (!e.session || e.session === schoolSettings.session)
     )) return showToast(`${subject} already exists for ${studentName}.`, "error");
     const ca = parseFloat(caScore) || 0, ex = parseFloat(examScore) || 0;
     if (ca < 0 || ca > 40) return showToast("CA score must be 0–40", "error");
@@ -5265,31 +5267,7 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Firebase real-time subscription (multi-device sync) ───────────────────
-  useEffect(() => {
-    if (!FIREBASE_ENABLED) return;
-    const deviceId = getDeviceId();
-    const unsub = subscribeFirebase((remote: any) => {
-      // Only apply updates from OTHER devices to avoid echo loop
-      if (remote._deviceId && remote._deviceId === deviceId) return;
-      if (!remote._updatedAt) return;
-      // Compare timestamps — only apply if remote is newer
-      const remoteTs = new Date(remote._updatedAt).getTime();
-      const localTs  = appState.logs[0]?.ts ? new Date(appState.logs[0].ts).getTime() : 0;
-      if (remoteTs > localTs + 5000) { // 5 second grace period
-        // Apply remote state
-        const { _deviceId: _d, _updatedAt: _u, ...cleanState } = remote;
-        Object.keys(cleanState).forEach(key => {
-          if ((initialState as any)[key] !== undefined) {
-            dispatch({ type: "__HYDRATE__", key, value: cleanState[key] });
-          }
-        });
-        showToast("Synced from another device ☁️", "success");
-      }
-    });
-    return unsub;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
 
   // ── Forgot password ────────────────────────────────────────────────────────
   if (!auth.loggedIn && forgotOpen) return (
@@ -5687,7 +5665,7 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
                         <Sel
                           label="Class"
                           value={scoreForm.studentClass}
-                          onChange={(e: any) => setScoreForm(f => ({ ...f, studentClass: e.target.value, subject: "" }))}
+                          onChange={(e: any) => setScoreForm(f => ({ ...f, studentClass: e.target.value, subject: "", studentName: "" }))}
                         >
                           <option value="">Select class</option>
                           {(auth.user?.assignedClasses?.length ? auth.user.assignedClasses : ALL_CLASSES).map(c => <option key={c}>{c}</option>)}
