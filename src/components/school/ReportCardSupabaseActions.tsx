@@ -292,8 +292,9 @@ export default function ReportCardSupabaseActions({
       <style>{`
         @media print {
           * { -webkit-print-color-adjust: exact !important; }
-          body > *:not(#report-print-area) { display: none !important; }
-          #report-print-area { display: block !important; width: 100%; margin: 0; padding: 0; }
+          body * { visibility: hidden; }
+          #report-print-area, #report-print-area * { visibility: visible; }
+          #report-print-area { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; }
           .no-print { display: none !important; }
         }
       `}</style>

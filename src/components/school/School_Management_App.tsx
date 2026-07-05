@@ -3405,8 +3405,19 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
             <DefaultSignaturesPanel
               initialTeacher={schoolSettings.defaultTeacherSignature || ""}
               initialPrincipal={schoolSettings.defaultPrincipalSignature || ""}
-              onSave={(t, p) => {
+              onSave={async (t, p) => {
                 dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { defaultTeacherSignature: t, defaultPrincipalSignature: p } });
+                if (tenantId) {
+                  try {
+                    const { supabase } = await import("@/integrations/supabase/client");
+                    const { data: school } = await supabase.from("schools").select("id").eq("tenant_id", tenantId).single();
+                    if (school) {
+                      await supabase.from("schools").update({ default_teacher_signature: t, default_principal_signature: p }).eq("id", school.id);
+                    }
+                  } catch (e) {
+                    console.error("Failed to save signatures to Supabase", e);
+                  }
+                }
                 showToast("Default signatures saved", "success");
               }}
             />
@@ -3558,7 +3569,9 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings }:
       )}
       {remarkSections.length > 0 && (
         <div className={`px-8 pt-4 pb-5 grid gap-4 ${remarkSections.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
-          {remarkSections.map(([f, l, sf, role]) => (
+          {remarkSections.map(([f, l, sf, role]) => {
+            const sigValue = curC[sf] || (sf === "teacherSig" ? schoolSettings.defaultTeacherSignature : schoolSettings.defaultPrincipalSignature);
+            return (
             <div key={f} className="border border-slate-200 rounded-xl p-4">
               <p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-2">{l}</p>
               <div className="min-h-10 text-sm text-slate-700 italic border-b border-dashed border-slate-200 pb-2 mb-3">
@@ -3567,10 +3580,10 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings }:
               <div className="flex items-end justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-black uppercase text-slate-400 mb-1">Signature</p>
-                  {curC[sf] && typeof curC[sf] === "string" && curC[sf].startsWith("data:image") ? (
-                    <img src={curC[sf]} alt="signature" style={{ maxHeight: "48px", maxWidth: "100%", objectFit: "contain" }} />
-                  ) : curC[sf] ? (
-                    <p className="italic text-base" style={{ fontFamily:`${tpl.fontFamily},serif`, color: tpl.accentColor }}>{curC[sf]}</p>
+                  {sigValue && typeof sigValue === "string" && sigValue.startsWith("data:image") ? (
+                    <img src={sigValue} alt="signature" style={{ maxHeight: "48px", maxWidth: "100%", objectFit: "contain" }} />
+                  ) : sigValue ? (
+                    <p className="italic text-base" style={{ fontFamily:`${tpl.fontFamily},serif`, color: tpl.accentColor }}>{sigValue}</p>
                   ) : (
                     <p className="italic text-xs text-slate-300">_____________________</p>
                   )}
@@ -3582,7 +3595,8 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings }:
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {tpl.showResumptionDate && (
@@ -4915,6 +4929,14 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
   const [rpClass,  setRpClass]  = useState("All");
   const [activeReport, setActiveReport] = useState<any>(null);
   const [scoreForm, setScoreForm] = useState({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" });
+  const _mountLog = useRef(false);
+  if (!_mountLog.current) {
+    console.log("MOUNTED - School_Management_App");
+    _mountLog.current = true;
+  }
+  useEffect(() => {
+    console.log("SCORE_FORM_STATE_CHANGED:", scoreForm);
+  }, [scoreForm]);
 
   // CA-only drafts: stored separately until exam scores are ready, then promoted to entries.
   type CADraft = { id: string; studentName: string; studentClass: string; subject: string; caScore: number; term: string; session: string; enteredBy: string; createdAt: string };
@@ -4929,8 +4951,14 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
   const can = useCallback((p: string) => isAdmin || (auth.user?.permissions?.[p] ?? false), [isAdmin, auth.user]);
 
   // Refresh score entry form whenever the active actor changes (login/logout/switch)
+  const prevAuthId = useRef(auth.user?.id);
+  const prevIsAdmin = useRef(isAdmin);
   useEffect(() => {
-    setScoreForm({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" });
+    if (prevAuthId.current !== auth.user?.id || prevIsAdmin.current !== isAdmin) {
+      setScoreForm({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" });
+      prevAuthId.current = auth.user?.id;
+      prevIsAdmin.current = isAdmin;
+    }
   }, [auth.user?.id, isAdmin]);
 
   const subjectList = useMemo(() => {
@@ -5665,7 +5693,7 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
                         <Sel
                           label="Class"
                           value={scoreForm.studentClass}
-                          onChange={(e: any) => setScoreForm(f => ({ ...f, studentClass: e.target.value, subject: "", studentName: "" }))}
+                          onChange={(e: any) => setScoreForm(f => ({ ...f, studentClass: e.target.value, subject: "" }))}
                         >
                           <option value="">Select class</option>
                           {(auth.user?.assignedClasses?.length ? auth.user.assignedClasses : ALL_CLASSES).map(c => <option key={c}>{c}</option>)}

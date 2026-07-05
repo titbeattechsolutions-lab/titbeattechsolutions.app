@@ -35,6 +35,8 @@ export interface School {
   features: Record<string, boolean>;
   max_students: number;
   current_students: number;
+  default_teacher_signature?: string | null;
+  default_principal_signature?: string | null;
   created_at: string;
   updated_at: string;
 }

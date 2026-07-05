@@ -67,7 +67,7 @@ export default function ReportsTab() {
           <div className="space-y-4">
             <button onClick={() => setSelectedStudent(null)} className="text-xs font-bold text-primary">← Back to list</button>
 
-            <div className="mobile-card p-5">
+            <div id="report-print-area" className="mobile-card p-5">
               <div className="text-center mb-4">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">{schoolSettings.name}</p>
                 <h3 className="text-lg font-bold mt-1">{studentDetail.name}</h3>
