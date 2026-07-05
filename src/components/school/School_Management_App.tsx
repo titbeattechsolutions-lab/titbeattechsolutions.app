@@ -1339,12 +1339,26 @@ const blankStaff = (): Omit<StaffMember, "id" | "createdAt" | "updatedAt"> => ({
   permissions: { scoreEntry:true, viewReports:true, printReports:false, manageRecords:false },
 });
 
-const StaffDialog = memo(({ staff, mode, onSave, onClose }: { staff?: StaffMember; mode: "add" | "edit"; onSave: (s: StaffMember) => void; onClose: () => void }) => {
+const StaffDialog = memo(({ staff, mode, onSave, onClose, tenantId }: { staff?: StaffMember; mode: "add" | "edit"; onSave: (s: StaffMember) => void; onClose: () => void; tenantId?: string }) => {
   const originalRef = useRef<any>(staff ? { ...staff, pin: "" } : blankStaff());
   const [form, setForm] = useState<any>(() => staff ? { ...staff, pin: "" } : blankStaff());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showPin, setShowPin] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [schoolProfiles, setSchoolProfiles] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    (async () => {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, email, first_name, last_name, staff_member_id")
+        .eq("school_id", tenantId);
+      if (data) setSchoolProfiles(data);
+    })();
+  }, [tenantId]);
+
   // FIX: Use step-based navigation (one section at a time) instead of continuous scroll
   // This eliminates the lag entirely — only renders ONE section at a time
   const [step, setStep] = useState(0);
@@ -1474,6 +1488,51 @@ const StaffDialog = memo(({ staff, mode, onSave, onClose }: { staff?: StaffMembe
               <p className="text-xs text-slate-500 mt-0.5">{form.role}</p>
               <div className="mt-1"><StatusPill status={form.status} /></div>
             </div>
+          </div>
+
+          {/* Link to Login Account */}
+          <div className="pt-2">
+            <Field label="Link to Login Account (Optional)" error="">
+              <select 
+                className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black tracking-wide text-sm focus:border-blue-500 outline-none transition-all"
+                value={schoolProfiles.find(p => p.staff_member_id === (staff?.id || ""))?.id || ""}
+                onChange={async (e) => {
+                  const selectedProfileId = e.target.value;
+                  const currentId = staff?.id;
+                  if (!currentId) return; // Cannot link before saving for the first time
+                  
+                  const { supabase } = await import("@/integrations/supabase/client");
+
+                  // Clear previous link for this staff member if any
+                  const previousLinked = schoolProfiles.find(p => p.staff_member_id === currentId);
+                  if (previousLinked) {
+                    await supabase.from("profiles").update({ staff_member_id: null }).eq("id", previousLinked.id);
+                  }
+
+                  // Set new link
+                  if (selectedProfileId) {
+                    await supabase.from("profiles").update({ staff_member_id: currentId }).eq("id", selectedProfileId);
+                  }
+
+                  // Update local state to reflect change immediately
+                  setSchoolProfiles(prev => prev.map(p => {
+                    if (p.id === selectedProfileId) return { ...p, staff_member_id: currentId };
+                    if (p.id === previousLinked?.id) return { ...p, staff_member_id: null };
+                    return p;
+                  }));
+                }}
+                disabled={!staff}
+              >
+                <option value="">-- No Account Linked --</option>
+                {schoolProfiles.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.first_name} {p.last_name} ({p.email})
+                  </option>
+                ))}
+              </select>
+              {!staff && <p className="text-[10px] text-amber-600 font-bold mt-1">Please save this staff member first before linking.</p>}
+              {staff && <p className="text-[10px] text-slate-400 mt-1">Links this staff record to a real login so their E-Signature syncs.</p>}
+            </Field>
           </div>
         </div>
       );
@@ -3474,7 +3533,7 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
 });
 
 // ─── Report Sheet ─────────────────────────────────────────────────────────────
-const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings }: any) => {
+const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, classTeacher, linkedSignatures }: any) => {
   const tpl: ReportTemplateConfig = schoolSettings.reportTemplate || DEFAULT_REPORT_TEMPLATE;
   const headers = tpl.showGrade
     ? ["Subject", "CA /40", "Exam /60", "Total /100", "Grade", "Remark"]
@@ -3570,7 +3629,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings }:
       {remarkSections.length > 0 && (
         <div className={`px-8 pt-4 pb-5 grid gap-4 ${remarkSections.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
           {remarkSections.map(([f, l, sf, role]) => {
-            const linkedTeacherSig = (sf === "teacherSig" && classTeacher) ? linkedSignatures[classTeacher.id] : null;
+            const linkedTeacherSig = (sf === "teacherSig" && classTeacher && linkedSignatures) ? linkedSignatures[classTeacher.id] : null;
             const sigValue = curC[sf] || linkedTeacherSig || (sf === "teacherSig" ? schoolSettings.defaultTeacherSignature : schoolSettings.defaultPrincipalSignature);
             const isAutoLinked = !curC[sf] && !!linkedTeacherSig;
 
@@ -6220,7 +6279,7 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
                         />
                       </div>
                     </Card>
-                    <ReportSheet report={activeReport} curC={curC} attRate={attRate} schoolLogo={schoolLogo} schoolSettings={schoolSettings} />
+                    <ReportSheet report={activeReport} curC={curC} attRate={attRate} schoolLogo={schoolLogo} schoolSettings={schoolSettings} classTeacher={classTeacher} linkedSignatures={linkedSignatures} />
                   </div>
                 )
               )}
@@ -6419,10 +6478,10 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
         />
       )}
       {dlg?.type === "staffAdd" && (
-        <StaffDialog mode="add" onSave={saveStaff} onClose={() => setDlg(null)} />
+        <StaffDialog mode="add" onSave={saveStaff} onClose={() => setDlg(null)} tenantId={tenantId} />
       )}
       {dlg?.type === "staffEdit" && (
-        <StaffDialog mode="edit" staff={dlg.data} onSave={saveStaff} onClose={() => setDlg(null)} />
+        <StaffDialog mode="edit" staff={dlg.data} onSave={saveStaff} onClose={() => setDlg(null)} tenantId={tenantId} />
       )}
       {dlg?.type === "delete" && (
         <PinAuth

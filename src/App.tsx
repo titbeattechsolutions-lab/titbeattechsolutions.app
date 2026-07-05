@@ -30,6 +30,7 @@ import BillingListPage from "./pages/superadmin/BillingListPage";
 const queryClient = new QueryClient();
 
 const SCHOOL_ROLES = ["school_admin", "principal", "head_teacher"] as const;
+const TEACHER_ROLES = ["school_admin", "principal", "head_teacher", "teacher"] as const;
 const STUDENT_ROLES = ["student"] as const;
 
 function Unauthorized() {
@@ -64,7 +65,7 @@ const App = () => (
             <Route
               path="/teacher"
               element={
-                <ProtectedRoute allowedRoles={[...SCHOOL_ROLES]}>
+                <ProtectedRoute allowedRoles={[...TEACHER_ROLES]}>
                   <TeacherPortal />
                 </ProtectedRoute>
               }
