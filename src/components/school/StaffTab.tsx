@@ -5,16 +5,30 @@ import { ROLES, PERMS_META, ALL_CLASSES } from "@/lib/school-constants";
 import type { StaffMember } from "@/lib/school-store";
 import { UserPlus, Search, UserCheck, UserX, Shield, Eye, EyeOff, Check } from "lucide-react";
 import BottomSheet from "./BottomSheet";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useEffect } from "react";
 
 export default function StaffTab() {
   const { state, dispatch, showToast } = useApp();
   const { staffList } = state;
+  const { profile } = useAuth();
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const [showForm, setShowForm] = useState(false);
   const [editStaff, setEditStaff] = useState<StaffMember | null>(null);
   const [showPin, setShowPin] = useState(false);
+  const [schoolProfiles, setSchoolProfiles] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!profile?.schoolId || !showForm) return;
+    supabase
+      .from("profiles")
+      .select("id, email, first_name, last_name, staff_member_id")
+      .eq("school_id", profile.schoolId)
+      .then(({ data }) => { if (data) setSchoolProfiles(data); });
+  }, [profile?.schoolId, showForm]);
 
   const [form, setForm] = useState<{
     name: string; role: string; pin: string; status: "active" | "restricted" | "revoked";
@@ -168,6 +182,48 @@ export default function StaffTab() {
               <button onClick={() => setShowPin((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                 {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
+            </div>
+
+            {/* Link to Login Account */}
+            <div>
+              <p className="section-title mb-2">Link to Login Account (Optional)</p>
+              <select 
+                className="input-field"
+                value={schoolProfiles.find(p => p.staff_member_id === (editStaff?.id || ""))?.id || ""}
+                onChange={async (e) => {
+                  const selectedProfileId = e.target.value;
+                  const currentId = editStaff?.id;
+                  if (!currentId) return; // Cannot link before saving for the first time
+                  
+                  // Clear previous link for this staff member if any
+                  const previousLinked = schoolProfiles.find(p => p.staff_member_id === currentId);
+                  if (previousLinked) {
+                    await supabase.from("profiles").update({ staff_member_id: null }).eq("id", previousLinked.id);
+                  }
+
+                  // Set new link
+                  if (selectedProfileId) {
+                    await supabase.from("profiles").update({ staff_member_id: currentId }).eq("id", selectedProfileId);
+                  }
+
+                  // Update local state to reflect change immediately
+                  setSchoolProfiles(prev => prev.map(p => {
+                    if (p.id === selectedProfileId) return { ...p, staff_member_id: currentId };
+                    if (p.id === previousLinked?.id) return { ...p, staff_member_id: null };
+                    return p;
+                  }));
+                }}
+                disabled={!editStaff}
+              >
+                <option value="">-- No Account Linked --</option>
+                {schoolProfiles.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.first_name} {p.last_name} ({p.email})
+                  </option>
+                ))}
+              </select>
+              {!editStaff && <p className="text-xs text-warning mt-1">Please save this staff member first before linking.</p>}
+              {editStaff && <p className="text-xs text-muted-foreground mt-1">Links this staff record to a real login so their E-Signature syncs.</p>}
             </div>
 
             {/* Status */}

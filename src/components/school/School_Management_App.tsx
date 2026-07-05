@@ -3570,7 +3570,10 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings }:
       {remarkSections.length > 0 && (
         <div className={`px-8 pt-4 pb-5 grid gap-4 ${remarkSections.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
           {remarkSections.map(([f, l, sf, role]) => {
-            const sigValue = curC[sf] || (sf === "teacherSig" ? schoolSettings.defaultTeacherSignature : schoolSettings.defaultPrincipalSignature);
+            const linkedTeacherSig = (sf === "teacherSig" && classTeacher) ? linkedSignatures[classTeacher.id] : null;
+            const sigValue = curC[sf] || linkedTeacherSig || (sf === "teacherSig" ? schoolSettings.defaultTeacherSignature : schoolSettings.defaultPrincipalSignature);
+            const isAutoLinked = !curC[sf] && !!linkedTeacherSig;
+
             return (
             <div key={f} className="border border-slate-200 rounded-xl p-4">
               <p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-2">{l}</p>
@@ -3579,7 +3582,9 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings }:
               </div>
               <div className="flex items-end justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-black uppercase text-slate-400 mb-1">Signature</p>
+                  <p className="text-xs font-black uppercase text-slate-400 mb-1">
+                    Signature {isAutoLinked && <span className="text-[10px] text-slate-400 italic normal-case tracking-normal ml-1">(auto-applied)</span>}
+                  </p>
                   {sigValue && typeof sigValue === "string" && sigValue.startsWith("data:image") ? (
                     <img src={sigValue} alt="signature" style={{ maxHeight: "48px", maxWidth: "100%", objectFit: "contain" }} />
                   ) : sigValue ? (
@@ -4928,6 +4933,32 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
   const [rpSearch, setRpSearch] = useState("");
   const [rpClass,  setRpClass]  = useState("All");
   const [activeReport, setActiveReport] = useState<any>(null);
+  const [linkedSignatures, setLinkedSignatures] = useState<Record<string, string>>({});
+  const classTeacher = useMemo(() => {
+    return activeReport ? appState.staffList.find(s => s.assignedClasses.includes(activeReport.class)) : null;
+  }, [activeReport, appState.staffList]);
+
+  useEffect(() => {
+    if (!tenantId || !classTeacher) return;
+    if (linkedSignatures[classTeacher.id] !== undefined) return; // already fetched or attempted
+    
+    (async () => {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data } = await supabase
+        .from("profiles")
+        .select("signature")
+        .eq("staff_member_id", classTeacher.id)
+        .eq("school_id", tenantId)
+        .maybeSingle();
+        
+      if (data?.signature) {
+        setLinkedSignatures(prev => ({ ...prev, [classTeacher.id]: data.signature }));
+      } else {
+        setLinkedSignatures(prev => ({ ...prev, [classTeacher.id]: "" })); // mark as attempted
+      }
+    })();
+  }, [tenantId, classTeacher, linkedSignatures]);
+
   const [scoreForm, setScoreForm] = useState({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" });
   const _mountLog = useRef(false);
   if (!_mountLog.current) {
