@@ -10,19 +10,10 @@ import TenantApp from "./pages/TenantApp";
 import Auth from "./pages/Auth";
 import SuperAdmin from "./pages/SuperAdmin";
 import NotFound from "./pages/NotFound.tsx";
-import SchoolDashboard from "./pages/admin/SchoolDashboard";
-import OverviewPage from "./pages/admin/OverviewPage";
-import StudentsPage from "./pages/admin/StudentsPage";
-import TeachersPage from "./pages/admin/TeachersPage";
-import ClassesPage from "./pages/admin/ClassesPage";
-import SettingsPage from "./pages/admin/SettingsPage";
-import FeesPage from "./pages/admin/FeesPage";
-import PaymentsPage from "./pages/admin/PaymentsPage";
 import TeacherPortal from "./pages/teacher/TeacherPortal";
 import MyClassesPage from "./pages/teacher/MyClassesPage";
 import AttendancePage from "./pages/teacher/AttendancePage";
 import ResultsPage from "./pages/teacher/ResultsPage";
-import TimetablePage from "./pages/admin/TimetablePage";
 import TeacherTimetablePage from "./pages/teacher/TimetablePage";
 import TeacherProfilePage from "./pages/teacher/ProfilePage";
 import StudentPortal from "./pages/student/StudentPortal";
@@ -69,25 +60,6 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            {/* School admin dashboard */}
-            <Route
-              path="/school"
-              element={
-                <ProtectedRoute allowedRoles={[...SCHOOL_ROLES]}>
-                  <SchoolDashboard />
-                </ProtectedRoute>
-              }
-            >
-              <Route index element={<Navigate to="overview" replace />} />
-              <Route path="overview"     element={<OverviewPage />} />
-              <Route path="students"     element={<StudentsPage />} />
-              <Route path="teachers"     element={<TeachersPage />} />
-              <Route path="classes"      element={<ClassesPage />} />
-              <Route path="fees"         element={<FeesPage />} />
-              <Route path="payments"     element={<PaymentsPage />} />
-              <Route path="timetable"    element={<TimetablePage />} />
-              <Route path="settings"     element={<SettingsPage />} />
-            </Route>
             {/* Teacher portal */}
             <Route
               path="/teacher"

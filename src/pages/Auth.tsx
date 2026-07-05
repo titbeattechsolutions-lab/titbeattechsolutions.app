@@ -35,8 +35,9 @@ export default function Auth() {
       const role = profileRow?.role ?? "unassigned";
       if (role === "super_admin") navigate("/superadmin", { replace: true });
       else if (role === "student") navigate("/student", { replace: true });
-      else if (["school_admin", "principal", "head_teacher", "teacher"].includes(role))
-        navigate("/school", { replace: true });
+      else if (role === "teacher") navigate("/teacher", { replace: true });
+      else if (["school_admin", "principal", "head_teacher"].includes(role))
+        navigate("/app", { replace: true });
       else navigate("/superadmin", { replace: true });
     });
   }, [navigate]);
@@ -62,8 +63,9 @@ export default function Auth() {
           .maybeSingle();
         const role = profileRow?.role ?? "unassigned";
         if (role === "student") navigate("/student", { replace: true });
-        else if (["school_admin", "principal", "head_teacher", "teacher"].includes(role))
-          navigate("/school", { replace: true });
+        else if (role === "teacher") navigate("/teacher", { replace: true });
+        else if (["school_admin", "principal", "head_teacher"].includes(role))
+          navigate("/app", { replace: true });
         else navigate("/superadmin", { replace: true });
       } else {
         navigate("/superadmin", { replace: true });
