@@ -33,26 +33,26 @@ export default function TeacherProfilePage() {
     (async () => {
       setIsLoading(true);
       // Fetch user's own signature
-      const { data: pData } = await supabase
-        .from("profiles")
+      const { data: pData } = await (supabase
+        .from("profiles") as any)
         .select("signature")
         .eq("id", user.id)
         .single();
       
-      if (pData?.signature) {
-        setSignature(pData.signature);
-        setOriginalSignature(pData.signature);
+      if ((pData as any)?.signature) {
+        setSignature((pData as any).signature);
+        setOriginalSignature((pData as any).signature);
       }
 
       // Fetch school's default teacher signature
-      const { data: sData } = await supabase
-        .from("schools")
+      const { data: sData } = await (supabase
+        .from("schools") as any)
         .select("default_teacher_signature")
         .eq("tenant_id", profile.schoolId)
         .single();
       
-      if (sData?.default_teacher_signature) {
-        setSchoolDefault(sData.default_teacher_signature);
+      if ((sData as any)?.default_teacher_signature) {
+        setSchoolDefault((sData as any).default_teacher_signature);
       }
       setIsLoading(false);
     })();
@@ -63,8 +63,8 @@ export default function TeacherProfilePage() {
     setIsSaving(true);
     setSaveSuccess(false);
 
-    const { error } = await supabase
-      .from("profiles")
+    const { error } = await (supabase
+      .from("profiles") as any)
       .update({ signature: signature || null })
       .eq("id", user.id);
 
