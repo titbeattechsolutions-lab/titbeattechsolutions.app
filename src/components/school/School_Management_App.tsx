@@ -2605,13 +2605,13 @@ const ResourcesTab = memo(({ showToast }: { showToast: (msg: string, type?: stri
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {state.schoolSettings?.curriculumLevels?.map(level => (
+              {((state.schoolSettings as any)?.curriculumLevels ?? Object.keys(CURRICULUM)).map((level: string) => (
                 <div key={level} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
                   <div className="flex items-center gap-2 mb-3">
                     <GraduationCap size={18} className="text-blue-600" />
                     <h4 className="font-black text-slate-900">{level}</h4>
                   </div>
-                  <p className="text-xs text-slate-500">{CURRICULUM[level]?.length || 0} classes configured</p>
+                  <p className="text-xs text-slate-500">{CURRICULUM[level]?.classes?.length || 0} classes configured</p>
                 </div>
               ))}
             </div>
