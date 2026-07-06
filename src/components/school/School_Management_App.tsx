@@ -3463,16 +3463,16 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
           )}
           {sec === "signatures" && (
             <DefaultSignaturesPanel
-              initialTeacher={schoolSettings.defaultTeacherSignature || ""}
-              initialPrincipal={schoolSettings.defaultPrincipalSignature || ""}
+              initialTeacher={(schoolSettings as any).defaultTeacherSignature || ""}
+              initialPrincipal={(schoolSettings as any).defaultPrincipalSignature || ""}
               onSave={async (t, p) => {
-                dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { defaultTeacherSignature: t, defaultPrincipalSignature: p } });
+                dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { defaultTeacherSignature: t, defaultPrincipalSignature: p } as any });
                 if (tenantId) {
                   try {
                     const { supabase } = await import("@/integrations/supabase/client");
                     const { data: school } = await supabase.from("schools").select("id").eq("tenant_id", tenantId).single();
                     if (school) {
-                      await supabase.from("schools").update({ default_teacher_signature: t, default_principal_signature: p }).eq("id", school.id);
+                      await (supabase.from("schools") as any).update({ default_teacher_signature: t, default_principal_signature: p }).eq("id", school.id);
                     }
                   } catch (e) {
                     console.error("Failed to save signatures to Supabase", e);
