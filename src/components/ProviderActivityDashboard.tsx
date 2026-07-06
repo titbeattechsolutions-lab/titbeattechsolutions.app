@@ -55,7 +55,7 @@ export default function ProviderActivityDashboard() {
 
       let accessRows: ActivityRecord[] = [];
       if (!accessResult.error && accessResult.data) {
-        accessRows = (accessResult.data as ActivityRecord[]).map((row) => ({
+        accessRows = ((accessResult.data as unknown) as ActivityRecord[]).map((row) => ({
           ...row,
           tenant_name: tenantNameMap[row.tenant_id ?? ""] ?? undefined,
         }));
