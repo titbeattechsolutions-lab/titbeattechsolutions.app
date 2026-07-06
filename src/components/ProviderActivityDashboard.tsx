@@ -55,7 +55,7 @@ export default function ProviderActivityDashboard() {
 
       let accessRows: ActivityRecord[] = [];
       if (!accessResult.error && accessResult.data) {
-        accessRows = (accessResult.data as ActivityRecord[]).map((row) => ({
+        accessRows = ((accessResult.data as unknown) as ActivityRecord[]).map((row) => ({
           ...row,
           tenant_name: tenantNameMap[row.tenant_id ?? ""] ?? undefined,
         }));
@@ -84,7 +84,7 @@ export default function ProviderActivityDashboard() {
           })
         );
 
-        accessRows = tenantAccessResults
+        accessRows = (tenantAccessResults as PromiseSettledResult<ActivityRecord[]>[])
           .filter((result): result is PromiseFulfilledResult<ActivityRecord[]> => result.status === "fulfilled")
           .flatMap((result) => result.value)
           .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
@@ -99,7 +99,7 @@ export default function ProviderActivityDashboard() {
         .limit(150);
 
       if (!directActivityError && directActivityData) {
-        activityRows = (directActivityData as ActivityRecord[]).map((row) => ({
+        activityRows = ((directActivityData as unknown) as any[]).map((row) => ({ ...row, id: String(row.id) } as ActivityRecord)).map((row) => ({
           ...row,
           tenant_name: tenantNameMap[row.tenant_id ?? ""] ?? undefined,
         }));

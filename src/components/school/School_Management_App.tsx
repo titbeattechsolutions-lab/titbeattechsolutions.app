@@ -1506,12 +1506,12 @@ const StaffDialog = memo(({ staff, mode, onSave, onClose, tenantId }: { staff?: 
                   // Clear previous link for this staff member if any
                   const previousLinked = schoolProfiles.find(p => p.staff_member_id === currentId);
                   if (previousLinked) {
-                    await supabase.from("profiles").update({ staff_member_id: null }).eq("id", previousLinked.id);
+                    await (supabase.from("profiles") as any).update({ staff_member_id: null }).eq("id", previousLinked.id);
                   }
 
                   // Set new link
                   if (selectedProfileId) {
-                    await supabase.from("profiles").update({ staff_member_id: currentId }).eq("id", selectedProfileId);
+                    await (supabase.from("profiles") as any).update({ staff_member_id: currentId }).eq("id", selectedProfileId);
                   }
 
                   // Update local state to reflect change immediately
@@ -2605,13 +2605,13 @@ const ResourcesTab = memo(({ showToast }: { showToast: (msg: string, type?: stri
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {state.schoolSettings?.curriculumLevels?.map(level => (
+              {((state.schoolSettings as any)?.curriculumLevels ?? Object.keys(CURRICULUM)).map((level: string) => (
                 <div key={level} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
                   <div className="flex items-center gap-2 mb-3">
                     <GraduationCap size={18} className="text-blue-600" />
                     <h4 className="font-black text-slate-900">{level}</h4>
                   </div>
-                  <p className="text-xs text-slate-500">{CURRICULUM[level]?.length || 0} classes configured</p>
+                  <p className="text-xs text-slate-500">{CURRICULUM[level]?.classes?.length || 0} classes configured</p>
                 </div>
               ))}
             </div>
@@ -2966,12 +2966,13 @@ const ResourcesTab = memo(({ showToast }: { showToast: (msg: string, type?: stri
   );
 });
 
-const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPinRef }: {
+const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPinRef, tenantId }: {
   logoUrl: string | null;
   setSchoolLogo: (url: string | null) => void;
   logoRef: React.RefObject<HTMLInputElement>;
   showToast: (msg: string, type?: string) => void;
   adminPinRef: React.MutableRefObject<string>;
+  tenantId?: string;
 }) => {
   const { state, dispatch } = useApp();
   const { schoolSettings } = state;
@@ -3462,16 +3463,16 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
           )}
           {sec === "signatures" && (
             <DefaultSignaturesPanel
-              initialTeacher={schoolSettings.defaultTeacherSignature || ""}
-              initialPrincipal={schoolSettings.defaultPrincipalSignature || ""}
+              initialTeacher={(schoolSettings as any).defaultTeacherSignature || ""}
+              initialPrincipal={(schoolSettings as any).defaultPrincipalSignature || ""}
               onSave={async (t, p) => {
-                dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { defaultTeacherSignature: t, defaultPrincipalSignature: p } });
+                dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { defaultTeacherSignature: t, defaultPrincipalSignature: p } as any });
                 if (tenantId) {
                   try {
                     const { supabase } = await import("@/integrations/supabase/client");
                     const { data: school } = await supabase.from("schools").select("id").eq("tenant_id", tenantId).single();
                     if (school) {
-                      await supabase.from("schools").update({ default_teacher_signature: t, default_principal_signature: p }).eq("id", school.id);
+                      await (supabase.from("schools") as any).update({ default_teacher_signature: t, default_principal_signature: p }).eq("id", school.id);
                     }
                   } catch (e) {
                     console.error("Failed to save signatures to Supabase", e);
@@ -4938,7 +4939,7 @@ function InboxView({
 // ─────────────────────────────────────────────────────────────────────────────
 // Main App
 // ─────────────────────────────────────────────────────────────────────────────
-export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: () => void; tenantId?: string } = {}) {
+export default function App({ onTenantSignOut, tenantId, tenantSchoolName }: { onTenantSignOut?: () => void; tenantId?: string; tenantSchoolName?: string } = {}) {
   const [appState, dispatchRaw] = useReducer(appReducer, initialState);
   const dispatch = useCallback((action: any) => {
     dispatchRaw(action);
@@ -5003,15 +5004,15 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
     
     (async () => {
       const { supabase } = await import("@/integrations/supabase/client");
-      const { data } = await supabase
-        .from("profiles")
+      const { data } = await (supabase
+        .from("profiles") as any)
         .select("signature")
         .eq("staff_member_id", classTeacher.id)
         .eq("school_id", tenantId)
         .maybeSingle();
         
-      if (data?.signature) {
-        setLinkedSignatures(prev => ({ ...prev, [classTeacher.id]: data.signature }));
+      if ((data as any)?.signature) {
+        setLinkedSignatures(prev => ({ ...prev, [classTeacher.id]: (data as any).signature }));
       } else {
         setLinkedSignatures(prev => ({ ...prev, [classTeacher.id]: "" })); // mark as attempted
       }
@@ -6089,7 +6090,7 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
                           {filteredStudents.map(s => {
                             const sc = appState.comments[s.id] || {};
                             const checks = [
-                              (s.records?.length || 0) > 0,
+                              ((s as any).records?.length || 0) > 0,
                               !!(sc.daysOpen && sc.daysPresent),
                               !!sc.teacher,
                               !!sc.principal,
@@ -6437,6 +6438,7 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
                   logoRef={logoRef as React.RefObject<HTMLInputElement>}
                   showToast={showToast}
                   adminPinRef={adminPinRef}
+                  tenantId={tenantId}
                 />
               )}
 

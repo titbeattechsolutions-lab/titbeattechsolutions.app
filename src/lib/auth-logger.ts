@@ -43,7 +43,7 @@ export async function logAuthEvent({
     const ua = userAgent || navigator.userAgent;
 
     // Call the database function
-    const { error } = await supabase.rpc("log_auth_event", {
+    const { error } = await (supabase.rpc as any)("log_auth_event", {
       _auth_type: authType,
       _event_type: eventType,
       _user_id: userId || null,
