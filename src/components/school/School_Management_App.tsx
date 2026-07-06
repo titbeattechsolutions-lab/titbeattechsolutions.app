@@ -6090,7 +6090,7 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
                           {filteredStudents.map(s => {
                             const sc = appState.comments[s.id] || {};
                             const checks = [
-                              (s.records?.length || 0) > 0,
+                              ((s as any).records?.length || 0) > 0,
                               !!(sc.daysOpen && sc.daysPresent),
                               !!sc.teacher,
                               !!sc.principal,
