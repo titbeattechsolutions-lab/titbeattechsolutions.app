@@ -99,7 +99,7 @@ export default function ProviderActivityDashboard() {
         .limit(150);
 
       if (!directActivityError && directActivityData) {
-        activityRows = (directActivityData as ActivityRecord[]).map((row) => ({
+        activityRows = ((directActivityData as unknown) as any[]).map((row) => ({ ...row, id: String(row.id) } as ActivityRecord)).map((row) => ({
           ...row,
           tenant_name: tenantNameMap[row.tenant_id ?? ""] ?? undefined,
         }));
