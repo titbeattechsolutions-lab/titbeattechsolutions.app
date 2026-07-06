@@ -5004,15 +5004,15 @@ export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: (
     
     (async () => {
       const { supabase } = await import("@/integrations/supabase/client");
-      const { data } = await supabase
-        .from("profiles")
+      const { data } = await (supabase
+        .from("profiles") as any)
         .select("signature")
         .eq("staff_member_id", classTeacher.id)
         .eq("school_id", tenantId)
         .maybeSingle();
         
-      if (data?.signature) {
-        setLinkedSignatures(prev => ({ ...prev, [classTeacher.id]: data.signature }));
+      if ((data as any)?.signature) {
+        setLinkedSignatures(prev => ({ ...prev, [classTeacher.id]: (data as any).signature }));
       } else {
         setLinkedSignatures(prev => ({ ...prev, [classTeacher.id]: "" })); // mark as attempted
       }
