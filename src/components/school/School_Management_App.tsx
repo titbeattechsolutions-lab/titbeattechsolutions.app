@@ -4939,7 +4939,7 @@ function InboxView({
 // ─────────────────────────────────────────────────────────────────────────────
 // Main App
 // ─────────────────────────────────────────────────────────────────────────────
-export default function App({ onTenantSignOut, tenantId }: { onTenantSignOut?: () => void; tenantId?: string } = {}) {
+export default function App({ onTenantSignOut, tenantId, tenantSchoolName }: { onTenantSignOut?: () => void; tenantId?: string; tenantSchoolName?: string } = {}) {
   const [appState, dispatchRaw] = useReducer(appReducer, initialState);
   const dispatch = useCallback((action: any) => {
     dispatchRaw(action);
