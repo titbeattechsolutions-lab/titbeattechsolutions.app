@@ -6438,6 +6438,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName }: { o
                   logoRef={logoRef as React.RefObject<HTMLInputElement>}
                   showToast={showToast}
                   adminPinRef={adminPinRef}
+                  tenantId={tenantId}
                 />
               )}
 
