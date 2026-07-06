@@ -2966,12 +2966,13 @@ const ResourcesTab = memo(({ showToast }: { showToast: (msg: string, type?: stri
   );
 });
 
-const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPinRef }: {
+const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPinRef, tenantId }: {
   logoUrl: string | null;
   setSchoolLogo: (url: string | null) => void;
   logoRef: React.RefObject<HTMLInputElement>;
   showToast: (msg: string, type?: string) => void;
   adminPinRef: React.MutableRefObject<string>;
+  tenantId?: string;
 }) => {
   const { state, dispatch } = useApp();
   const { schoolSettings } = state;
