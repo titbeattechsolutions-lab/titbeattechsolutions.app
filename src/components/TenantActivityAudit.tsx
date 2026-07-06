@@ -20,8 +20,8 @@ export default function TenantActivityAudit({ tenantId }: TenantActivityAuditPro
       
       try {
         // Fetch Login/Logout Logs
-        const { data: logins } = await supabase
-          .from("login_logs")
+        const { data: logins } = await (supabase
+          .from("login_logs" as any) as any)
           .select("*")
           .eq("tenant_id", tenantId)
           .order("timestamp", { ascending: false })
