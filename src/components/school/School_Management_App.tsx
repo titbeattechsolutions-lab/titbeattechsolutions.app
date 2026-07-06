@@ -1506,12 +1506,12 @@ const StaffDialog = memo(({ staff, mode, onSave, onClose, tenantId }: { staff?: 
                   // Clear previous link for this staff member if any
                   const previousLinked = schoolProfiles.find(p => p.staff_member_id === currentId);
                   if (previousLinked) {
-                    await supabase.from("profiles").update({ staff_member_id: null }).eq("id", previousLinked.id);
+                    await (supabase.from("profiles") as any).update({ staff_member_id: null }).eq("id", previousLinked.id);
                   }
 
                   // Set new link
                   if (selectedProfileId) {
-                    await supabase.from("profiles").update({ staff_member_id: currentId }).eq("id", selectedProfileId);
+                    await (supabase.from("profiles") as any).update({ staff_member_id: currentId }).eq("id", selectedProfileId);
                   }
 
                   // Update local state to reflect change immediately
