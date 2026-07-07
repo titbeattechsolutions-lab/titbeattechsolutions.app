@@ -14,7 +14,7 @@ import {
   Menu, BookOpen, MoreVertical, ChevronRight, ChevronLeft,
   CalendarDays, ClipboardList, BookMarked, Edit2, ArrowLeft,
   Bell, CalendarClock, Send, Inbox, MessageSquare, Wallet, CheckCircle,
-  FileSpreadsheet, Lock, Info, DollarSign
+  FileSpreadsheet, Lock, Info, DollarSign, Loader2
 } from "lucide-react";
 
 // ─── Upgrade Imports (CDN-based, no bundler needed) ──────────────────────────
@@ -3024,7 +3024,7 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
   const [loadingLogs, setLoadingLogs] = useState(true);
 
   useEffect(() => {
-    if (sec !== "staff") return;
+    if (sec !== "staff_activity") return;
 
     let sessionToken = "";
     try {
