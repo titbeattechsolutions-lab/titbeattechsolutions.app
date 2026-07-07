@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
-export type AppRole = "super_admin" | "school_admin" | "principal" | "head_teacher" | "teacher" | "student" | "unassigned";
+export type AppRole = "super_admin" | "school_admin" | "principal" | "head_teacher" | "teacher" | "student" | "unassigned" | "error";
 
 export interface AuthProfile {
   userId: string;
@@ -45,7 +45,7 @@ async function insertSessionLog(
 async function fetchProfile(userId: string, email: string | null): Promise<AuthProfile> {
   // First try fetching from public.profiles (Phase 2 table)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profileRow } = await (supabase as any)
+  const { data: profileRow, error: profileErr } = await (supabase as any)
     .from("profiles")
     .select("role, school_id, first_name, last_name")
     .eq("id", userId)
@@ -63,10 +63,17 @@ async function fetchProfile(userId: string, email: string | null): Promise<AuthP
   }
 
   // Fallback: check user_roles table (super_admin bootstrap path)
-  const { data: isSuperAdmin } = await supabase.rpc("has_role", {
+  const { data: isSuperAdmin, error: rpcErr } = await supabase.rpc("has_role", {
     _user_id: userId,
     _role: "super_admin",
   });
+
+  // If both queries fail with an error, it is a network/session failure,
+  // NOT a genuine confirmation that the user has no role.
+  if (profileErr || rpcErr) {
+    return { userId, email, role: "error", schoolId: null, firstName: null, lastName: null };
+  }
+
   if (isSuperAdmin) {
     return { userId, email, role: "super_admin", schoolId: null, firstName: null, lastName: null };
   }

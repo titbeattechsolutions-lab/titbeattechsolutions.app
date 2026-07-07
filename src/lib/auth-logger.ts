@@ -29,13 +29,21 @@ export async function logAuthEvent({
     let ip = ipAddress;
     if (!ip) {
       try {
-        const response = await fetch("https://api.ipify.org?format=json").catch(() => null);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        
+        const response = await fetch("https://api.ipify.org?format=json", { 
+          signal: controller.signal 
+        }).catch(() => null);
+        
+        clearTimeout(timeoutId);
+        
         if (response?.ok) {
           const data = await response.json();
           ip = data.ip;
         }
       } catch (e) {
-        // Silently fail to get IP, continue with logging anyway
+        // Silently fail on timeout/abort, continue with logging anyway
       }
     }
 

@@ -84,6 +84,7 @@ interface BinEntry extends Entry {
 interface StaffMember {
   id: string;
   name: string;
+  staffCode?: string;
   role: string;
   pin: string;
   status: "active" | "restricted" | "revoked";
@@ -134,6 +135,7 @@ interface SchoolSettings {
   term: string;
   resumptionDate: string;
   reportTemplate?: ReportTemplateConfig;
+  staffCodeMigrationDone?: boolean;
 }
 interface TimetableCell { subject: string; teacherName: string }
 interface TimetableState {
@@ -1296,6 +1298,7 @@ const StaffCard = memo(({ s, onEdit, onRevoke, onRestore }: { s: StaffMember; on
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap mb-1">
           <p className="font-black text-slate-900 uppercase text-sm">{s.name}</p>
+          {s.staffCode && <span className="bg-slate-100 text-slate-500 font-black text-[10px] px-2 py-0.5 rounded-md border border-slate-200">{s.staffCode}</span>}
           <StatusPill status={s.status} />
         </div>
         <p className="text-xs text-slate-500 font-bold mb-2">{s.role}</p>
@@ -1332,8 +1335,28 @@ const STEPS = [
   { id:"classes",     label:"Classes",     icon:"📚", desc:"Assigned classes" },
 ];
 
+export function generateStaffCode(name: string, existingCodes: string[]): string {
+  const nameClean = name
+    .replace(/\b(mr|mrs|ms|miss|dr|prof|rev|pastor)\.?\b/gi, '')
+    .replace(/[^a-zA-Z\s-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const words = nameClean.split(/[\s-]+/).filter(Boolean);
+  let initials = words.map(w => w[0].toUpperCase()).join('').slice(0, 3);
+  if (!initials) initials = "STF";
+  let maxSeq = 0;
+  for (const code of existingCodes) {
+    if (code.startsWith(`${initials}-`)) {
+      const numPart = parseInt(code.split("-")[1], 10);
+      if (!isNaN(numPart) && numPart > maxSeq) maxSeq = numPart;
+    }
+  }
+  const nextSeq = String(maxSeq + 1).padStart(3, "0");
+  return `${initials}-${nextSeq}`;
+}
+
 const blankStaff = (): Omit<StaffMember, "id" | "createdAt" | "updatedAt"> => ({
-  name: "", role: "Teacher", pin: "", status: "active",
+  name: "", staffCode: "", role: "Teacher", pin: "", status: "active",
   assignedClasses: [],
   assignedSubjects: [],
   permissions: { scoreEntry:true, viewReports:true, printReports:false, manageRecords:false },
@@ -1457,6 +1480,14 @@ const StaffDialog = memo(({ staff, mode, onSave, onClose, tenantId }: { staff?: 
     switch (STEPS[step].id) {
       case "identity": return (
         <div className="space-y-5">
+          {form.staffCode && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center">
+              <div>
+                <p className="text-xs font-black uppercase text-slate-500">Staff ID (For Login)</p>
+                <p className="text-lg font-black text-slate-900">{form.staffCode}</p>
+              </div>
+            </div>
+          )}
           <Inp label="Full Name" value={form.name} onChange={(e: any) => setF("name", e.target.value)} placeholder="e.g. Mrs. Amaka Obi" error={errors.name} />
           <Sel label="Role" value={form.role} onChange={(e: any) => setF("role", e.target.value)}>
             {ROLES.map(r => <option key={r}>{r}</option>)}
@@ -1989,6 +2020,7 @@ const SETTINGS_SECTIONS = [
   { id:"signatures",label:"Signatures",    icon:"✍️" },
   { id:"security", label:"Security & PIN", icon:"🔒" },
   { id:"database", label:"Database",       icon:"🗄️" },
+  { id:"staff_activity", label:"Staff Activity", icon:"👁️" },
 ];
 
 // ─── Fees: auto-structured tracker ────────────────────────────────────────────
@@ -2966,7 +2998,8 @@ const ResourcesTab = memo(({ showToast }: { showToast: (msg: string, type?: stri
   );
 });
 
-const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPinRef, tenantId }: {
+const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast, adminPinRef, tenantId }: {
+  isAdmin: boolean;
   logoUrl: string | null;
   setSchoolLogo: (url: string | null) => void;
   logoRef: React.RefObject<HTMLInputElement>;
@@ -2974,8 +3007,10 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
   adminPinRef: React.MutableRefObject<string>;
   tenantId?: string;
 }) => {
+  if (!isAdmin) return null; // Explicit internal boundary guard
+  
   const { state, dispatch } = useApp();
-  const { schoolSettings } = state;
+  const { schoolSettings, staffList } = state;
   const [sec, setSec] = useState("logo");
   const [draft, setDraft] = useState({ ...schoolSettings });
   const [pinF, setPinF] = useState({ cur: "", nxt: "", cnf: "" });
@@ -2984,6 +3019,34 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
   const [saved, setSaved] = useState(false);
   const [dbStats, setDbStats] = useState<{ size: string; keys: string[] }>({ size: "—", keys: [] });
   const [clearPin, setClearPin] = useState("");
+
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(true);
+
+  useEffect(() => {
+    if (sec !== "staff") return;
+
+    let sessionToken = "";
+    try {
+      const raw = sessionStorage.getItem("schoolapp_tenant_session_v2");
+      if (raw) sessionToken = JSON.parse(raw).sessionToken;
+    } catch {}
+    if (!sessionToken) { setLoadingLogs(false); return; }
+
+    const fetchLogs = () => {
+      import("@/integrations/supabase/client").then(async ({ supabase }) => {
+        const { data, error } = await supabase.rpc("get_staff_session_logs", { _session_token: sessionToken });
+        if (error) console.error("Failed to fetch staff session logs:", error);
+        if (!error && data) setLogs(data);
+        setLoadingLogs(false);
+      });
+    };
+
+    fetchLogs();
+    const intervalId = setInterval(fetchLogs, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [sec]);
   const [clearPinErr, setClearPinErr] = useState("");
 
   useEffect(() => { setDraft({ ...schoolSettings }); }, [schoolSettings]);
@@ -3302,6 +3365,46 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
               </div>
             );
           })()}
+          {sec === "staff_activity" && (
+            <Card className="p-6 space-y-5">
+              <div>
+                <p className="text-sm font-black uppercase text-slate-700">Staff Activity Logs</p>
+                <p className="text-xs text-slate-400 mt-0.5">Recent staff logins and logouts for this school.</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl overflow-x-auto">
+                {(() => {
+                  if (loadingLogs) return <div className="p-8 text-center text-xs font-bold text-slate-400 flex items-center justify-center gap-2"><Loader2 className="animate-spin" size={14} /> Loading logs...</div>;
+                  if (logs.length === 0) return <div className="p-8 text-center text-xs font-bold text-slate-400">No recent staff activity found.</div>;
+                  return (
+                    <table className="w-full text-left text-sm whitespace-nowrap">
+                      <thead className="bg-slate-100/50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-3 font-black text-xs uppercase tracking-wide text-slate-500">Staff</th>
+                          <th className="px-4 py-3 font-black text-xs uppercase tracking-wide text-slate-500">Role</th>
+                          <th className="px-4 py-3 font-black text-xs uppercase tracking-wide text-slate-500">Action</th>
+                          <th className="px-4 py-3 font-black text-xs uppercase tracking-wide text-slate-500">Time</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {logs.map(log => (
+                          <tr key={log.id} className="hover:bg-white transition-colors">
+                            <td className="px-4 py-3 font-bold text-slate-700">{log.staff_name}</td>
+                            <td className="px-4 py-3 text-xs text-slate-500">{log.role}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${log.action === "login" ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+                                {log.action}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-slate-400">{new Date(log.created_at).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  );
+                })()}
+              </div>
+            </Card>
+          )}
           {sec === "database" && (
             <div className="space-y-4">
               {/* Firebase Cloud Sync Card */}
@@ -3520,10 +3623,44 @@ const SettingsTab = memo(({ logoUrl, setSchoolLogo, logoRef, showToast, adminPin
                 );
               })}
               {pinErr && <p className="text-red-500 text-xs font-bold flex items-center gap-1"><AlertTriangle size={12} />{pinErr}</p>}
-              <div className="pt-2 border-t border-slate-100">
+              <div className="pt-2 border-t border-slate-100 space-y-3">
                 <Btn variant="primary" size="lg" className="w-full" onClick={changePin}>
                   <Shield size={15} />Update Admin PIN
                 </Btn>
+                {(!schoolSettings.staffCodeMigrationDone || staffList.some(s => s.staffCode && /^[^A-Za-z0-9]/.test(s.staffCode))) && (
+                  <Btn variant="outline" size="lg" className="w-full border-blue-200 text-blue-600 hover:bg-blue-50" onClick={() => {
+                    const updatedStaff = [...staffList];
+                    // Don't include buggy codes in existingCodes so we can reuse their intended slots if needed
+                    const existingCodes = updatedStaff.map(s => s.staffCode).filter(c => c && !/^[^A-Za-z0-9]/.test(c)) as string[];
+                    let changed = false;
+                    const changedNames: string[] = [];
+                    for (let i = 0; i < updatedStaff.length; i++) {
+                      const currentCode = updatedStaff[i].staffCode;
+                      const isBuggy = currentCode && /^[^A-Za-z0-9]/.test(currentCode);
+                      if (!currentCode || isBuggy) {
+                        const newCode = generateStaffCode(updatedStaff[i].name, existingCodes);
+                        if (isBuggy) {
+                          console.log(`Fixing buggy code for ${updatedStaff[i].name}: ${currentCode} -> ${newCode}`);
+                          changedNames.push(`${updatedStaff[i].name} (${currentCode} -> ${newCode})`);
+                        }
+                        updatedStaff[i] = { ...updatedStaff[i], staffCode: newCode };
+                        existingCodes.push(newCode);
+                        changed = true;
+                      }
+                    }
+                    if (changedNames.length > 0) {
+                      console.log("Total staff fixed:", changedNames.length, changedNames);
+                    }
+                    dispatch({ type: "REPLACE_ALL", payload: { 
+                      ...state, 
+                      staffList: updatedStaff,
+                      schoolSettings: { ...schoolSettings, staffCodeMigrationDone: true }
+                    }});
+                    showToast("Staff ID migration/cleanup complete!", "success");
+                  }}>
+                    <Users size={15} />Migrate/Cleanup Staff IDs
+                  </Btn>
+                )}
               </div>
             </Card>
           )}
@@ -5020,14 +5157,6 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName }: { o
   }, [tenantId, classTeacher, linkedSignatures]);
 
   const [scoreForm, setScoreForm] = useState({ studentName:"", studentClass:"", subject:"", caScore:"", examScore:"" });
-  const _mountLog = useRef(false);
-  if (!_mountLog.current) {
-    console.log("MOUNTED - School_Management_App");
-    _mountLog.current = true;
-  }
-  useEffect(() => {
-    console.log("SCORE_FORM_STATE_CHANGED:", scoreForm);
-  }, [scoreForm]);
 
   // CA-only drafts: stored separately until exam scores are ready, then promoted to entries.
   type CADraft = { id: string; studentName: string; studentClass: string; subject: string; caScore: number; term: string; session: string; enteredBy: string; createdAt: string };
@@ -5164,13 +5293,20 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName }: { o
       setAuth({ loggedIn: true, user: null });
       setActiveTab("dashboard");
       logSignIn("Admin", "Administrator");
-      logAuthEvent({ authType: "staff", eventType: "login", tenantId, staffId: "admin" }).catch(() => {});
+      let st = "";
+      try { const r = sessionStorage.getItem("schoolapp_tenant_session_v2"); if (r) st = JSON.parse(r).sessionToken; } catch {}
+      if (st) {
+        import("@/integrations/supabase/client").then(async ({ supabase }) => {
+          const { error } = await supabase.rpc("log_staff_session_event", { _session_token: st, _staff_member_id: "admin", _staff_name: "Admin", _role: "Administrator", _action: "login" });
+          if (error) console.error("Failed to log staff session event:", error);
+        });
+      }
       return;
     }
 
-    // Staff login — match by name
-    const s = staffList.find(st => st.name.toLowerCase() === loginId.toLowerCase());
-    if (!s) return setLoginErr("Invalid name or PIN. Check spelling.");
+    // Staff login — match by staffCode
+    const s = staffList.find(st => st.staffCode?.toLowerCase() === loginId.toLowerCase());
+    if (!s) return setLoginErr("Invalid Staff ID or PIN.");
     if (s.status === "revoked") return setLoginErr("Your access has been revoked. Contact admin.");
 
     const pinOk = await verifyPIN(loginPass, s.pin);
@@ -5185,7 +5321,14 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName }: { o
     setAuth({ loggedIn: true, user: s });
     setActiveTab("dashboard");
     logSignIn(s.name, s.role);
-    logAuthEvent({ authType: "staff", eventType: "login", tenantId, staffId: s.id }).catch(() => {});
+    let st = "";
+    try { const r = sessionStorage.getItem("schoolapp_tenant_session_v2"); if (r) st = JSON.parse(r).sessionToken; } catch {}
+    if (st) {
+      import("@/integrations/supabase/client").then(async ({ supabase }) => {
+        const { error } = await supabase.rpc("log_staff_session_event", { _session_token: st, _staff_member_id: s.id, _staff_name: s.name, _role: s.role, _action: "login" });
+        if (error) console.error("Failed to log staff session event:", error);
+      });
+    }
     if (s.status === "restricted") showToast("Account restricted — limited access.", "warning");
   }, [loginId, loginPass, staffList, showToast]);
 
@@ -5326,9 +5469,13 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName }: { o
 
   const saveStaff = useCallback(async (sd: StaffMember) => {
     const isEdit = appState.staffList.some(s => s.id === sd.id);
+    let code = sd.staffCode;
+    if (!isEdit && !code) {
+      code = generateStaffCode(sd.name, appState.staffList.map(s => s.staffCode).filter(Boolean) as string[]);
+    }
     // Hash PIN if it's a new raw value (not already hashed/prefixed)
     const finalPin = sd.pin ? await ensureHashed(sd.pin) : (appState.staffList.find(s => s.id === sd.id)?.pin || "");
-    dispatch({ type: "SAVE_STAFF", payload: { ...sd, pin: finalPin } });
+    dispatch({ type: "SAVE_STAFF", payload: { ...sd, pin: finalPin, staffCode: code } });
     showToast(`${sd.name} ${isEdit ? "updated" : "created successfully"}`);
     setDlg(null);
   }, [appState.staffList, showToast]);
@@ -5454,7 +5601,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName }: { o
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Staff Authentication</p>
         </div>
         <div className="space-y-4">
-          <Inp label="Name / Username" value={loginId} onChange={(e: any) => { setLoginId(e.target.value); setLoginErr(""); }} placeholder="admin or staff full name" />
+          <Inp label="Staff ID / Username" value={loginId} onChange={(e: any) => { setLoginId(e.target.value); setLoginErr(""); }} placeholder="admin or Staff ID (e.g. AO-001)" />
           <Field label="Password / PIN" error={loginErr}>
             <input
               type="password"
@@ -6433,6 +6580,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName }: { o
               {/* SETTINGS */}
               {activeTab === "settings" && isAdmin && (
                 <SettingsTab
+                  isAdmin={isAdmin}
                   logoUrl={schoolLogo}
                   setSchoolLogo={setSchoolLogo}
                   logoRef={logoRef as React.RefObject<HTMLInputElement>}
@@ -6556,10 +6704,33 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName }: { o
             <div className="grid grid-cols-2 gap-3">
               <Btn variant="ghost" size="lg" onClick={() => setShowLogout(false)}>Stay</Btn>
               <Btn variant="danger" size="lg" onClick={() => {
-                logAuthEvent({ authType: "staff", eventType: "logout", tenantId, staffId: auth.user?.id ?? "admin" }).catch(() => {});
+                // 1. Defensively capture the sessionToken
+                let sessionToken: string | undefined;
+                try {
+                  const rawSession = sessionStorage.getItem("schoolapp_tenant_session_v2");
+                  if (rawSession) {
+                    sessionToken = JSON.parse(rawSession).sessionToken;
+                  }
+                } catch (err) {
+                  console.warn("[AuthLogger] Failed to parse tenant session from storage", err);
+                }
+
+                // 2. Fire and forget the RPC with basic error visibility
+                if (sessionToken) {
+                  const sId = auth.user?.id ?? "admin";
+                  const sName = auth.user?.name ?? "Admin";
+                  const sRole = auth.user?.role ?? "Administrator";
+                  import("@/integrations/supabase/client").then(async ({ supabase }) => {
+                    const { error } = await supabase.rpc("log_staff_session_event", { _session_token: sessionToken, _staff_member_id: sId, _staff_name: sName, _role: sRole, _action: "logout" });
+                    if (error) console.error("Failed to log staff session event:", error);
+                  });
+                }
+
+                // 3. Destroy local state (guaranteed to run even if logger fails)
                 setAuth({ loggedIn:false, user:null });
                 setLoginId("admin"); setLoginPass(""); setShowLogout(false);
                 setActiveTab("dashboard"); setActiveReport(null); setMenuOpen(false);
+                
                 if (onTenantSignOut) onTenantSignOut();
               }}>
                 <LogOut size={15} />Sign Out

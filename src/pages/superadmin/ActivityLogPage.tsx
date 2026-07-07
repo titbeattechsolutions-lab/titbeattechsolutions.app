@@ -3,7 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw, Loader2, ChevronLeft, ChevronRight, Search } from "lucide-react";
 
@@ -15,6 +14,17 @@ interface ActivityLog {
   details: Record<string, unknown> | null;
   created_at: string;
   school_name?: string | null;
+}
+
+interface StaffSessionLog {
+  id: string;
+  tenant_id: string;
+  staff_member_id: string;
+  staff_name: string;
+  role: string;
+  action: string;
+  created_at: string;
+  tenants?: { school_name: string };
 }
 
 const PAGE_SIZE = 50;
@@ -36,7 +46,11 @@ const ACTION_COLORS: Record<string, string> = {
 export default function ActivityLogPage() {
   const { toast } = useToast();
 
+  const [activeTab, setActiveTab] = useState<"system" | "staff">("system");
+  
   const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [staffLogs, setStaffLogs] = useState<StaffSessionLog[]>([]);
+  
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -64,39 +78,73 @@ export default function ActivityLogPage() {
     const from = p * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let query = (supabase as any)
-      .from("activity_logs")
-      .select("*", { count: "exact" })
-      .order("created_at", { ascending: false })
-      .range(from, to);
+    if (activeTab === "system") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let query = (supabase as any)
+        .from("activity_logs")
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
-    if (filterAction !== "all") query = query.eq("action", filterAction);
-    if (filterSchoolId !== "all") query = query.eq("school_id", filterSchoolId);
+      if (filterAction !== "all") query = query.eq("action", filterAction);
+      if (filterSchoolId !== "all") query = query.eq("school_id", filterSchoolId);
 
-    const { data, error, count } = await query;
-    setLoading(false);
+      const { data, error, count } = await query;
+      setLoading(false);
 
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" }); return;
+      if (error) {
+        console.error("Failed to fetch system logs:", error);
+        toast({ title: "Error", description: error.message, variant: "destructive" }); return;
+      }
+
+      setLogs((data ?? []) as ActivityLog[]);
+      setTotal(count ?? 0);
+      setHasMore((count ?? 0) > to + 1);
+    } else {
+      let query = supabase
+        .from("staff_session_logs")
+        .select("*, tenants(school_name)", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      if (filterAction !== "all") query = query.eq("action", filterAction);
+      if (filterSchoolId !== "all") query = query.eq("tenant_id", filterSchoolId);
+
+      const { data, error, count } = await query;
+      setLoading(false);
+
+      if (error) {
+        console.error("Failed to fetch staff session logs:", error);
+        toast({ title: "Error", description: error.message, variant: "destructive" }); return;
+      }
+
+      setStaffLogs((data ?? []) as any[]);
+      setTotal(count ?? 0);
+      setHasMore((count ?? 0) > to + 1);
     }
-
-    setLogs((data ?? []) as ActivityLog[]);
-    setTotal(count ?? 0);
-    setHasMore((count ?? 0) > to + 1);
     setPage(p);
-  }, [filterAction, filterSchoolId, toast]);
+  }, [activeTab, filterAction, filterSchoolId, toast]);
 
-  useEffect(() => { load(0); }, [load]);
+  useEffect(() => { load(0); }, [load, activeTab]);
 
-  const displayed = search
+  const displayedSystem = search
     ? logs.filter((l) =>
         l.action.toLowerCase().includes(search.toLowerCase()) ||
         JSON.stringify(l.details ?? "").toLowerCase().includes(search.toLowerCase())
       )
     : logs;
+    
+  const displayedStaff = search
+    ? staffLogs.filter((l) =>
+        l.action.toLowerCase().includes(search.toLowerCase()) ||
+        l.staff_name.toLowerCase().includes(search.toLowerCase()) ||
+        l.role.toLowerCase().includes(search.toLowerCase())
+      )
+    : staffLogs;
 
-  const distinctActions = Array.from(new Set(logs.map((l) => l.action))).sort();
+  const distinctActions = activeTab === "system" 
+    ? Array.from(new Set(logs.map((l) => l.action))).sort()
+    : Array.from(new Set(staffLogs.map((l) => l.action))).sort();
 
   return (
     <div className="space-y-5">
@@ -107,9 +155,25 @@ export default function ActivityLogPage() {
             Page {page + 1} · {total.toLocaleString()} total entries
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => load(page)} disabled={loading}>
-          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex bg-slate-100 p-1 rounded-lg">
+            <button 
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === "system" ? "bg-white shadow text-slate-900" : "text-slate-500 hover:text-slate-700"}`}
+              onClick={() => { setActiveTab("system"); setPage(0); }}
+            >
+              System Events
+            </button>
+            <button 
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === "staff" ? "bg-white shadow text-slate-900" : "text-slate-500 hover:text-slate-700"}`}
+              onClick={() => { setActiveTab("staff"); setPage(0); }}
+            >
+              Staff Sessions
+            </button>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => load(page)} disabled={loading}>
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -147,46 +211,76 @@ export default function ActivityLogPage() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         {loading ? (
           <div className="flex justify-center py-12"><Loader2 className="animate-spin text-slate-400" /></div>
-        ) : displayed.length === 0 ? (
+        ) : (activeTab === "system" ? displayedSystem.length === 0 : displayedStaff.length === 0) ? (
           <p className="text-center text-slate-400 py-12 text-sm">No activity logs found</p>
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                {["Time", "Action", "School", "Performed By", "Details"].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                ))}
+                {activeTab === "system" ? (
+                  ["Time", "Action", "School", "Performed By", "Details"].map((h) => (
+                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                  ))
+                ) : (
+                  ["Time", "Action", "School", "Staff", "Role"].map((h) => (
+                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                  ))
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {displayed.map((log) => (
-                <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
-                    {new Date(log.created_at).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ACTION_COLORS[log.action] ?? "bg-slate-100 text-slate-600"}`}>
-                      {log.action}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">
-                    {log.school_name ?? (log.school_id ? <span className="font-mono">{log.school_id.slice(0, 8)}…</span> : <span className="text-slate-300">platform</span>)}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-500 font-mono">
-                    {log.performed_by ? log.performed_by.slice(0, 8) + "…" : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-600 max-w-xs">
-                    {log.details ? (
-                      <details className="cursor-pointer">
-                        <summary className="text-slate-400 hover:text-slate-600">View</summary>
-                        <pre className="mt-1 text-xs bg-slate-50 rounded p-2 overflow-auto max-h-32 whitespace-pre-wrap">
-                          {JSON.stringify(log.details, null, 2)}
-                        </pre>
-                      </details>
-                    ) : "—"}
-                  </td>
-                </tr>
-              ))}
+              {activeTab === "system" ? (
+                displayedSystem.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
+                      {new Date(log.created_at).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ACTION_COLORS[log.action] ?? "bg-slate-100 text-slate-600"}`}>
+                        {log.action}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500">
+                      {log.school_name ?? (log.school_id ? <span className="font-mono">{log.school_id.slice(0, 8)}…</span> : <span className="text-slate-300">platform</span>)}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500 font-mono">
+                      {log.performed_by ? log.performed_by.slice(0, 8) + "…" : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-600 max-w-xs">
+                      {log.details ? (
+                        <details className="cursor-pointer">
+                          <summary className="text-slate-400 hover:text-slate-600">View</summary>
+                          <pre className="mt-1 text-xs bg-slate-50 rounded p-2 overflow-auto max-h-32 whitespace-pre-wrap">
+                            {JSON.stringify(log.details, null, 2)}
+                          </pre>
+                        </details>
+                      ) : "—"}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                displayedStaff.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
+                      {new Date(log.created_at).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${log.action === "login" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+                        {log.action}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500">
+                      {log.tenants?.school_name ?? (log.tenant_id ? <span className="font-mono">{log.tenant_id.slice(0, 8)}…</span> : "—")}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-800 font-bold">
+                      {log.staff_name}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500">
+                      {log.role}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         )}

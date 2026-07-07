@@ -1,5 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { useAuth, AppRole } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -24,6 +25,12 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
   if (loading) return <Spinner />;
 
   if (!session) return <Navigate to="/auth" replace />;
+
+  if (role === "error") {
+    // Session is likely invalid or network failed. Force clear local storage to break redirect loop.
+    supabase.auth.signOut({ scope: "local" }).catch(() => {});
+    return <Navigate to="/auth" replace />;
+  }
 
   if (role === "unassigned") return <Navigate to="/unauthorized" replace />;
 

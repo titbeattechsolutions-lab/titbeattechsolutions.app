@@ -102,11 +102,20 @@ export default function SuperAdmin() {
 
   const signOut = async () => {
     setSigningOut(true);
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session?.user) {
-        logAuthEvent({ authType: "super_admin", eventType: "logout", userId: data.session.user.id }).catch(() => {});
-      }
-    });
+
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (session?.user) {
+      logAuthEvent({ 
+        authType: "super_admin", 
+        eventType: "logout", 
+        userId: session.user.id,
+        sessionToken: session.access_token 
+      }).catch((err) => {
+        console.warn("[AuthLogger] Background logout event failed to save:", err);
+      });
+    }
+
     await supabase.auth.signOut();
     navigate("/auth", { replace: true });
   };
