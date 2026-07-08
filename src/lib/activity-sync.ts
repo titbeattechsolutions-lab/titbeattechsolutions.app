@@ -19,16 +19,12 @@ export async function syncActivityLog(
     return;
   }
 
-  try {
-    // Fire and forget using the RPC we created in the migration
-    await supabase.rpc("log_tenant_activity", {
+    const { error } = await supabase.rpc("log_tenant_activity", {
       _tenant_id: tenantId,
       _staff_id: staffId,
       _action: action,
       _details: details,
       _timestamp: timestamp,
     });
-  } catch (err) {
-    console.error("Failed to sync activity to backend", err);
-  }
+    if (error) console.error("Failed to sync activity log:", error);
 }

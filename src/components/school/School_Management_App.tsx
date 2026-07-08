@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useCallback, memo, useReducer, createContext, useContext, useEffect } from "react";
 import { logAuthEvent } from "@/lib/auth-logger";
+import { syncActivityLog } from "@/lib/activity-sync";
 import ReportCardSupabaseActions from "./ReportCardSupabaseActions";
 import { NAPPS_CURRICULUM } from "./data/nappsCurriculum";
 import { E_NOTES } from "./data/eNotes";
@@ -41,6 +42,7 @@ const PERMS_META = [
   { key:"viewReports",   label:"View Reports",   desc:"Access student reports" },
   { key:"printReports",  label:"Print Reports",  desc:"Print or export reports" },
   { key:"manageRecords", label:"Manage Records", desc:"Delete or edit grades" },
+  { key:"fees",          label:"Fees Access",    desc:"View and manage school fees and payments" },
 ];
 const ATT_STATUSES = [
   { key:"present", label:"Present", icon:"✓", color:"emerald" },
@@ -798,7 +800,7 @@ function appReducer(state: AppState, action: any): AppState {
         staffList: exists
           ? state.staffList.map(s => s.id === action.payload.id ? action.payload : s)
           : [...state.staffList, action.payload],
-        logs: [mkLog(exists ? "Updated" : "Staff Added", action.payload.name, action.payload.role), ...state.logs].slice(0, 100),
+        logs: [mkLog(exists ? "Updated" : "Staff Added", action.payload.name, action.payload.role, "", action.actor || ""), ...state.logs].slice(0, 100),
       };
     }
     case "SET_STAFF_STATUS": {
@@ -807,7 +809,7 @@ function appReducer(state: AppState, action: any): AppState {
       return {
         ...state,
         staffList: state.staffList.map(x => x.id === action.id ? { ...x, status: action.status, updatedAt: new Date().toISOString() } : x),
-        logs: [mkLog(action.status === "revoked" ? "Revoked" : "Restored", s.name, s.role), ...state.logs].slice(0, 100),
+        logs: [mkLog(action.status === "revoked" ? "Revoked" : "Restored", s.name, s.role, "", action.actor || ""), ...state.logs].slice(0, 100),
       };
     }
     case "SAVE_ATTENDANCE": {
@@ -896,6 +898,8 @@ function appReducer(state: AppState, action: any): AppState {
       return { ...state, timetable: { ...state.timetable, periods: action.periods } };
     case "ADD_NOTIFICATION":
       return { ...state, notifications: [action.payload, ...state.notifications].slice(0, 200) };
+    case "LOG_ACTIVITY":
+      return { ...state, logs: [action.payload, ...state.logs].slice(0, 200) };
     case "MARK_NOTIFICATION_READ": {
       const next = state.notifications.map(n =>
         n.id === action.id && !n.readBy.includes(action.actor)
@@ -917,9 +921,17 @@ function appReducer(state: AppState, action: any): AppState {
         logs: [mkLog("Signed In", p.staffName, p.role, `${p.date} ${p.time}`, p.staffName), ...state.logs].slice(0, 200),
       };
     }
-    case "REPLACE_ALL":
+    case "REPLACE_ALL": {
       // Cross-device hydration: full state swap. Preserve unknown keys from default.
-      return { ...state, ...action.payload };
+      const mergedLogs = [...(action.payload.logs || []), ...state.logs]
+        .filter((log, idx, arr) => arr.findIndex(l => l.id === log.id) === idx)
+        .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+        .slice(0, 200);
+      const mergedNotifications = [...(action.payload.notifications || []), ...state.notifications]
+        .filter((n, idx, arr) => arr.findIndex(x => x.id === n.id) === idx)
+        .slice(0, 200);
+      return { ...state, ...action.payload, logs: mergedLogs, notifications: mergedNotifications };
+    }
     case "__HYDRATE__":
       return { ...state, [action.key]: action.value };
     default:
@@ -2021,6 +2033,7 @@ const SETTINGS_SECTIONS = [
   { id:"security", label:"Security & PIN", icon:"🔒" },
   { id:"database", label:"Database",       icon:"🗄️" },
   { id:"staff_activity", label:"Staff Activity", icon:"👁️" },
+  { id:"tenant_activity", label:"Staff Actions", icon:"⚡" },
 ];
 
 // ─── Fees: auto-structured tracker ────────────────────────────────────────────
@@ -2029,13 +2042,56 @@ const SETTINGS_SECTIONS = [
 const FEES_LS = "sf_fees_v2";
 const FEE_STRUCT_LS = "sf_fee_structure_v2";
 
+function getOrAssignAdmNo(
+  rollStudent: RollStudent | undefined, 
+  className: string, 
+  studentName: string,
+  classRolls: Record<string, RollStudent[]>, 
+  dispatch: React.Dispatch<any>
+): string {
+  if (rollStudent?.admNo) return rollStudent.admNo;
+  
+  let fallbackId = "";
+  if (!rollStudent) {
+    let hash = 0;
+    const str = `${className}::${studentName.trim().toLowerCase()}`;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 5) - hash + str.charCodeAt(i);
+      hash |= 0;
+    }
+    fallbackId = "H" + Math.abs(hash).toString(36);
+  }
+
+  const newAdmNo = `AUTO-${rollStudent?.id || fallbackId}`;
+  if (rollStudent) {
+    const updatedRoll = (classRolls[className] || []).map(s => 
+      s.id === rollStudent.id ? { ...s, admNo: newAdmNo } : s
+    );
+    dispatch({ 
+      type: "SAVE_CLASS_ROLL", 
+      className, 
+      students: updatedRoll,
+      actor: "System Migration"
+    });
+  }
+  return newAdmNo;
+}
+
 const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) => void }) => {
-  const { state } = useApp();
+  const { state, dispatch, currentActor } = useApp();
   const { entries, classRolls, schoolSettings } = state;
 
   const session = schoolSettings?.session || "2024/2025";
   const term = schoolSettings?.term || "First Term";
   const periodKey = `${session}__${term}`;
+
+  const [sessionToken, setSessionToken] = useState("");
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("schoolapp_tenant_session_v2");
+      if (raw) setSessionToken(JSON.parse(raw).sessionToken);
+    } catch {}
+  }, []);
 
   // Fee structure: { [class]: { [periodKey]: { tuition, items: [{label, amount}] } } }
   const [structures, setStructures] = useState<Record<string, Record<string, { tuition: number; items: { label: string; amount: number }[] }>>>(() => {
@@ -2045,6 +2101,41 @@ const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) =
   const [payments, setPayments] = useState<Record<string, { paid: number; history: { amount: number; date: string; note?: string }[] }>>(() => {
     try { return JSON.parse(localStorage.getItem(FEES_LS) || "{}"); } catch { return {}; }
   });
+
+  // Sync from Supabase on mount
+  useEffect(() => {
+    if (!sessionToken) return;
+    import("@/integrations/supabase/client").then(async ({ supabase }) => {
+      const { data, error } = await supabase.rpc("get_fee_data", { _session_token: sessionToken });
+      if (error || !data) return;
+      
+      const newStructs: Record<string, any> = {};
+      const newPayments: Record<string, any> = {};
+
+      data.forEach((row: any) => {
+        const pKey = `${row.academic_year}__${row.term}`;
+        if (row.class_name && row.fee_id) {
+          if (!newStructs[row.class_name]) newStructs[row.class_name] = {};
+          let parsed = { tuition: Number(row.fee_amount) || 0, items: [] };
+          try { if (row.fee_name?.startsWith("{")) parsed = JSON.parse(row.fee_name); } catch {}
+          newStructs[row.class_name][pKey] = parsed;
+        }
+        if (row.payment_id && row.student_name && row.class_name) {
+          const k = `${row.class_name}|${row.student_name}|${pKey}`;
+          if (!newPayments[k]) newPayments[k] = { paid: 0, history: [] };
+          newPayments[k].paid += Number(row.paid_amount) || 0;
+          newPayments[k].history.push({
+            amount: Number(row.paid_amount) || 0,
+            date: row.paid_at,
+            note: row.paid_by
+          });
+        }
+      });
+      // Merge with any local offline data (prioritizing remote if exists)
+      setStructures(prev => ({ ...prev, ...newStructs }));
+      setPayments(prev => ({ ...prev, ...newPayments }));
+    });
+  }, [sessionToken]);
 
   const [activeClass, setActiveClass] = useState<string>("");
   const [editingStructure, setEditingStructure] = useState(false);
@@ -2091,15 +2182,38 @@ const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) =
 
   const saveStructure = () => {
     const tuition = parseFloat(tuitionInput) || 0;
+    const items = itemsInput;
+    const totalAmount = tuition + items.reduce((s, i) => s + (i.amount || 0), 0);
+    const detailsJson = JSON.stringify({ tuition, items });
+
     setStructures(prev => ({
       ...prev,
       [activeClass]: {
         ...(prev[activeClass] || {}),
-        [periodKey]: { tuition, items: itemsInput },
+        [periodKey]: { tuition, items },
       },
     }));
     setEditingStructure(false);
     showToast(`Fee structure saved for ${activeClass}`, "success");
+
+    if (sessionToken) {
+      import("@/integrations/supabase/client").then(async ({ supabase }) => {
+        const { error } = await supabase.rpc("save_fee_structure", {
+          _session_token: sessionToken,
+          _class_name: activeClass,
+          _term: term,
+          _academic_year: session,
+          _amount: totalAmount,
+          _details: detailsJson
+        });
+        if (error) console.error("Failed to save fee structure to Supabase:", error);
+        else {
+          const tInfo = JSON.parse(sessionStorage.getItem("schoolapp_tenant_session_v2") || "{}");
+          syncActivityLog(tInfo.tenantId, currentActor, "Updated Fee Structure", `${activeClass} (${term}): ₦${totalAmount.toLocaleString()}`);
+          dispatch({ type: "LOG_ACTIVITY", payload: mkLog("Updated", `${activeClass} (${term})`, "Fee Structure", `₦${totalAmount.toLocaleString()}`, currentActor) });
+        }
+      });
+    }
   };
 
   const addItem = () => {
@@ -2124,6 +2238,30 @@ const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) =
       };
     });
     showToast(`₦${amt.toLocaleString()} recorded for ${payingStudent}`, "success");
+
+    if (sessionToken) {
+      const rollStudent = classRolls[activeClass]?.find(s => s.name === payingStudent);
+      const admNo = getOrAssignAdmNo(rollStudent, activeClass, payingStudent, classRolls, dispatch);
+      import("@/integrations/supabase/client").then(async ({ supabase }) => {
+        const { error } = await supabase.rpc("record_payment", {
+          _session_token: sessionToken,
+          _admission_no: admNo,
+          _student_name: payingStudent,
+          _class_name: activeClass,
+          _term: term,
+          _academic_year: session,
+          _amount: amt,
+          _note: payNote.trim() || ""
+        });
+        if (error) console.error("Failed to record payment to Supabase:", error);
+        else {
+          const tInfo = JSON.parse(sessionStorage.getItem("schoolapp_tenant_session_v2") || "{}");
+          syncActivityLog(tInfo.tenantId, currentActor, "Recorded Fee Payment", `Received ₦${amt.toLocaleString()} from ${payingStudent} (${activeClass})`);
+          dispatch({ type: "LOG_ACTIVITY", payload: mkLog("Recorded", payingStudent, "Fee Payment", `₦${amt.toLocaleString()} (${activeClass})`, currentActor) });
+        }
+      });
+    }
+
     setPayingStudent(null); setPayAmount(""); setPayNote("");
   };
 
@@ -3022,6 +3160,8 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
 
   const [logs, setLogs] = useState<any[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
+  const [actionLogs, setActionLogs] = useState<any[]>([]);
+  const [loadingActionLogs, setLoadingActionLogs] = useState(true);
 
   useEffect(() => {
     if (sec !== "staff_activity") return;
@@ -3039,6 +3179,31 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
         if (error) console.error("Failed to fetch staff session logs:", error);
         if (!error && data) setLogs(data);
         setLoadingLogs(false);
+      });
+    };
+
+    fetchLogs();
+    const intervalId = setInterval(fetchLogs, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [sec]);
+
+  useEffect(() => {
+    if (sec !== "tenant_activity") return;
+
+    let sessionToken = "";
+    try {
+      const raw = sessionStorage.getItem("schoolapp_tenant_session_v2");
+      if (raw) sessionToken = JSON.parse(raw).sessionToken;
+    } catch {}
+    if (!sessionToken) { setLoadingActionLogs(false); return; }
+
+    const fetchLogs = () => {
+      import("@/integrations/supabase/client").then(async ({ supabase }) => {
+        const { data, error } = await supabase.rpc("get_tenant_activity_logs", { _session_token: sessionToken });
+        if (error) console.error("Failed to fetch staff action logs:", error);
+        if (!error && data) setActionLogs(data);
+        setLoadingActionLogs(false);
       });
     };
 
@@ -3405,6 +3570,46 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
               </div>
             </Card>
           )}
+          {sec === "tenant_activity" && (
+            <Card className="p-6 space-y-5">
+              <div>
+                <p className="text-sm font-black uppercase text-slate-700">Staff Actions</p>
+                <p className="text-xs text-slate-400 mt-0.5">Granular activity and actions performed by staff.</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl overflow-x-auto">
+                {(() => {
+                  if (loadingActionLogs) return <div className="p-8 text-center text-xs font-bold text-slate-400 flex items-center justify-center gap-2"><Loader2 className="animate-spin" size={14} /> Loading actions...</div>;
+                  if (actionLogs.length === 0) return <div className="p-8 text-center text-xs font-bold text-slate-400">No recent staff actions found.</div>;
+                  return (
+                    <table className="w-full text-left text-sm whitespace-nowrap">
+                      <thead className="bg-slate-100/50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-3 font-black text-xs uppercase tracking-wide text-slate-500">Staff ID</th>
+                          <th className="px-4 py-3 font-black text-xs uppercase tracking-wide text-slate-500">Action</th>
+                          <th className="px-4 py-3 font-black text-xs uppercase tracking-wide text-slate-500">Details</th>
+                          <th className="px-4 py-3 font-black text-xs uppercase tracking-wide text-slate-500">Time</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {actionLogs.map(log => (
+                          <tr key={log.id} className="hover:bg-white transition-colors">
+                            <td className="px-4 py-3 font-bold text-slate-700">{log.staff_id}</td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-700">
+                                {log.action}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-slate-500">{log.details || "—"}</td>
+                            <td className="px-4 py-3 text-xs text-slate-400">{new Date(log.timestamp).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  );
+                })()}
+              </div>
+            </Card>
+          )}
           {sec === "database" && (
             <div className="space-y-4">
               {/* Firebase Cloud Sync Card */}
@@ -3661,6 +3866,60 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
                     <Users size={15} />Migrate/Cleanup Staff IDs
                   </Btn>
                 )}
+                
+                <Btn variant="outline" size="lg" className="w-full border-emerald-200 text-emerald-600 hover:bg-emerald-50 mt-2" onClick={async () => {
+                  let st = "";
+                  try { const r = sessionStorage.getItem("schoolapp_tenant_session_v2"); if (r) st = JSON.parse(r).sessionToken; } catch {}
+                  if (!st) return showToast("Session error. Please re-login.", "error");
+                  
+                  try {
+                    const localStructs = JSON.parse(localStorage.getItem("sf_fee_structure_v2") || "{}");
+                    const localPayments = JSON.parse(localStorage.getItem("sf_fees_v2") || "{}");
+                    const { supabase } = await import("@/integrations/supabase/client");
+                    
+                    let migratedStructs = 0;
+                    let migratedPayments = 0;
+                    
+                    // Migrate structures
+                    for (const cls of Object.keys(localStructs)) {
+                      for (const pKey of Object.keys(localStructs[cls])) {
+                        const s = localStructs[cls][pKey];
+                        const [year, trm] = pKey.split("__");
+                        const amt = s.tuition + (s.items?.reduce((a: number, i: any) => a + (i.amount || 0), 0) || 0);
+                        const { error } = await supabase.rpc("save_fee_structure", {
+                          _session_token: st, _class_name: cls, _term: trm, _academic_year: year,
+                          _amount: amt, _details: JSON.stringify({ tuition: s.tuition, items: s.items || [] })
+                        });
+                        if (!error) migratedStructs++;
+                      }
+                    }
+                    
+                    // Migrate payments
+                    for (const k of Object.keys(localPayments)) {
+                      const [cls, studentName, pKey] = k.split("|");
+                      if (!cls || !studentName || !pKey) continue;
+                      const [year, trm] = pKey.split("__");
+                      const hist = localPayments[k].history || [];
+                      
+                      const rollStudent = state.classRolls[cls]?.find(s => s.name === studentName);
+                      const admNo = getOrAssignAdmNo(rollStudent, cls, studentName, state.classRolls, dispatch);
+                      
+                      for (const p of hist) {
+                        const { error } = await supabase.rpc("record_payment", {
+                          _session_token: st, _admission_no: admNo, _student_name: studentName, _class_name: cls,
+                          _term: trm, _academic_year: year, _amount: p.amount, _note: p.note || "Legacy Migration"
+                        });
+                        if (!error) migratedPayments++;
+                      }
+                    }
+                    
+                    showToast(`Migrated ${migratedStructs} fee structures & ${migratedPayments} payments!`, "success");
+                  } catch (err: any) {
+                    showToast(err.message || "Migration failed", "error");
+                  }
+                }}>
+                  <Database size={15} />Migrate Local Fee Data
+                </Btn>
               </div>
             </Card>
           )}
@@ -5269,7 +5528,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName }: { o
     { id:"attendance", label:"Attendance", icon:CalendarDays,     show:can("scoreEntry")||isAdmin,            primary:false },
     { id:"timetable",  label:"Timetable",  icon:CalendarClock,    show:true,                                  primary:false },
     { id:"inbox",      label:"Inbox",      icon:Inbox,            show:true,                                  primary:false },
-    { id:"fees",       label:"Fees",       icon:DollarSign,       show:isAdmin,                               primary:false },
+    { id:"fees",       label:"Fees",       icon:DollarSign,       show:isAdmin||can("fees"),                  primary:false },
     { id:"staff",      label:"Staff",      icon:Users,            show:isAdmin,                               primary:false },
     { id:"resources",  label:"Resources",  icon:BookOpen,         show:isAdmin,                               primary:false },
     { id:"settings",   label:"Settings",   icon:Settings,         show:isAdmin,                               primary:false },
@@ -6463,7 +6722,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName }: { o
               )}
 
               {/* FEES */}
-              {activeTab === "fees" && isAdmin && (
+              {activeTab === "fees" && (isAdmin || can("fees")) && (
                 <FeesTab showToast={showToast} />
               )}
 

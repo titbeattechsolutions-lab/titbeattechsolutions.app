@@ -59,16 +59,16 @@ export default function ActivityLogPage() {
   const [search, setSearch] = useState("");
   const [filterAction, setFilterAction] = useState("all");
   const [filterSchoolId, setFilterSchoolId] = useState("all");
-  const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
+  const [schools, setSchools] = useState<{ id: string; name: string; tenant_id: string }[]>([]);
 
   // Load distinct schools for filter dropdown
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any)
       .from("schools")
-      .select("id,name")
+      .select("id,name,tenant_id")
       .order("name")
-      .then(({ data }: { data: { id: string; name: string }[] | null }) => {
+      .then(({ data }: { data: { id: string; name: string; tenant_id: string }[] | null }) => {
         setSchools(data ?? []);
       });
   }, []);
@@ -87,7 +87,11 @@ export default function ActivityLogPage() {
         .range(from, to);
 
       if (filterAction !== "all") query = query.eq("action", filterAction);
-      if (filterSchoolId !== "all") query = query.eq("school_id", filterSchoolId);
+      if (filterSchoolId !== "all") {
+        // Reverse-map tenant_id back to school_id for activity_logs
+        const sId = schools.find(s => s.tenant_id === filterSchoolId)?.id || filterSchoolId;
+        query = query.eq("school_id", sId);
+      }
 
       const { data, error, count } = await query;
       setLoading(false);
@@ -201,7 +205,7 @@ export default function ActivityLogPage() {
           <SelectContent>
             <SelectItem value="all">All Schools</SelectItem>
             {schools.map((s) => (
-              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              <SelectItem key={s.tenant_id} value={s.tenant_id}>{s.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
