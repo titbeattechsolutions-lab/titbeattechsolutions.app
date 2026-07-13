@@ -112,6 +112,7 @@ interface AttendanceRecord {
   status: string;
   note: string;
   createdAt: string;
+  updatedAt?: string;
 }
 interface ReportTemplateConfig {
   uploadedFile: string | null;       // base64 data URL of uploaded PDF/DOCX
@@ -337,8 +338,15 @@ function loadDB(): Partial<AppState> {
 
 function saveDB(state: AppState) {
   try {
+    let preserved: { _rev?: number; _updatedAt?: string } = {};
+    try {
+      const existing = JSON.parse(localStorage.getItem(DB_KEY) || "{}");
+      if (typeof existing._rev === "number") preserved._rev = existing._rev;
+      if (existing._updatedAt) preserved._updatedAt = existing._updatedAt;
+    } catch {}
     localStorage.setItem(DB_KEY, JSON.stringify({
       ...state,
+      ...preserved,
       _timetableVersion: TIMETABLE_SCHEMA_VERSION,
     }));
   } catch { /* storage full */ }
@@ -817,8 +825,8 @@ function appReducer(state: AppState, action: any): AppState {
       return {
         ...state,
         attendance: idx >= 0
-          ? state.attendance.map((a, i) => i === idx ? action.payload : a)
-          : [...state.attendance, action.payload],
+          ? state.attendance.map((a, i) => i === idx ? { ...action.payload, updatedAt: new Date().toISOString() } : a)
+          : [...state.attendance, { ...action.payload, updatedAt: new Date().toISOString() }],
       };
     }
     case "BULK_SAVE_ATTENDANCE": {
@@ -923,6 +931,28 @@ function appReducer(state: AppState, action: any): AppState {
     }
     case "REPLACE_ALL": {
       // Cross-device hydration: full state swap. Preserve unknown keys from default.
+      
+      // Simple ID-union merge for append-only arrays (no in-place edits possible)
+      const unionById = (local: any[], incoming: any[]) => {
+        const map = new Map(local.map(item => [item.id, item]));
+        for (const item of incoming) {
+          if (!map.has(item.id)) map.set(item.id, item);
+        }
+        return Array.from(map.values());
+      };
+
+      // Union by ID, keeping the record with the later timestamp on conflicts
+      const mergeByIdKeepNewest = (local: any[], incoming: any[], tsField: string) => {
+        const map = new Map(local.map(item => [item.id, item]));
+        for (const item of incoming) {
+          const existing = map.get(item.id);
+          if (!existing || new Date(item[tsField] || 0).getTime() > new Date(existing[tsField] || 0).getTime()) {
+            map.set(item.id, item);
+          }
+        }
+        return Array.from(map.values());
+      };
+
       const mergedLogs = [...(action.payload.logs || []), ...state.logs]
         .filter((log, idx, arr) => arr.findIndex(l => l.id === log.id) === idx)
         .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
@@ -930,7 +960,40 @@ function appReducer(state: AppState, action: any): AppState {
       const mergedNotifications = [...(action.payload.notifications || []), ...state.notifications]
         .filter((n, idx, arr) => arr.findIndex(x => x.id === n.id) === idx)
         .slice(0, 200);
-      return { ...state, ...action.payload, logs: mergedLogs, notifications: mergedNotifications };
+        
+      const mergedStaffSignIns = unionById(state.staffSignIns, action.payload.staffSignIns || []);
+      const mergedStaffList = mergeByIdKeepNewest(state.staffList, action.payload.staffList || [], "updatedAt");
+      const mergedAttendance = mergeByIdKeepNewest(state.attendance, action.payload.attendance || [], "updatedAt");
+
+      // entries/bin: treat as one combined pool per id, resolve to exactly ONE location
+      const combinedPool = new Map<string, { item: any; location: "entries" | "bin"; ts: string }>();
+      const consider = (arr: any[], location: "entries" | "bin", tsGetter: (x: any) => string) => {
+        for (const item of arr) {
+          const ts = tsGetter(item);
+          const existing = combinedPool.get(item.id);
+          if (!existing || new Date(ts).getTime() > new Date(existing.ts).getTime()) {
+            combinedPool.set(item.id, { item, location, ts });
+          }
+        }
+      };
+      const tsFor = (x: any) => x.deletedAt || x.restoredAt || x.createdAt;
+      consider(state.entries, "entries", tsFor);
+      consider(state.bin, "bin", tsFor);
+      consider(action.payload.entries || [], "entries", tsFor);
+      consider(action.payload.bin || [], "bin", tsFor);
+      const mergedEntries: any[] = [];
+      const mergedBin: any[] = [];
+      for (const { item, location } of combinedPool.values()) {
+        (location === "entries" ? mergedEntries : mergedBin).push(item);
+      }
+
+      return { 
+        ...state, ...action.payload, 
+        schoolSettings: { ...state.schoolSettings, ...(action.payload.schoolSettings || {}) },
+        logs: mergedLogs, notifications: mergedNotifications,
+        staffSignIns: mergedStaffSignIns, staffList: mergedStaffList, 
+        attendance: mergedAttendance, entries: mergedEntries, bin: mergedBin 
+      };
     }
     case "__HYDRATE__":
       return { ...state, [action.key]: action.value };
@@ -5335,7 +5398,7 @@ function InboxView({
 // ─────────────────────────────────────────────────────────────────────────────
 // Main App
 // ─────────────────────────────────────────────────────────────────────────────
-export default function App({ onTenantSignOut, tenantId, tenantSchoolName }: { onTenantSignOut?: () => void; tenantId?: string; tenantSchoolName?: string } = {}) {
+export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polledData, onLocalEdit, onStateChange }: { onTenantSignOut?: () => void; tenantId?: string; tenantSchoolName?: string; polledData?: any; onLocalEdit?: (state: any) => void; onStateChange?: (state: any) => void } = {}) {
   const [appState, dispatchRaw] = useReducer(appReducer, initialState);
   const dispatch = useCallback((action: any) => {
     dispatchRaw(action);
@@ -5746,30 +5809,47 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName }: { o
   );
   const ctxValue = useMemo<AppCtxType>(() => ({ state: appState, dispatch, showToast, currentActor }), [appState, showToast, currentActor]);
 
+  // ── Ref to distinguish local edits from remote state replacements ───────
+  const isApplyingRemoteRef = useRef(false);
+  const hasHydratedRef = useRef(!!localStorage.getItem(DB_KEY));
+
   // ── Auto-save to localStorage whenever state changes ──────────────────────
+  const onLocalEditRef = useRef(onLocalEdit);
+  const onStateChangeRef = useRef(onStateChange);
+  useEffect(() => { onLocalEditRef.current = onLocalEdit; }, [onLocalEdit]);
+  useEffect(() => { onStateChangeRef.current = onStateChange; }, [onStateChange]);
+
   useEffect(() => {
+    if (onStateChangeRef.current) onStateChangeRef.current(appState);
+
+    if (!hasHydratedRef.current) return;
+
+    // If this state change was triggered by receiving remote data, skip saving
+    // it back out to avoid feedback loops and unnecessary writes.
+    if (isApplyingRemoteRef.current) {
+      isApplyingRemoteRef.current = false;
+      return;
+    }
     debouncedSaveDB(appState);
+    if (onLocalEditRef.current) onLocalEditRef.current(appState);
   }, [appState]);
 
-  // ── Cross-device hydration via storage event (TenantApp pull-loop fires this)
-  // When TenantApp pulls a newer remote snapshot, it writes DB_KEY and dispatches
-  // a synthetic storage event. We rehydrate the reducer so the UI converges.
-  const lastAcceptedRev = useRef<number>(0);
+  // ── Direct hydration via polling from TenantApp ────────────────────────
+  // When TenantApp pulls a newer remote snapshot, it passes it down via polledData.
+  // We rehydrate the reducer so the UI converges.
+  const serverRevRef = useRef<number>(-1);
   useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== DB_KEY || !e.newValue) return;
-      try {
-        const snap = JSON.parse(e.newValue);
-        const rev = typeof snap._rev === "number" ? snap._rev : 0;
-        if (rev <= lastAcceptedRev.current) return;
-        lastAcceptedRev.current = rev;
-        const { _rev, _updatedAt, _deviceId, ...payload } = snap;
-        dispatch({ type: "REPLACE_ALL", payload });
-      } catch { /* ignore */ }
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
+    if (!polledData) return;
+    try {
+      const rev = typeof polledData._rev === "number" ? polledData._rev : 0;
+      if (rev <= serverRevRef.current) return;
+      serverRevRef.current = rev;
+      const { _rev, _updatedAt, _deviceId, ...payload } = polledData;
+      isApplyingRemoteRef.current = true;
+      hasHydratedRef.current = true;
+      dispatch({ type: "REPLACE_ALL", payload });
+    } catch { /* ignore */ }
+  }, [polledData, dispatch]);
 
   // ── Firebase real-time listener: pull remote changes into local state ──────
   const [syncStatus, setSyncStatus] = useState<"idle" | "synced" | "error">("idle");

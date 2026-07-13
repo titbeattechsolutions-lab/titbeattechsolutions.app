@@ -87,6 +87,16 @@ export async function saveTenantData(session: TenantSession, data: unknown): Pro
   return !error && ok === true;
 }
 
+export async function saveTenantDataV3(session: TenantSession, expectedRev: number, data: unknown): Promise<{ success: boolean; rev?: number; error?: string; currentData?: any }> {
+  const { data: result, error } = await supabase.rpc("save_tenant_data_v3", {
+    _session_token: session.sessionToken,
+    _expected_rev: expectedRev,
+    _data: data as never,
+  });
+  if (error) return { success: false, error: error.message };
+  return result as any;
+}
+
 /** Days remaining on trial or subscription (negative if expired). */
 export function daysRemaining(session: TenantSession): number | null {
   const end = session.subscriptionEndsAt

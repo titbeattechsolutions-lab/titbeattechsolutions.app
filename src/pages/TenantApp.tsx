@@ -5,6 +5,7 @@ import {
   loadTenantSession,
   fetchTenantData,
   saveTenantData,
+  saveTenantDataV3,
   clearTenantSession,
   daysRemaining,
   type TenantSession,
@@ -16,18 +17,11 @@ import { LogOut, CloudOff, Loader2, Cloud, CloudUpload } from "lucide-react";
 
 const DB_KEY = "greatmind_school_db_v2";
 const SAVE_DEBOUNCE_MS = 1200;
-const PULL_INTERVAL_MS = 8000;
+const PULL_INTERVAL_MS = 3000;
 
 type SyncPhase = "idle" | "pulling" | "pushing" | "synced" | "error";
 
-function bumpRev(obj: Record<string, unknown>): Record<string, unknown> {
-  const cur = typeof obj?._rev === "number" ? (obj._rev as number) : 0;
-  return { 
-    ...obj, 
-    _rev: cur + 1, 
-    _updatedAt: new Date().toISOString() 
-  };
-}
+
 
 export default function TenantApp() {
   const navigate = useNavigate();
@@ -36,6 +30,7 @@ export default function TenantApp() {
   const [phase, setPhase] = useState<"loading" | "ready" | "expired" | "error">("loading");
   const [syncPhase, setSyncPhase] = useState<SyncPhase>("idle");
   const [lastSyncAt, setLastSyncAt] = useState<number>(0);
+  const [polledData, setPolledData] = useState<any>(null);
 
   const saveTimer = useRef<NodeJS.Timeout>();
   const pullTimer = useRef<NodeJS.Timeout>();
@@ -43,13 +38,18 @@ export default function TenantApp() {
   const localRev = useRef<number>(0);
   const isSyncing = useRef<boolean>(false);
   const signedOut = useRef<boolean>(false);
+  const latestAppRef = useRef<Record<string, unknown> | null>(null);
+
+  const handleStateChange = useCallback((state: Record<string, unknown>) => {
+    latestAppRef.current = state;
+  }, []);
+  const handleLocalEdit = useCallback((state: Record<string, unknown>) => {
+    window.dispatchEvent(new CustomEvent("tenant_local_edit", { detail: state }));
+  }, []);
 
   // Helper to safely dispatch storage event
   const dispatchRehydrate = useCallback((data: string) => {
-    window.dispatchEvent(new StorageEvent("storage", { 
-      key: DB_KEY, 
-      newValue: data 
-    }));
+    // Deprecated: No longer dispatching synthetic storage events.
   }, []);
 
   // 1. Initial Load
@@ -113,8 +113,8 @@ export default function TenantApp() {
         setSyncPhase("synced");
         setLastSyncAt(Date.now());
 
-        // Dispatch AFTER state update (next tick) so App has mounted
-        setTimeout(() => dispatchRehydrate(json), 10);
+        // Hydrate App with initial data
+        setTimeout(() => setPolledData(data), 10);
       } catch (err) {
         console.error(err);
         setPhase("error");
@@ -125,36 +125,49 @@ export default function TenantApp() {
   // 2. Sync Logic
   useEffect(() => {
     if (phase !== "ready" || !session) return;
-
-    const pushIfChanged = async () => {
+    const pushIfChanged = async (retryCount = 0, explicitState?: Record<string, unknown>) => {
       if (isSyncing.current || signedOut.current) return;
-
-      const current = localStorage.getItem(DB_KEY) ?? "{}";
-      if (current === lastSerialized.current) return;
-
-      let parsed: Record<string, unknown>;
-      try {
-        parsed = JSON.parse(current);
-      } catch {
+      if (retryCount > 3) {
+        setSyncPhase("error");
         return;
       }
 
-      const stamped = bumpRev(parsed);
-      const stampedJson = JSON.stringify(stamped);
+      const currentState = retryCount === 0 && explicitState 
+        ? explicitState 
+        : (latestAppRef.current ?? JSON.parse(localStorage.getItem(DB_KEY) ?? "{}"));
+
+      const { _rev: _lastRev, ...lastForCompare } = JSON.parse(lastSerialized.current || "{}");
+      const jsonString = JSON.stringify(currentState);
+      if (jsonString === JSON.stringify(lastForCompare) && retryCount === 0) return;
+
+      let parsed = currentState;
 
       isSyncing.current = true;
-      localStorage.setItem(DB_KEY, stampedJson); // Update with new rev
-      lastSerialized.current = stampedJson;
-      localRev.current = stamped._rev as number;
-
       setSyncPhase("pushing");
 
-      const success = await saveTenantData(session, stamped);
-      
-      setSyncPhase(success ? "synced" : "error");
-      if (success) setLastSyncAt(Date.now());
+      const { _rev, _updatedAt, _deviceId, ...cleanData } = parsed;
+      const expectedRev = localRev.current;
 
-      isSyncing.current = false;
+      const result = await saveTenantDataV3(session, expectedRev, cleanData);
+
+      if (result.success) {
+        localRev.current = result.rev as number;
+        const json = JSON.stringify({ ...cleanData, _rev: result.rev });
+        localStorage.setItem(DB_KEY, json);
+        lastSerialized.current = json;
+        setSyncPhase("synced");
+        setLastSyncAt(Date.now());
+        isSyncing.current = false;
+      } else if (result.error === "rev_conflict") {
+        // Someone else won. Merge their data in, then retry our edit on top.
+        localRev.current = result.currentData._rev ?? expectedRev;
+        setPolledData(result.currentData);
+        isSyncing.current = false;
+        setTimeout(() => pushIfChanged(retryCount + 1), 300);
+      } else {
+        setSyncPhase("error");
+        isSyncing.current = false;
+      }
     };
 
     const pull = async () => {
@@ -177,7 +190,7 @@ export default function TenantApp() {
           lastSerialized.current = json;
           localRev.current = remoteRev;
 
-          dispatchRehydrate(json);
+          setPolledData(r);
         }
 
         setSyncPhase("synced");
@@ -187,25 +200,14 @@ export default function TenantApp() {
       }
     };
 
-    // Debounced push on local changes
-    const schedulePush = () => {
+    // We no longer monkey-patch localStorage.
+    // Instead, School_Management_App directly triggers pushIfChanged when a genuine local edit occurs.
+    // However, to keep it simple, we wrap it in a debounce so rapid edits don't spam requests.
+    const schedulePush = (e: Event) => {
+      const state = (e as CustomEvent).detail;
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(pushIfChanged, SAVE_DEBOUNCE_MS);
+      saveTimer.current = setTimeout(() => pushIfChanged(0, state), SAVE_DEBOUNCE_MS);
     };
-
-    // Patch setItem to detect changes (only for our DB key)
-    const isAlreadyPatched = (localStorage as any).__patchedByTenantApp;
-    let originalSetItem = localStorage.setItem;
-    if (!isAlreadyPatched) {
-      originalSetItem = localStorage.setItem.bind(localStorage);
-      localStorage.setItem = (key: string, value: string) => {
-        originalSetItem.call(localStorage, key, value);
-        if (key === DB_KEY && !isSyncing.current) {
-          schedulePush();
-        }
-      };
-      (localStorage as any).__patchedByTenantApp = true;
-    }
 
     // Periodic pull + focus/online triggers
     pullTimer.current = setInterval(pull, PULL_INTERVAL_MS);
@@ -214,14 +216,16 @@ export default function TenantApp() {
 
     window.addEventListener("focus", handleFocus);
     window.addEventListener("online", handleOnline);
+    window.addEventListener("tenant_local_edit", schedulePush);
 
     // Final push on unload
     const handleBeforeUnload = () => {
       const current = localStorage.getItem(DB_KEY);
       if (current && current !== lastSerialized.current) {
         try {
-          const data = JSON.parse(current);
-          saveTenantData(session, data);
+          const parsed = JSON.parse(current);
+          const { _rev, _updatedAt, _deviceId, ...cleanData } = parsed;
+          saveTenantDataV3(session, localRev.current, cleanData);
         } catch {}
       }
     };
@@ -234,11 +238,9 @@ export default function TenantApp() {
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("tenant_local_edit", schedulePush);
       
-      if (!isAlreadyPatched) {
-        localStorage.setItem = originalSetItem;
-        delete (localStorage as any).__patchedByTenantApp;
-      }
+
       
       // Final flush
       pushIfChanged();
@@ -344,7 +346,7 @@ export default function TenantApp() {
         </div>
       )}
 
-      <App tenantSchoolName={session?.schoolName} tenantId={session?.tenantId} onTenantSignOut={signOut} />
+      <App tenantSchoolName={session?.schoolName} tenantId={session?.tenantId} onTenantSignOut={signOut} polledData={polledData} onStateChange={handleStateChange} onLocalEdit={handleLocalEdit} />
     </div>
   );
 }
