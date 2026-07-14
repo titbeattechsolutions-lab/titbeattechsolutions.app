@@ -27,16 +27,17 @@ export default function PlatformStatsPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
 
-      const [schoolsRes, studentsRes, teachersRes, paymentsRes, billingRes] = await Promise.allSettled([
+      const [schoolsRes, countsRes, teachersRes, paymentsRes, billingRes] = await Promise.allSettled([
         db.from("schools").select("id,status", { count: "exact" }),
-        db.from("students").select("id", { count: "exact" }),
+        db.rpc("get_student_counts_by_school"),
         db.from("teachers").select("id", { count: "exact" }),
         db.from("payments").select("amount,status").eq("status", "success"),
         db.from("billing").select("plan"),
       ]);
 
       const schools = schoolsRes.status === "fulfilled" ? (schoolsRes.value.data ?? []) as { id: string; status: string }[] : [];
-      const studentsCount = studentsRes.status === "fulfilled" ? (studentsRes.value.count ?? 0) : 0;
+      const countsData = countsRes.status === "fulfilled" ? (countsRes.value.data ?? []) : [];
+      const studentsCount = countsData.reduce((sum: number, c: any) => sum + Number(c.student_count), 0);
       const teachersCount = teachersRes.status === "fulfilled" ? (teachersRes.value.count ?? 0) : 0;
       const payments = paymentsRes.status === "fulfilled" ? (paymentsRes.value.data ?? []) as { amount: number; status: string }[] : [];
       const billing = billingRes.status === "fulfilled" ? (billingRes.value.data ?? []) as { plan: string }[] : [];
