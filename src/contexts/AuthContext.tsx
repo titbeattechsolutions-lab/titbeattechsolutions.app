@@ -110,20 +110,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
-        setLoading(true);
-        fetchProfile(s.user.id, s.user.email ?? null).then((p) => {
-          setProfile(p);
-          profileRef.current = p;
-          setLoading(false);
-          // Log login once per session id
+        if (profileRef.current?.userId !== s.user.id) {
+          setLoading(true);
+          fetchProfile(s.user.id, s.user.email ?? null).then((p) => {
+            setProfile(p);
+            profileRef.current = p;
+            setLoading(false);
+            // Log login once per session id
+            if (event === "SIGNED_IN" && loggedLoginRef.current !== s.access_token) {
+              loggedLoginRef.current = s.access_token ?? null;
+              insertSessionLog("login", p);
+            }
+          });
+        } else {
+          // If profile is already loaded (e.g. TOKEN_REFRESHED)
           if (event === "SIGNED_IN" && loggedLoginRef.current !== s.access_token) {
             loggedLoginRef.current = s.access_token ?? null;
-            insertSessionLog("login", p);
+            if (profileRef.current) insertSessionLog("login", profileRef.current);
           }
-        });
+        }
       } else {
-        setProfile(null);
-        profileRef.current = null;
+        if (profileRef.current !== null) {
+          setProfile(null);
+          profileRef.current = null;
+        }
         setLoading(false);
       }
     });

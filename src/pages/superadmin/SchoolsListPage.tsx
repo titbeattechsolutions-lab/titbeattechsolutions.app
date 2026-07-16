@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { RefreshCw, Loader2, Search, ChevronRight, ShieldOff, ShieldCheck } from "lucide-react";
+import { RefreshCw, Loader2, Search, ChevronRight, ShieldOff, ShieldCheck, AlertTriangle, Ban } from "lucide-react";
+import { Card } from "@/components/ui/card";
 
 interface SchoolRow {
   id: string;
@@ -20,6 +21,7 @@ interface SchoolRow {
   academic_year: string;
   current_term: string;
   created_at: string;
+  tenant_id: string;
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -44,7 +46,7 @@ export default function SchoolsListPage() {
     const [schoolsRes, countsRes] = await Promise.all([
       (supabase as any)
         .from("schools")
-        .select("id,name,code,email,max_students,features,academic_year,current_term,created_at,status")
+        .select("id,tenant_id,name,code,email,max_students,features,academic_year,current_term,created_at,status")
         .order("created_at", { ascending: false }),
       (supabase as any).rpc("get_student_counts_by_school")
     ]);
@@ -64,17 +66,33 @@ export default function SchoolsListPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const setStatus = async (schoolId: string, status: "active" | "suspended") => {
+  const setStatus = async (schoolId: string, tenantId: string, status: "active" | "suspended") => {
     setBusy(schoolId);
+    
+    // 1. Update authoritative tenants table (this actually locks/unlocks login)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any)
+    const { error: tenantErr } = await (supabase as any)
+      .from("tenants")
+      .update({ status })
+      .eq("id", tenantId);
+      
+    if (tenantErr) {
+      setBusy(null);
+      toast({ title: "Tenant update failed", description: tenantErr.message, variant: "destructive" }); return;
+    }
+
+    // 2. Update schools table for UI consistency
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: schoolErr } = await (supabase as any)
       .from("schools")
       .update({ status })
       .eq("id", schoolId);
+      
     setBusy(null);
-    if (error) {
-      toast({ title: "Update failed", description: error.message, variant: "destructive" }); return;
+    if (schoolErr) {
+      toast({ title: "School update failed", description: schoolErr.message, variant: "destructive" }); return;
     }
+    
     toast({ title: `School ${status === "suspended" ? "suspended" : "reactivated"}` });
     load();
   };
@@ -108,6 +126,8 @@ export default function SchoolsListPage() {
           <Button size="sm" onClick={() => navigate("/superadmin/provision")}>+ Provision School</Button>
         </div>
       </div>
+
+      <DuplicatesBanner onChanged={load} />
 
       {/* Filters */}
       <div className="flex gap-3 flex-wrap">
@@ -185,7 +205,7 @@ export default function SchoolsListPage() {
                           size="sm" variant="ghost"
                           className="h-7 text-xs text-red-500 hover:text-red-600"
                           disabled={busy === s.id}
-                          onClick={() => setStatus(s.id, "suspended")}
+                          onClick={() => setStatus(s.id, s.tenant_id, "suspended")}
                         >
                           {busy === s.id ? <Loader2 size={11} className="animate-spin" /> : <ShieldOff size={11} className="mr-1" />}
                           Suspend
@@ -195,7 +215,7 @@ export default function SchoolsListPage() {
                           size="sm" variant="ghost"
                           className="h-7 text-xs text-emerald-600 hover:text-emerald-700"
                           disabled={busy === s.id}
-                          onClick={() => setStatus(s.id, "active")}
+                          onClick={() => setStatus(s.id, s.tenant_id, "active")}
                         >
                           {busy === s.id ? <Loader2 size={11} className="animate-spin" /> : <ShieldCheck size={11} className="mr-1" />}
                           Reactivate
@@ -210,5 +230,96 @@ export default function SchoolsListPage() {
         )}
       </div>
     </div>
+  );
+}
+
+interface DuplicateRow {
+  match_type: string;
+  match_value: string;
+  tenant_ids: string[];
+  school_names: string[];
+  occurrences: number;
+}
+
+function DuplicatesBanner({ onChanged }: { onChanged: () => void }) {
+  const [dups, setDups] = useState<DuplicateRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await (supabase as any).rpc("find_duplicate_tenants");
+    setLoading(false);
+    if (error) return;
+    setDups((data as unknown as DuplicateRow[]) ?? []);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const suspendOne = async (tenantId: string, schoolName: string, matchType: string) => {
+    if (!confirm(`Suspend "${schoolName}" as a duplicate? All active sessions will be revoked.`)) return;
+    setBusy(tenantId);
+    
+    // 1. Authoritative suspension on tenants table
+    const { error: tErr } = await (supabase as any).rpc("suspend_duplicate_tenant", {
+      _tenant_id: tenantId,
+      _reason: `duplicate ${matchType}`,
+    });
+    
+    if (tErr) {
+      setBusy(null);
+      toast({ title: "Suspend failed", description: tErr.message, variant: "destructive" });
+      return;
+    }
+    
+    // 2. Sync UI state on schools table
+    await (supabase as any).from("schools").update({ status: 'suspended' }).eq("tenant_id", tenantId);
+    
+    setBusy(null);
+    toast({ title: "Tenant suspended", description: schoolName });
+    await load();
+    onChanged();
+  };
+
+  if (loading || dups.length === 0) return null;
+
+  return (
+    <Card className="p-3 border-amber-500/40 bg-amber-500/5 mb-5">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+        <div className="text-sm space-y-2 flex-1">
+          <div className="font-semibold text-amber-700 dark:text-amber-300">
+            {dups.length} duplicate group{dups.length === 1 ? "" : "s"} detected
+          </div>
+          {dups.map((d, i) => (
+            <div key={i} className="text-xs space-y-1 border-l-2 border-amber-500/40 pl-2">
+              <div className="text-muted-foreground">
+                <span className="font-mono">{d.match_type}</span> = "{d.match_value}" ({d.occurrences})
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {d.tenant_ids.map((id, idx) => (
+                  <Button
+                    key={id}
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[11px]"
+                    disabled={busy === id}
+                    onClick={() => suspendOne(id, d.school_names[idx], d.match_type)}
+                    title="Suspend this tenant"
+                  >
+                    <Ban className="w-3 h-3 mr-1" />
+                    {d.school_names[idx]}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div className="text-xs text-muted-foreground italic pt-1">
+            Click a school name to suspend it. The earliest record is usually the one to keep.
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }

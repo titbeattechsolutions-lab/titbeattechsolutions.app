@@ -42,21 +42,10 @@ Deno.serve(async (req) => {
 
     // ── 2. Parse + validate body ───────────────────────────────────────
     const body = await req.json();
-    const { name, code, email, phone, address, plan, adminEmail, adminName, tenantId } = body;
+    const { name, code, email, phone, address, plan, adminEmail, adminName, tenantId, paymentMethod, notes } = body;
 
     if (!name || !code || !tenantId) {
       return Response.json({ error: "name, code, and tenantId are required" }, { status: 400, headers: corsHeaders });
-    }
-
-    // ── 3. Check code uniqueness ──────────────────────────────────────
-    const { data: existing } = await serviceClient
-      .from("schools")
-      .select("id")
-      .eq("code", code)
-      .maybeSingle();
-
-    if (existing) {
-      return Response.json({ error: "School code already exists" }, { status: 409, headers: corsHeaders });
     }
 
     // ── 4. INSERT school ──────────────────────────────────────────────
@@ -75,7 +64,12 @@ Deno.serve(async (req) => {
       .select("id")
       .single();
 
-    if (schoolError) throw schoolError;
+    if (schoolError) {
+      if (schoolError.code === "23505") { // Unique violation
+        return Response.json({ error: "School code already exists" }, { status: 409, headers: corsHeaders });
+      }
+      throw schoolError;
+    }
 
     const schoolId = school.id;
 
@@ -106,6 +100,8 @@ Deno.serve(async (req) => {
         plan: plan ?? "starter",
         status: "trial",
         trial_ends_at: trialEndsAt,
+        payment_method: paymentMethod ?? null,
+        notes: notes ?? null,
       });
 
     if (billingError) throw billingError;

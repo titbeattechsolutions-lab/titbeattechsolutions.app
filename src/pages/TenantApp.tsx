@@ -24,6 +24,13 @@ type SyncPhase = "idle" | "pulling" | "pushing" | "synced" | "error";
 
 
 export default function TenantApp() {
+  console.log("TENANT_APP RENDER", new Date().toISOString());
+
+  useEffect(() => {
+    console.log("TENANT_APP MOUNTED", new Date().toISOString());
+    return () => console.log("TENANT_APP UNMOUNTING", new Date().toISOString());
+  }, []);
+
   const navigate = useNavigate();
   
   const [session, setSession] = useState<TenantSession | null>(null);
@@ -76,7 +83,9 @@ export default function TenantApp() {
     (async () => {
       try {
         const remote = await fetchTenantData(s);
+        console.log("FRESH LOAD: remote data received:", remote);
         if (remote === null) {
+          console.log("FRESH LOAD: remote was null, entering error phase");
           setPhase("error");
           return;
         }
@@ -115,6 +124,7 @@ export default function TenantApp() {
 
         // Hydrate App with initial data
         setTimeout(() => setPolledData(data), 10);
+        console.log("FRESH LOAD: setPolledData called with entries count:", (data as any).entries?.length);
       } catch (err) {
         console.error(err);
         setPhase("error");
@@ -148,6 +158,10 @@ export default function TenantApp() {
       const { _rev, _updatedAt, _deviceId, ...cleanData } = parsed;
       const expectedRev = localRev.current;
 
+      console.log("PUSH FIRING - entries count:", (cleanData as any).entries?.length, 
+        "retryCount:", retryCount, "expectedRev:", expectedRev, 
+        "trigger source:", explicitState ? "explicit local edit" : "ref/localStorage fallback");
+
       const result = await saveTenantDataV3(session, expectedRev, cleanData);
 
       if (result.success) {
@@ -173,7 +187,6 @@ export default function TenantApp() {
     const pull = async () => {
       if (isSyncing.current) return;
 
-      setSyncPhase("pulling");
       try {
         const remote = await fetchTenantData(session);
         if (!remote) {
@@ -191,10 +204,11 @@ export default function TenantApp() {
           localRev.current = remoteRev;
 
           setPolledData(r);
+          setSyncPhase("synced");
+          setLastSyncAt(Date.now());
+        } else {
+          setSyncPhase((prev) => (prev === "error" ? "synced" : prev));
         }
-
-        setSyncPhase("synced");
-        setLastSyncAt(Date.now());
       } catch {
         setSyncPhase("error");
       }

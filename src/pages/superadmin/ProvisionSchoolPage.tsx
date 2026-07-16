@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -54,8 +54,24 @@ export default function ProvisionSchoolPage() {
     name: "", code: "", email: "", phone: "",
     street: "", city: "", state: "",
     adminEmail: "", adminName: "", plan: "starter",
-    tenantId: "",
+    tenantId: crypto.randomUUID(),
+    paymentMethod: "bank_transfer",
+    notes: "",
   });
+
+  const [codeManuallyEdited, setCodeManuallyEdited] = useState(false);
+
+  // Auto-generate school code from initials
+  useEffect(() => {
+    if (form.name && !codeManuallyEdited) {
+      const generatedCode = form.name
+        .split(' ')
+        .filter(word => word.length > 0 && !['of', 'the', 'and'].includes(word.toLowerCase()))
+        .map(word => word[0].toUpperCase())
+        .join('');
+      setForm(prev => ({ ...prev, code: generatedCode }));
+    }
+  }, [form.name, codeManuallyEdited]);
 
   const [step, setStep] = useState<Step>("idle");
   const [resultSchoolId, setResultSchoolId] = useState<string | null>(null);
@@ -88,6 +104,8 @@ export default function ProvisionSchoolPage() {
           adminName: form.adminName || undefined,
           plan: form.plan,
           tenantId: form.tenantId,
+          paymentMethod: form.paymentMethod,
+          notes: form.notes || undefined,
         },
       });
 
@@ -131,13 +149,16 @@ export default function ProvisionSchoolPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>School Code *</Label>
-                  <Input {...field("code")} placeholder="e.g. GSS" className="uppercase" />
+                  <Input 
+                    value={form.code} 
+                    onChange={(e) => {
+                      setCodeManuallyEdited(true);
+                      setForm(f => ({ ...f, code: e.target.value }));
+                    }}
+                    placeholder="e.g. GSS" 
+                    className="uppercase" 
+                  />
                 </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Tenant ID * <span className="text-xs text-slate-400">(UUID from tenants table)</span></Label>
-                <Input {...field("tenantId")} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="font-mono text-xs" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -174,16 +195,41 @@ export default function ProvisionSchoolPage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Initial Plan</Label>
+                  <Select value={form.plan} onValueChange={(v) => setForm((f) => ({ ...f, plan: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="starter">Starter (500 students, 14-day trial)</SelectItem>
+                      <SelectItem value="pro">Pro (2,000 students)</SelectItem>
+                      <SelectItem value="enterprise">Enterprise (10,000 students)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-1.5">
+                  <Label>Payment Method</Label>
+                  <Select value={form.paymentMethod} onValueChange={(v) => setForm((f) => ({ ...f, paymentMethod: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                      <SelectItem value="card">Card / Online</SelectItem>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="free_trial">Free Trial</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               <div className="space-y-1.5">
-                <Label>Initial Plan</Label>
-                <Select value={form.plan} onValueChange={(v) => setForm((f) => ({ ...f, plan: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="starter">Starter (500 students, 14-day trial)</SelectItem>
-                    <SelectItem value="pro">Pro (2,000 students)</SelectItem>
-                    <SelectItem value="enterprise">Enterprise (10,000 students)</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Internal Note (Reference Purpose)</Label>
+                <textarea 
+                  className="w-full min-h-[80px] p-2 text-sm border rounded-md border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900" 
+                  placeholder="e.g. Referred by Mr. Johnson, paid 6 months upfront..."
+                  value={form.notes}
+                  onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
+                />
               </div>
 
               {errorMsg && (
@@ -220,7 +266,17 @@ export default function ProvisionSchoolPage() {
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    onClick={() => { setStep("idle"); setForm({ name: "", code: "", email: "", phone: "", street: "", city: "", state: "", adminEmail: "", adminName: "", plan: "starter", tenantId: "" }); }}
+                    onClick={() => { 
+                      setStep("idle"); 
+                      setCodeManuallyEdited(false);
+                      setForm({ 
+                        name: "", code: "", email: "", phone: "", street: "", city: "", state: "", 
+                        adminEmail: "", adminName: "", plan: "starter", 
+                        tenantId: crypto.randomUUID(),
+                        paymentMethod: "bank_transfer",
+                        notes: ""
+                      }); 
+                    }}
                   >
                     Provision Another
                   </Button>

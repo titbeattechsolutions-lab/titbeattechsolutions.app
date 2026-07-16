@@ -15,8 +15,11 @@ import {
   Menu, BookOpen, MoreVertical, ChevronRight, ChevronLeft,
   CalendarDays, ClipboardList, BookMarked, Edit2, ArrowLeft,
   Bell, CalendarClock, Send, Inbox, MessageSquare, Wallet, CheckCircle,
-  FileSpreadsheet, Lock, Info, DollarSign, Loader2
+  FileSpreadsheet, Lock, Info, DollarSign, Loader2, Trophy, Download
 } from "lucide-react";
+import { verifyAdminPin, setAdminPin, loadTenantSession } from "@/lib/tenant-client";
+import { exportToCSV } from "@/lib/exportUtils";
+
 
 // ─── Upgrade Imports (CDN-based, no bundler needed) ──────────────────────────
 // Firebase, jsPDF and SheetJS are loaded dynamically at runtime to keep this
@@ -36,13 +39,13 @@ const CURRICULUM: Record<string, { classes: string[]; subjects: string[] }> = {
 const ALL_CLASSES: string[] = Object.values(CURRICULUM).flatMap(c => c.classes);
 const TERMS = ["First Term","Second Term","Third Term"];
 const ROLES = ["Teacher","Class Teacher","Subject Teacher","Head of Dept","Bursar","Secretary","Headmaster","Headmistress","Vice Principal","Principal"];
-const ADMIN_PIN_KEY = "gm_admin_pin_v1";
 const PERMS_META = [
   { key:"scoreEntry",    label:"Score Entry",    desc:"Enter CA & exam scores" },
   { key:"viewReports",   label:"View Reports",   desc:"Access student reports" },
   { key:"printReports",  label:"Print Reports",  desc:"Print or export reports" },
   { key:"manageRecords", label:"Manage Records", desc:"Delete or edit grades" },
   { key:"fees",          label:"Fees Access",    desc:"View and manage school fees and payments" },
+  { key:"rankings",      label:"Class Rankings", desc:"View student position/ranking within their class" },
 ];
 const ATT_STATUSES = [
   { key:"present", label:"Present", icon:"✓", color:"emerald" },
@@ -175,6 +178,30 @@ interface AppState {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const today = () => new Date().toISOString().slice(0, 10);
+
+function computeStandings(
+  entries: Entry[], 
+  studentClass: string, 
+  filter: (e: Entry) => boolean,
+  aggregateFn: (studentEntries: Entry[]) => number
+): { name: string; value: number; rank: number }[] {
+  const scoped = entries.filter(e => e.studentClass === studentClass && filter(e));
+  const names = [...new Set(scoped.map(e => e.studentName.toLowerCase().trim()))];
+  const standings = names
+    .map(n => ({ 
+      name: n, 
+      value: aggregateFn(scoped.filter(e => e.studentName.toLowerCase().trim() === n)) 
+    }))
+    .sort((a, b) => b.value - a.value);
+  
+  let rank = 0;
+  let lastValue: number | null = null;
+  return standings.map(s => {
+    if (s.value !== lastValue) { rank++; lastValue = s.value; }
+    return { ...s, rank };
+  });
+}
+
 const timeGreeting = () => {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
@@ -1159,7 +1186,7 @@ const MHead = ({ icon: Icon, title, subtitle, color = "bg-blue-600", onClose }: 
 );
 
 // ─── Pin Auth ─────────────────────────────────────────────────────────────────
-const PinAuth = ({ title, subtitle, headerColor = "bg-blue-600", icon: Icon, children, confirmLabel, confirmVariant = "danger", correctPin, onConfirm, onCancel }: any) => {
+const PinAuth = ({ title, subtitle, headerColor = "bg-blue-600", icon: Icon, children, confirmLabel, confirmVariant = "danger", onConfirm, onCancel }: any) => {
   const [pin, setPin] = useState("");
   const [err, setErr] = useState("");
   const [show, setShow] = useState(false);
@@ -1172,7 +1199,13 @@ const PinAuth = ({ title, subtitle, headerColor = "bg-blue-600", icon: Icon, chi
     if (checking) return;
     setChecking(true);
     try {
-      const ok = await verifyPIN(pin, correctPin);
+      const session = loadTenantSession();
+      if (!session) {
+        setErr("Session error. Please re-login.");
+        setPin("");
+        return;
+      }
+      const ok = await verifyAdminPin(session, pin);
       if (ok) {
         onConfirm();
       } else {
@@ -2359,6 +2392,24 @@ const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) =
           <p className="text-sm text-slate-500 mt-1">Auto-structured tracker · {session} · {term}</p>
         </div>
         <div className="flex gap-2">
+          <div className="flex gap-2 no-print">
+            <Btn variant="outline" onClick={() => window.print()} title="Print / PDF">
+              <Printer size={14}/> Print
+            </Btn>
+            <Btn variant="primary" onClick={() => {
+              const headers = ["Student", "Total Billed", "Paid", "Balance", "Status"];
+              const rows = studentsInClass.map(name => {
+                const k = `${activeClass}|${name}|${periodKey}`;
+                const p = payments[k]?.paid || 0;
+                const bal = Math.max(expectedPerStudent - p, 0);
+                const status = p >= expectedPerStudent ? "Cleared" : (p > 0 ? "Partial" : "Outstanding");
+                return [name, expectedPerStudent, p, bal, status];
+              });
+              exportToCSV(`Fees_${activeClass}_${term}`, headers, rows);
+            }} title="Export Excel">
+              <Download size={14}/> Export
+            </Btn>
+          </div>
           <Sel value={activeClass} onChange={(e: any) => setActiveClass(e.target.value)}>
             {classes.length === 0 && <option value="">No enrolled classes</option>}
             {classes.map(c => <option key={c}>{c}</option>)}
@@ -3199,13 +3250,12 @@ const ResourcesTab = memo(({ showToast }: { showToast: (msg: string, type?: stri
   );
 });
 
-const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast, adminPinRef, tenantId }: {
+const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast, tenantId }: {
   isAdmin: boolean;
   logoUrl: string | null;
   setSchoolLogo: (url: string | null) => void;
   logoRef: React.RefObject<HTMLInputElement>;
   showToast: (msg: string, type?: string) => void;
-  adminPinRef: React.MutableRefObject<string>;
   tenantId?: string;
 }) => {
   if (!isAdmin) return null; // Explicit internal boundary guard
@@ -3310,20 +3360,27 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
 
   const changePin = async () => {
     setPinErr("");
-    const curOk = await verifyPIN(pinF.cur, adminPinRef.current);
+    const session = loadTenantSession();
+    if (!session) return setPinErr("Session error.");
+    
+    const curOk = await verifyAdminPin(session, pinF.cur);
     if (!curOk) return setPinErr("Current PIN is incorrect.");
     if (pinF.nxt.length < 4) return setPinErr("New PIN must be ≥ 4 digits.");
     if (pinF.nxt !== pinF.cnf) return setPinErr("New PINs do not match.");
-    const hashed = await ensureHashed(pinF.nxt);
-    adminPinRef.current = hashed;
-    try { localStorage.setItem(ADMIN_PIN_KEY, hashed); } catch {}
+    
+    const ok = await setAdminPin(session, pinF.nxt);
+    if (!ok) return setPinErr("Failed to update PIN.");
+    
     setPinF({ cur: "", nxt: "", cnf: "" });
-    showToast("Admin PIN updated & encrypted");
+    showToast("Admin PIN updated");
   };
 
   const handleClearDB = async () => {
     setClearPinErr("");
-    const ok = await verifyPIN(clearPin, adminPinRef.current);
+    const session = loadTenantSession();
+    if (!session) return setClearPinErr("Session error.");
+    
+    const ok = await verifyAdminPin(session, clearPin);
     if (!ok) return setClearPinErr("Incorrect PIN.");
     try { localStorage.removeItem(DB_KEY); } catch {}
     showToast("Database cleared — reloading…", "warning");
@@ -5395,6 +5452,159 @@ function InboxView({
   );
 }
 
+function getOrdinalRank(n: number) {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function RankingsTab({ entries, schoolSettings, can, isAdmin }: { entries: Entry[]; schoolSettings: SchoolSettings; can: (p:string)=>boolean; isAdmin: boolean }) {
+  const [rankClass, setRankClass] = useState(ALL_CLASSES[0]);
+  const [rankType, setRankType] = useState<"total"|"subject"|"cumulative">("total");
+  const [rankSubject, setRankSubject] = useState("");
+
+  const classTermEntries = useMemo(() => entries.filter(e => e.studentClass === rankClass && (!e.term || e.term === schoolSettings.term) && (!e.session || e.session === schoolSettings.session)), [entries, rankClass, schoolSettings]);
+  const classSubjects = useMemo(() => [...new Set(classTermEntries.map(e => e.subject))].sort(), [classTermEntries]);
+  
+  useEffect(() => {
+    if (!classSubjects.includes(rankSubject) && classSubjects.length > 0) {
+      setRankSubject(classSubjects[0]);
+    }
+  }, [classSubjects, rankSubject]);
+
+  const currentStandings = useMemo(() => {
+    if (rankType === "total") {
+      return computeStandings(
+        entries, rankClass,
+        e => (!e.term || e.term === schoolSettings.term) && (!e.session || e.session === schoolSettings.session),
+        st => st.reduce((a, c) => a + c.total, 0)
+      );
+    } else if (rankType === "subject") {
+      return computeStandings(
+        entries, rankClass,
+        e => (!e.term || e.term === schoolSettings.term) && (!e.session || e.session === schoolSettings.session) && e.subject === rankSubject,
+        st => st.reduce((a, c) => a + c.total, 0)
+      );
+    } else if (rankType === "cumulative") {
+      return computeStandings(
+        entries, rankClass,
+        e => (!e.session || e.session === schoolSettings.session),
+        st => {
+          const byTerm: Record<string, number> = {};
+          st.forEach(e => {
+            const t = e.term || schoolSettings.term;
+            byTerm[t] = (byTerm[t] || 0) + e.total;
+          });
+          const terms = Object.values(byTerm);
+          if (terms.length === 0) return 0;
+          return terms.reduce((a, c) => a + c, 0) / terms.length;
+        }
+      );
+    }
+    return [];
+  }, [entries, rankClass, rankType, rankSubject, schoolSettings]);
+
+  const toTitleCase = (str: string) => str.replace(/\w\S*/g, txt => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-start gap-4">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 uppercase">Class Rankings</h1>
+          <p className="text-sm text-slate-400">View student standings and academic performance</p>
+        </div>
+        <div className="flex gap-2 no-print">
+          <Btn variant="outline" onClick={() => window.print()} title="Print / PDF">
+            <Printer size={14}/> Print
+          </Btn>
+          <Btn variant="primary" onClick={() => {
+            const isSubject = rankType === "subject";
+            const headers = isSubject 
+              ? ["Rank", "Student", "Subject", "Score"] 
+              : ["Rank", "Student", "Score"];
+              
+            const rows = currentStandings.map(s => {
+              const valFmt = rankType === "cumulative" ? s.value.toFixed(1) : s.value;
+              return isSubject 
+                ? [s.rank, s.name, rankSubject, valFmt] 
+                : [s.rank, s.name, valFmt];
+            });
+            exportToCSV(`Rankings_${rankClass}_${rankType}`, headers, rows);
+          }} title="Export Excel">
+            <Download size={14}/> Export
+          </Btn>
+        </div>
+      </div>
+      
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+        <div className="flex flex-wrap gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-black uppercase tracking-wider text-slate-400">Class</label>
+            <select value={rankClass} onChange={e => setRankClass(e.target.value)} className="w-48 px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold outline-none">
+              {ALL_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-black uppercase tracking-wider text-slate-400">Ranking Type</label>
+            <select value={rankType} onChange={e => setRankType(e.target.value as any)} className="w-56 px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold outline-none">
+              <option value="total">Total Score (Current Term)</option>
+              <option value="subject">By Subject (Current Term)</option>
+              <option value="cumulative">Cumulative (All Terms)</option>
+            </select>
+          </div>
+          {rankType === "subject" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-black uppercase tracking-wider text-slate-400">Subject</label>
+              <select value={rankSubject} onChange={e => setRankSubject(e.target.value)} className="w-48 px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold outline-none">
+                {classSubjects.length === 0 && <option value="">No subjects yet</option>}
+                {classSubjects.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm whitespace-nowrap">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500">
+                <th className="px-5 py-3 font-black tracking-widest text-xs uppercase">Rank</th>
+                <th className="px-5 py-3 font-black tracking-widest text-xs uppercase">Student</th>
+                <th className="px-5 py-3 font-black tracking-widest text-xs uppercase text-right">
+                  {rankType === "subject" ? "Subject Score" : rankType === "cumulative" ? "Avg Total / Term" : "Total Score"}
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {currentStandings.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-5 py-8 text-center text-slate-400 font-bold">No ranking data available for this selection.</td>
+                </tr>
+              ) : (
+                currentStandings.map((s, idx) => {
+                  const valFmt = rankType === "cumulative" ? s.value.toFixed(1) : s.value;
+                  return (
+                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-5 py-3 font-black text-slate-900">
+                        <div className="flex items-center gap-2">
+                          {s.rank <= 3 && <Trophy size={14} className={s.rank === 1 ? "text-amber-500" : s.rank === 2 ? "text-slate-400" : "text-amber-700"} />}
+                          {getOrdinalRank(s.rank)}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 font-bold text-slate-700">{toTitleCase(s.name)}</td>
+                      <td className="px-5 py-3 font-black text-slate-900 text-right">{valFmt}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main App
 // ─────────────────────────────────────────────────────────────────────────────
@@ -5420,15 +5630,9 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     }
   }, []);
   const { toast, showToast } = useToast();
-  const adminPinRef = useRef<string>(typeof window !== "undefined" ? (localStorage.getItem(ADMIN_PIN_KEY) || "") : "");
-  const [needsAdminSetup, setNeedsAdminSetup] = useState<boolean>(!adminPinRef.current);
+  const [needsAdminSetup] = useState<boolean>(false);
   const [setupPin, setSetupPin] = useState({ nxt: "", cnf: "" });
   const [setupErr, setSetupErr] = useState("");
-  const persistAdminPin = useCallback(async (raw: string) => {
-    const hashed = await ensureHashed(raw);
-    adminPinRef.current = hashed;
-    try { localStorage.setItem(ADMIN_PIN_KEY, hashed); } catch {}
-  }, []);
   const logoRef = useRef<HTMLInputElement>(null);
   const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -5585,14 +5789,15 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
 
   const TABS = useMemo(() => [
     { id:"dashboard",  label:"Dashboard",  icon:LayoutDashboard, show:true,                                   primary:true },
-    { id:"entry",      label:"Score Entry",icon:PlusCircle,       show:can("scoreEntry"),                     primary:true },
+    { id:"staff",      label:"Staff",      icon:Users,            show:isAdmin,                               primary:false },
+    { id:"fees",       label:"Fees",       icon:DollarSign,       show:isAdmin||can("fees"),                  primary:false },
+    { id:"inbox",      label:"Inbox",      icon:Inbox,            show:true,                                  primary:false },
+    { id:"timetable",  label:"Timetable",  icon:CalendarClock,    show:true,                                  primary:false },
+    { id:"attendance", label:"Attendance", icon:CalendarDays,     show:can("scoreEntry")||isAdmin,            primary:false },
     { id:"database",   label:"Records",    icon:Database,         show:isAdmin||can("manageRecords")||can("scoreEntry"), primary:true },
     { id:"reports",    label:"Reports",    icon:FileText,         show:can("viewReports"),                    primary:true },
-    { id:"attendance", label:"Attendance", icon:CalendarDays,     show:can("scoreEntry")||isAdmin,            primary:false },
-    { id:"timetable",  label:"Timetable",  icon:CalendarClock,    show:true,                                  primary:false },
-    { id:"inbox",      label:"Inbox",      icon:Inbox,            show:true,                                  primary:false },
-    { id:"fees",       label:"Fees",       icon:DollarSign,       show:isAdmin||can("fees"),                  primary:false },
-    { id:"staff",      label:"Staff",      icon:Users,            show:isAdmin,                               primary:false },
+    { id:"rankings",   label:"Rankings",   icon:Trophy,           show:isAdmin||can("rankings"),              primary:false },
+    { id:"entry",      label:"Score Entry",icon:PlusCircle,       show:can("scoreEntry"),                     primary:true },
     { id:"resources",  label:"Resources",  icon:BookOpen,         show:isAdmin,                               primary:false },
     { id:"settings",   label:"Settings",   icon:Settings,         show:isAdmin,                               primary:false },
   ].filter(t => t.show), [can, isAdmin]);
@@ -5605,13 +5810,13 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
 
     if (loginId.toLowerCase() === "admin") {
       if (!loginPass) return setLoginErr("Enter a password");
-      if (!adminPinRef.current) return setLoginErr("Admin PIN not set up. Please set it first.");
-      const ok = await verifyPIN(loginPass, adminPinRef.current);
+      
+      const session = loadTenantSession();
+      if (!session) return setLoginErr("Session error. Please re-login.");
+      
+      const ok = await verifyAdminPin(session, loginPass);
       if (!ok) return setLoginErr("Incorrect password.");
-      // Migrate plain PIN to hash on first successful login
-      if (!adminPinRef.current.startsWith("h:") && !adminPinRef.current.startsWith("p:")) {
-        await persistAdminPin(adminPinRef.current);
-      }
+      
       setAuth({ loggedIn: true, user: null });
       setActiveTab("dashboard");
       logSignIn("Admin", "Administrator");
@@ -5766,24 +5971,29 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     const inTerm = (e: Entry) =>
       (!e.term || e.term === schoolSettings.term) &&
       (!e.session || e.session === schoolSettings.session);
+    
     const scoped = entries.filter(inTerm);
     const records = scoped.filter(e =>
       e.studentName.toLowerCase() === student.name.toLowerCase() && e.studentClass === student.class
     );
     if (!records.length) return showToast("No records found for current term", "error");
-    const names = [...new Set(scoped.filter(e => e.studentClass === student.class).map(e => e.studentName.toLowerCase().trim()))];
-    const standings = names
-      .map(n => ({ name: n, total: scoped.filter(e => e.studentName.toLowerCase().trim() === n && e.studentClass === student.class).reduce((a, c) => a + c.total, 0) }))
-      .sort((a, b) => b.total - a.total);
-    const pos = standings.findIndex(s => s.name === student.name.toLowerCase().trim()) + 1;
+
+    const standings = computeStandings(
+      entries,
+      student.class,
+      inTerm,
+      (studentEntries) => studentEntries.reduce((a, c) => a + c.total, 0)
+    );
+    const pos = standings.find(s => s.name === student.name.toLowerCase().trim())?.rank || 0;
+    
     const total = records.reduce((a, c) => a + c.total, 0);
     setActiveReport({
       id: student.id,
       name: student.name,
       class: student.class,
       records,
-      position: getOrdinal(pos),
-      classCount: names.length,
+      position: pos > 0 ? getOrdinalRank(pos) : "-",
+      classCount: standings.length,
       summary: { total, obtainable: records.length * 100, avg: records.length ? (total / records.length).toFixed(1) : "0.0" },
     });
     setActiveTab("reports");
@@ -5905,6 +6115,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
           <h2 className="text-xl font-black text-slate-900">Set Admin PIN</h2>
           <p className="text-xs text-slate-500 mt-2">First-time setup. Choose a strong password of at least 4 characters — letters, numbers and symbols are all supported. Keep it private; it grants full administrative access and cannot be recovered.</p>
         </div>
+        {/* Note: This block is technically unreachable since SchoolLock guarantees admin PIN exists. Maintained for safety. */}
         <div className="space-y-4">
           <Field label="New Admin PIN" error={setupErr}>
             <input type="password" maxLength={32} value={setupPin.nxt}
@@ -5919,7 +6130,10 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
           <Btn variant="primary" size="lg" className="w-full" onClick={async () => {
             if (setupPin.nxt.length < 4) return setSetupErr("Password must be at least 4 characters.");
             if (setupPin.nxt !== setupPin.cnf) return setSetupErr("Passwords do not match.");
-            await persistAdminPin(setupPin.nxt);
+            const session = loadTenantSession();
+            if (!session) return setSetupErr("Session error.");
+            const ok = await setAdminPin(session, setupPin.nxt);
+            if (!ok) return setSetupErr("Failed to save PIN.");
             setSetupPin({ nxt: "", cnf: "" });
             setNeedsAdminSetup(false);
             showToast("Admin PIN created. Please sign in.");
@@ -6392,11 +6606,27 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                       <h1 className="text-2xl font-black text-slate-900 uppercase">Records</h1>
                       <p className="text-sm text-slate-400">{termEntries.length} in {schoolSettings.term} · {bin.length} in bin</p>
                     </div>
-                    {(isAdmin || can("manageRecords")) && (
-                      <Btn variant={showBin ? "primary" : "outline"} onClick={() => setShowBin(b => !b)}>
-                        <RotateCcw size={14} />{showBin ? "View Active" : `Bin${bin.length ? ` (${bin.length})` : ""}`}
-                      </Btn>
-                    )}
+                    <div className="flex gap-2">
+                      <div className="flex gap-2 no-print">
+                        <Btn variant="outline" onClick={() => window.print()} title="Print / PDF">
+                          <Printer size={14}/> Print
+                        </Btn>
+                        <Btn variant="primary" onClick={() => {
+                          const headers = ["Student", "Class", "Subject", "CA", "Exam", "Total", "Grade"];
+                          const rows = filteredEntries.map(e => [
+                            e.studentName, e.studentClass, e.subject, e.caScore, e.examScore, e.total, getGrade(e.total).grade
+                          ]);
+                          exportToCSV(`Academic_Records`, headers, rows);
+                        }} title="Export Excel">
+                          <Download size={14}/> Export
+                        </Btn>
+                      </div>
+                      {(isAdmin || can("manageRecords")) && (
+                        <Btn variant={showBin ? "primary" : "outline"} onClick={() => setShowBin(b => !b)}>
+                          <RotateCcw size={14} />{showBin ? "View Active" : `Bin${bin.length ? ` (${bin.length})` : ""}`}
+                        </Btn>
+                      )}
+                    </div>
                   </div>
                   {!showBin && (
                     <Card className="p-4 space-y-3">
@@ -6536,6 +6766,11 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                       )
                   )}
                 </>
+              )}
+
+              {/* RANKINGS */}
+              {activeTab === "rankings" && (isAdmin || can("rankings")) && (
+                <RankingsTab entries={entries} schoolSettings={schoolSettings} can={can} isAdmin={isAdmin} />
               )}
 
               {/* REPORTS */}
@@ -6924,7 +7159,6 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                   setSchoolLogo={setSchoolLogo}
                   logoRef={logoRef as React.RefObject<HTMLInputElement>}
                   showToast={showToast}
-                  adminPinRef={adminPinRef}
                   tenantId={tenantId}
                 />
               )}
@@ -6980,7 +7214,6 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
           icon={Trash2}
           confirmLabel={<><Trash2 size={13} />Delete</>}
           confirmVariant="danger"
-          correctPin={adminPinRef.current}
           onConfirm={() => { dispatch({ type:"DELETE_ENTRY", id:dlg.data.id }); showToast("Moved to recycle bin"); setDlg(null); }}
           onCancel={() => setDlg(null)}
         >
@@ -7002,7 +7235,6 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
           icon={RotateCcw}
           confirmLabel={<><RotateCcw size={13} />Restore</>}
           confirmVariant="success"
-          correctPin={adminPinRef.current}
           onConfirm={() => { dispatch({ type:"RESTORE_ENTRY", id:dlg.data.id }); showToast("Record restored"); setDlg(null); }}
           onCancel={() => setDlg(null)}
         >
@@ -7022,7 +7254,6 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
           icon={UserX}
           confirmLabel={<><UserX size={13} />Revoke</>}
           confirmVariant="danger"
-          correctPin={adminPinRef.current}
           onConfirm={() => { dispatch({ type:"SET_STAFF_STATUS", id:dlg.data.id, status:"revoked" }); showToast(`${dlg.data.name}'s access revoked`); setDlg(null); }}
           onCancel={() => setDlg(null)}
         >
