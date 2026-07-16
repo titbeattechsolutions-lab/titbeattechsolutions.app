@@ -6,10 +6,20 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, ShieldOff, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Loader2, ShieldOff, ShieldCheck, RotateCcw, KeyRound, Activity } from "lucide-react";
+import TenantActivityAudit from "@/components/TenantActivityAudit";
+import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogHeader } from "@/components/ui/dialog";
+
+function generatePin(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s = "SCH-";
+  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
 
 interface SchoolDetail {
   id: string;
+  tenant_id: string;
   name: string;
   code: string;
   email: string | null;
@@ -59,6 +69,45 @@ export default function SchoolDetailPage() {
   const [savingPlan, setSavingPlan] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState("starter");
+  const [payOpen, setPayOpen] = useState<boolean>(false);
+
+  const resetSchoolPin = async () => {
+    if (!school?.tenant_id) return;
+    if (!confirm(`Reset school PIN for ${school.name}? A new PIN will be issued and all current sessions will be revoked.`)) return;
+    
+    const newPin = generatePin();
+    const { error } = await (supabase as any).rpc("reset_school_pin", { 
+      _tenant_id: school.tenant_id, 
+      _new_pin: newPin 
+    });
+    
+    if (error) {
+      toast({ title: "Failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    
+    await navigator.clipboard.writeText(newPin).catch(() => {});
+    toast({
+      title: "School PIN reset",
+      description: `New PIN: ${newPin} (copied to clipboard)`,
+      duration: 10000,
+    });
+  };
+
+  const resetAdminPin = async () => {
+    if (!school?.tenant_id) return;
+    if (!confirm(`Reset admin PIN for ${school.name}? They'll set a new one on next login.`)) return;
+    
+    const { error } = await (supabase as any).from("tenants")
+      .update({ admin_pin_hash: null })
+      .eq("id", school.tenant_id);
+      
+    if (error) {
+      toast({ title: "Failed", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Admin PIN reset successfully" });
+    }
+  };
 
   const load = async () => {
     if (!schoolId) return;
@@ -85,6 +134,7 @@ export default function SchoolDetailPage() {
   };
 
   useEffect(() => { load(); }, [schoolId]); // eslint-disable-line
+
 
   const handlePlanChange = async () => {
     if (!schoolId) return;
@@ -117,14 +167,33 @@ export default function SchoolDetailPage() {
   };
 
   const setStatus = async (status: "active" | "suspended") => {
-    if (!schoolId) return;
+    if (!schoolId || !school?.tenant_id) return;
     setSavingStatus(true);
+    
+    // 1. Update authoritative tenants table (this actually locks/unlocks login)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any).from("schools").update({ status }).eq("id", schoolId);
-    setSavingStatus(false);
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" }); return;
+    const { error: tenantErr } = await (supabase as any)
+      .from("tenants")
+      .update({ status })
+      .eq("id", school.tenant_id);
+      
+    if (tenantErr) {
+      setSavingStatus(false);
+      toast({ title: "Tenant update failed", description: tenantErr.message, variant: "destructive" }); return;
     }
+
+    // 2. Update schools table for UI consistency
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: schoolErr } = await (supabase as any)
+      .from("schools")
+      .update({ status })
+      .eq("id", schoolId);
+      
+    setSavingStatus(false);
+    if (schoolErr) {
+      toast({ title: "School update failed", description: schoolErr.message, variant: "destructive" }); return;
+    }
+    
     toast({ title: `School ${status === "suspended" ? "suspended" : "reactivated"}` });
     load();
   };
@@ -218,6 +287,10 @@ export default function SchoolDetailPage() {
             )}
 
             <div className="pt-2 space-y-2">
+              {/* NOTE: This plan change writes to public.billing and public.schools. 
+                  However, verify_school_pin_v2 still reads plan/dates from public.tenants. 
+                  Thus, this does NOT currently affect the tenant's actual login session.
+                  This is a known issue for a future fix. */}
               <p className="text-xs font-medium text-slate-500">Change Plan</p>
               <div className="flex gap-2">
                 <Select value={selectedPlan} onValueChange={setSelectedPlan}>
@@ -234,9 +307,66 @@ export default function SchoolDetailPage() {
               </div>
               <p className="text-xs text-slate-400">Updates features JSONB + max_students atomically</p>
             </div>
+
+            <div className="pt-4 space-y-2 border-t mt-4">
+              <p className="text-xs font-medium text-slate-500">Record Payment & Renew</p>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => setPayOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 flex-1">
+                  Record Payment...
+                </Button>
+              </div>
+              <p className="text-xs text-slate-400">Logs financial entry and unlocks tenant sessions atomically.</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Security & Access */}
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Security & Access</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-slate-500">School PIN</p>
+              <Button size="sm" variant="outline" onClick={resetSchoolPin} className="w-full justify-start text-slate-700">
+                <RotateCcw size={14} className="mr-2" /> Reset School PIN
+              </Button>
+              <p className="text-[11px] text-slate-400">Revokes all active sessions and issues a new PIN.</p>
+            </div>
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <p className="text-xs font-medium text-slate-500">Admin PIN</p>
+              <Button size="sm" variant="outline" onClick={resetAdminPin} className="w-full justify-start text-slate-700">
+                <KeyRound size={14} className="mr-2" /> Reset Admin PIN
+              </Button>
+              <p className="text-[11px] text-slate-400">Forces admin to create a new PIN on next login.</p>
+            </div>
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <p className="text-xs font-medium text-slate-500">Activity Logs</p>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="outline" className="w-full justify-start text-slate-700">
+                    <Activity size={14} className="mr-2" /> View Detailed Audit Log
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Activity Audit: {school.name}</DialogTitle>
+                  </DialogHeader>
+                  <TenantActivityAudit schoolId={school.id} />
+                </DialogContent>
+              </Dialog>
+              <p className="text-[11px] text-slate-400">View detailed cryptographic and session logs.</p>
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      {payOpen && school && billing && (
+        <PaymentDialog
+          school={school}
+          billing={billing}
+          onClose={() => setPayOpen(false)}
+          onRecorded={() => { setPayOpen(false); load(); }}
+        />
+      )}
     </div>
   );
 }
@@ -246,6 +376,100 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
     <div className="flex justify-between items-start gap-4">
       <span className="text-slate-500 shrink-0">{label}</span>
       <span className={`text-slate-800 text-right ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
+    </div>
+  );
+}
+
+function PaymentDialog({ school, billing, onClose, onRecorded }: { school: SchoolDetail; billing: BillingDetail; onClose: () => void; onRecorded: () => void }) {
+  const { toast } = useToast();
+  const [duration, setDuration] = useState<"termly" | "yearly">("termly");
+  const [amount, setAmount] = useState("");
+  const [reference, setReference] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!school.tenant_id) return;
+    setSaving(true);
+    
+    const days = duration === "termly" ? 90 : 365;
+    const now = new Date();
+    // Extend from current end if still active, else from now
+    const currentEnd = billing.current_period_end ? new Date(billing.current_period_end) : null;
+    const startFrom = currentEnd && currentEnd > now ? currentEnd : now;
+    const newEnd = new Date(startFrom.getTime() + days * 86400_000);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // 1. Insert into subscription_payments for financial audit (with explicit tier and plan=duration)
+      const { error: payErr } = await supabase.from("subscription_payments").insert({
+        tenant_id: school.tenant_id,
+        amount: Number(amount),
+        plan: duration, // Legacy enum ('termly', 'yearly')
+        tier: billing.plan, // New column ('starter', 'pro', etc.)
+        period_start: startFrom.toISOString(),
+        period_end: newEnd.toISOString(),
+        reference: reference || null,
+        notes: notes || null,
+        recorded_by: user?.id,
+      });
+      if (payErr) throw payErr;
+
+      toast({ title: "Subscription extended", description: `Active until ${newEnd.toLocaleDateString()}` });
+      onRecorded();
+    } catch (err) {
+      toast({ title: "Payment failed", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <Card className="w-full max-w-md shadow-xl">
+        <CardHeader>
+          <CardTitle>Record Payment — {school.name}</CardTitle>
+          <p className="text-sm text-slate-500">Log a bank transfer and extend this school's subscription.</p>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={submit} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Current Tier</label>
+              <div className="p-2 border rounded bg-slate-50 text-sm capitalize">{billing.plan}</div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Duration (Cycle)</label>
+              <Select value={duration} onValueChange={(v) => setDuration(v as "termly" | "yearly")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="termly">Termly (90 days)</SelectItem>
+                  <SelectItem value="yearly">Yearly (365 days)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium" htmlFor="amt">Amount (₦)</label>
+              <input id="amt" type="number" step="0.01" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium" htmlFor="ref">Reference (bank txn ID)</label>
+              <input id="ref" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={reference} onChange={(e) => setReference(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium" htmlFor="pn">Notes</label>
+              <textarea id="pn" className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={onClose} disabled={saving}>Cancel</Button>
+              <Button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700" disabled={saving}>
+                {saving ? "Saving..." : `Record & Extend`}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

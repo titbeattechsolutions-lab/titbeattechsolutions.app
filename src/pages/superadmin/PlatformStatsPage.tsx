@@ -27,19 +27,22 @@ export default function PlatformStatsPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
 
-      const [schoolsRes, countsRes, teachersRes, paymentsRes, billingRes] = await Promise.allSettled([
+      const [schoolsRes, countsRes, teachersRes, paymentsRes, subPaymentsRes, billingRes] = await Promise.allSettled([
         db.from("schools").select("id,status", { count: "exact" }),
         db.rpc("get_student_counts_by_school"),
-        db.from("teachers").select("id", { count: "exact" }),
+        db.rpc("get_teacher_counts_by_school"),
         db.from("payments").select("amount,status").eq("status", "success"),
+        db.from("subscription_payments").select("amount"),
         db.from("billing").select("plan"),
       ]);
 
       const schools = schoolsRes.status === "fulfilled" ? (schoolsRes.value.data ?? []) as { id: string; status: string }[] : [];
       const countsData = countsRes.status === "fulfilled" ? (countsRes.value.data ?? []) : [];
       const studentsCount = countsData.reduce((sum: number, c: any) => sum + Number(c.student_count), 0);
-      const teachersCount = teachersRes.status === "fulfilled" ? (teachersRes.value.count ?? 0) : 0;
+      const teacherCountsData = teachersRes.status === "fulfilled" ? (teachersRes.value.data ?? []) : [];
+      const teachersCount = teacherCountsData.reduce((sum: number, c: any) => sum + Number(c.teacher_count), 0);
       const payments = paymentsRes.status === "fulfilled" ? (paymentsRes.value.data ?? []) as { amount: number; status: string }[] : [];
+      const subPayments = subPaymentsRes.status === "fulfilled" ? (subPaymentsRes.value.data ?? []) as { amount: number }[] : [];
       const billing = billingRes.status === "fulfilled" ? (billingRes.value.data ?? []) as { plan: string }[] : [];
 
       setStats({
@@ -48,8 +51,8 @@ export default function PlatformStatsPage() {
         suspendedSchools: schools.filter((s) => s.status === "suspended").length,
         totalStudents: studentsCount,
         totalTeachers: teachersCount,
-        totalPaymentsSuccess: payments.length,
-        totalRevenueCollected: payments.reduce((sum, p) => sum + Number(p.amount), 0),
+        totalPaymentsSuccess: payments.length + subPayments.length,
+        totalRevenueCollected: payments.reduce((sum, p) => sum + Number(p.amount), 0) + subPayments.reduce((sum, p) => sum + Number(p.amount), 0),
         schoolsOnStarter: billing.filter((b) => b.plan === "starter").length,
         schoolsOnPro: billing.filter((b) => b.plan === "pro").length,
         schoolsOnEnterprise: billing.filter((b) => b.plan === "enterprise").length,

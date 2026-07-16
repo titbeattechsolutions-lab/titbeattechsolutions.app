@@ -6,11 +6,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface TenantActivityAuditProps {
-  tenantId: string;
+  schoolId: string;
 }
 
-export default function TenantActivityAudit({ tenantId }: TenantActivityAuditProps) {
+export default function TenantActivityAudit({ schoolId }: TenantActivityAuditProps) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [accessLogs, setAccessLogs] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -19,20 +21,20 @@ export default function TenantActivityAudit({ tenantId }: TenantActivityAuditPro
       setLoading(true);
       
       try {
-        // Fetch Login/Logout Logs
-        const { data: logins } = await (supabase
-          .from("login_logs" as any) as any)
+        // Fetch Login/Logout Logs (Modern Architecture)
+        const { data: logins } = await supabase
+          .from("session_logs")
           .select("*")
-          .eq("tenant_id", tenantId)
-          .order("timestamp", { ascending: false })
+          .eq("school_id", schoolId)
+          .order("created_at", { ascending: false })
           .limit(50);
           
-        // Fetch Granular Activity Logs
+        // Fetch Granular Activity Logs (Modern Architecture)
         const { data: activities } = await supabase
-          .from("tenant_activity_logs")
+          .from("activity_logs")
           .select("*")
-          .eq("tenant_id", tenantId)
-          .order("timestamp", { ascending: false })
+          .eq("school_id", schoolId)
+          .order("created_at", { ascending: false })
           .limit(100);
 
         if (logins) setAccessLogs(logins);
@@ -44,8 +46,8 @@ export default function TenantActivityAudit({ tenantId }: TenantActivityAuditPro
       }
     };
 
-    if (tenantId) fetchLogs();
-  }, [tenantId]);
+    if (schoolId) fetchLogs();
+  }, [schoolId]);
 
   const formatTime = (isoString: string) => new Date(isoString).toLocaleString();
 
@@ -92,7 +94,7 @@ export default function TenantActivityAudit({ tenantId }: TenantActivityAuditPro
             <div>
               <p className="text-xs font-bold text-slate-500 uppercase">Active Staff</p>
               <p className="text-xl font-black text-slate-800">
-                {new Set(activityLogs.map(l => l.staff_id)).size}
+                {new Set(activityLogs.map(l => l.performed_by).filter(Boolean)).size}
               </p>
             </div>
           </div>
@@ -125,10 +127,12 @@ export default function TenantActivityAudit({ tenantId }: TenantActivityAuditPro
                       <tr key={log.id} className="hover:bg-slate-50">
                         <td className="px-4 py-3 font-semibold text-slate-800">{log.action}</td>
                         <td className="px-4 py-3 text-slate-600">
-                          <Badge variant="outline">{log.staff_id}</Badge>
+                          <Badge variant="outline">{log.performed_by || "System"}</Badge>
                         </td>
-                        <td className="px-4 py-3 text-slate-500 text-xs">{log.details || "—"}</td>
-                        <td className="px-4 py-3 text-slate-400 text-xs">{formatTime(log.timestamp)}</td>
+                        <td className="px-4 py-3 text-slate-500 text-xs">
+                          {log.details ? (typeof log.details === 'object' ? JSON.stringify(log.details) : log.details) : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-slate-400 text-xs">{formatTime(log.created_at)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -158,7 +162,7 @@ export default function TenantActivityAudit({ tenantId }: TenantActivityAuditPro
                       <tr key={log.id} className="hover:bg-slate-50">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            {log.event_type === "login" ? (
+                            {log.action === "login" ? (
                               <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
                                 <LogIn className="w-3 h-3 mr-1" /> Login
                               </Badge>
@@ -170,12 +174,12 @@ export default function TenantActivityAudit({ tenantId }: TenantActivityAuditPro
                           </div>
                         </td>
                         <td className="px-4 py-3 text-slate-600">
-                          <Badge variant="secondary" className="bg-slate-100 text-slate-600 hover:bg-slate-200">
-                            {log.auth_type} {log.staff_id ? `(${log.staff_id})` : ""}
+                          <Badge variant="secondary" className="bg-slate-100 text-slate-600 hover:bg-slate-200 capitalize">
+                            {log.role} {log.user_name ? `(${log.user_name})` : ""}
                           </Badge>
                         </td>
                         <td className="px-4 py-3 text-slate-500 text-xs font-mono">{log.ip_address || "—"}</td>
-                        <td className="px-4 py-3 text-slate-400 text-xs">{formatTime(log.timestamp)}</td>
+                        <td className="px-4 py-3 text-slate-400 text-xs">{formatTime(log.created_at)}</td>
                       </tr>
                     ))}
                   </tbody>
