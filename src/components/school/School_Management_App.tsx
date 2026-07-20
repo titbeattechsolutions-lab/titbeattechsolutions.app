@@ -1216,7 +1216,7 @@ const PinAuth = ({ title, subtitle, headerColor = "bg-blue-600", icon: Icon, chi
     } finally {
       setChecking(false);
     }
-  }, [pin, correctPin, onConfirm, checking]);
+  }, [pin, onConfirm, checking]);
 
   return (
     <Modal onBgClick={onCancel}>
