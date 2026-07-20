@@ -52,11 +52,32 @@ async function fetchProfile(userId: string, email: string | null): Promise<AuthP
     .maybeSingle();
 
   if (profileRow) {
+    let role = (profileRow.role as AppRole) ?? "unassigned";
+    let schoolId = profileRow.school_id ?? null;
+
+    // If role is unassigned, see if there's a pre-registration invite to claim
+    if (role === "unassigned") {
+      const { data: claimed } = await supabase.rpc("claim_pre_registration");
+      if (claimed) {
+        // Re-fetch profile to get the newly assigned role and schoolId
+        const { data: updatedProfile } = await (supabase as any)
+          .from("profiles")
+          .select("role, school_id, first_name, last_name")
+          .eq("id", userId)
+          .maybeSingle();
+
+        if (updatedProfile) {
+          role = (updatedProfile.role as AppRole) ?? "unassigned";
+          schoolId = updatedProfile.school_id ?? null;
+        }
+      }
+    }
+
     return {
       userId,
       email,
-      role: (profileRow.role as AppRole) ?? "unassigned",
-      schoolId: profileRow.school_id ?? null,
+      role,
+      schoolId,
       firstName: profileRow.first_name ?? null,
       lastName: profileRow.last_name ?? null,
     };

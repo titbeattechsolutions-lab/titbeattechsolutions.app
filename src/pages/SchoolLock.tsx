@@ -223,16 +223,7 @@ export default function SchoolLock() {
                   {loading ? <><Spinner /> Verifying…</> : <>Continue</>}
                 </button>
 
-                <div className="auth-divider">
-                  <div className="auth-divider-line" />
-                  <span className="auth-divider-text">service provider?</span>
-                  <div className="auth-divider-line" />
-                </div>
-                <div style={{ textAlign: "center" }}>
-                  <button type="button" className="auth-link-btn" onClick={() => navigate("/auth")}>
-                    Provider sign-in &rarr;
-                  </button>
-                </div>
+
               </form>
             )}
 
@@ -299,7 +290,7 @@ export default function SchoolLock() {
 
           <div style={{ marginTop: "1.75rem", textAlign: "center" }}>
             <p style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-              Powered by <strong style={{ color: "#64748b" }}>Titbeattechsolutions LLC</strong>
+              Powered by <strong style={{ color: "#64748b" }}>Titbeattechsolutions LTD</strong>
             </p>
           </div>
         </div>

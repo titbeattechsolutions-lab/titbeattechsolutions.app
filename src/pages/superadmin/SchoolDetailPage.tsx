@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Loader2, ShieldOff, ShieldCheck, RotateCcw, KeyRound, Activity } from "lucide-react";
 import TenantActivityAudit from "@/components/TenantActivityAudit";
-import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogHeader } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogHeader, DialogDescription } from "@/components/ui/dialog";
 
 function generatePin(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -169,31 +169,17 @@ export default function SchoolDetailPage() {
   const setStatus = async (status: "active" | "suspended") => {
     if (!schoolId || !school?.tenant_id) return;
     setSavingStatus(true);
-    
-    // 1. Update authoritative tenants table (this actually locks/unlocks login)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: tenantErr } = await (supabase as any)
-      .from("tenants")
-      .update({ status })
-      .eq("id", school.tenant_id);
-      
-    if (tenantErr) {
-      setSavingStatus(false);
-      toast({ title: "Tenant update failed", description: tenantErr.message, variant: "destructive" }); return;
+    const { error: rpcErr } = await (supabase as any).rpc("set_tenant_status", {
+      _tenant_id: school.tenant_id,
+      _status: status,
+      _school_id: schoolId,
+    });
+
+    setSavingStatus(false);
+    if (rpcErr) {
+      toast({ title: "Update failed", description: rpcErr.message, variant: "destructive" }); return;
     }
 
-    // 2. Update schools table for UI consistency
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: schoolErr } = await (supabase as any)
-      .from("schools")
-      .update({ status })
-      .eq("id", schoolId);
-      
-    setSavingStatus(false);
-    if (schoolErr) {
-      toast({ title: "School update failed", description: schoolErr.message, variant: "destructive" }); return;
-    }
-    
     toast({ title: `School ${status === "suspended" ? "suspended" : "reactivated"}` });
     load();
   };
@@ -349,6 +335,7 @@ export default function SchoolDetailPage() {
                 <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>Activity Audit: {school.name}</DialogTitle>
+                    <DialogDescription>Review granular staff and system actions performed in this tenant.</DialogDescription>
                   </DialogHeader>
                   <TenantActivityAudit schoolId={school.id} />
                 </DialogContent>

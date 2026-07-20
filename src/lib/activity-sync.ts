@@ -19,7 +19,7 @@ export async function syncActivityLog(
     return;
   }
 
-    const { error } = await supabase.rpc("log_tenant_activity", {
+    const { error } = await supabase.rpc("log_tenant_activity_v2", {
       _tenant_id: tenantId,
       _staff_id: staffId,
       _action: action,

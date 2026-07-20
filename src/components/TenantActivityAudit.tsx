@@ -14,6 +14,7 @@ export default function TenantActivityAudit({ schoolId }: TenantActivityAuditPro
   const [accessLogs, setAccessLogs] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
+  const [activeStaffCount, setActiveStaffCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -37,8 +38,13 @@ export default function TenantActivityAudit({ schoolId }: TenantActivityAuditPro
           .order("created_at", { ascending: false })
           .limit(100);
 
+        // Fetch Authoritative Staff Count
+        const { data: staffCountData } = await supabase
+          .rpc("get_tenant_staff_count", { _school_id: schoolId });
+
         if (logins) setAccessLogs(logins);
         if (activities) setActivityLogs(activities);
+        if (staffCountData !== null) setActiveStaffCount(Number(staffCountData));
       } catch (err) {
         console.error("Error fetching tenant audit logs:", err);
       } finally {
@@ -94,7 +100,7 @@ export default function TenantActivityAudit({ schoolId }: TenantActivityAuditPro
             <div>
               <p className="text-xs font-bold text-slate-500 uppercase">Active Staff</p>
               <p className="text-xl font-black text-slate-800">
-                {new Set(activityLogs.map(l => l.performed_by).filter(Boolean)).size}
+                {activeStaffCount}
               </p>
             </div>
           </div>
@@ -127,7 +133,7 @@ export default function TenantActivityAudit({ schoolId }: TenantActivityAuditPro
                       <tr key={log.id} className="hover:bg-slate-50">
                         <td className="px-4 py-3 font-semibold text-slate-800">{log.action}</td>
                         <td className="px-4 py-3 text-slate-600">
-                          <Badge variant="outline">{log.performed_by || "System"}</Badge>
+                          <Badge variant="outline">{(log.details as any)?.actor || log.performed_by || "System"}</Badge>
                         </td>
                         <td className="px-4 py-3 text-slate-500 text-xs">
                           {log.details ? (typeof log.details === 'object' ? JSON.stringify(log.details) : log.details) : "—"}

@@ -37,17 +37,36 @@ async function main() {
   
   for (const td of tdList || []) {
     const rolls = td.data.classRolls || {};
+    const entries = td.data.entries || [];
     let total = 0;
-    console.log(`\n--- Tenant ${td.tenant_id} classRolls ---`);
+    
+    // Find students who have entries (scores)
+    const studentsWithScores = new Set();
+    for (const entry of entries) {
+      if (entry.studentId) {
+        studentsWithScores.add(entry.studentId);
+      }
+    }
+    
+    let enrolledWithScores = 0;
+    
+    console.log(`\n--- Tenant ${td.tenant_id} ---`);
     for (const [clsName, students] of Object.entries(rolls)) {
       if (Array.isArray(students)) {
-        console.log(`Class ${clsName}: ${students.length} students`);
+        let classScoresCount = 0;
+        students.forEach(s => {
+          if (studentsWithScores.has(s.id)) {
+            classScoresCount++;
+            enrolledWithScores++;
+          }
+        });
+        console.log(`Class ${clsName}: ${students.length} students enrolled. (${classScoresCount} have scores)`);
         total += students.length;
-      } else {
-        console.log(`Class ${clsName}: (not an array)`);
       }
     }
     console.log(`Total students in classRolls: ${total}`);
+    console.log(`Total enrolled students with scores: ${enrolledWithScores}`);
+    console.log(`Total unique students in entries (scores recorded): ${studentsWithScores.size}`);
   }
 }
 

@@ -22,7 +22,7 @@ export default function TeacherLayout({ schoolName }: { schoolName?: string }) {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
 
-  const handleSignOut = async () => { await signOut(); navigate("/auth"); };
+  const handleSignOut = async () => { await signOut(); navigate("/"); };
 
   const initials = [profile?.firstName, profile?.lastName]
     .filter(Boolean).map((s) => s![0].toUpperCase()).join("")

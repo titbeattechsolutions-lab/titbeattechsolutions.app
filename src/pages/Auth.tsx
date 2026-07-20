@@ -44,11 +44,21 @@ export default function Auth() {
 
   const handle = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const lockoutUntil = localStorage.getItem("auth_lockout_until");
+    if (lockoutUntil && Date.now() < parseInt(lockoutUntil, 10)) {
+      const remainingSeconds = Math.ceil((parseInt(lockoutUntil, 10) - Date.now()) / 1000);
+      toast({ title: "Too many attempts", description: `Try again in ${remainingSeconds} seconds.`, variant: "destructive" });
+      return;
+    }
+
     setLoading(true);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      
+
+      localStorage.removeItem("auth_failed_attempts");
+      localStorage.removeItem("auth_lockout_until");
       if (data.user) {
         await logAuthEvent({
           authType: "super_admin",
@@ -71,7 +81,18 @@ export default function Auth() {
         navigate("/superadmin", { replace: true });
       }
     } catch (err) {
-      toast({ title: "Sign-in failed", description: (err as Error).message, variant: "destructive" });
+      const attempts = parseInt(localStorage.getItem("auth_failed_attempts") || "0", 10) + 1;
+      localStorage.setItem("auth_failed_attempts", attempts.toString());
+      
+      if (attempts >= 5) {
+        localStorage.setItem("auth_lockout_until", (Date.now() + 5 * 60 * 1000).toString());
+        toast({ title: "Account locked", description: "Too many failed attempts. Try again in 5 minutes.", variant: "destructive" });
+      } else if (attempts >= 3) {
+        localStorage.setItem("auth_lockout_until", (Date.now() + 30 * 1000).toString());
+        toast({ title: "Sign-in failed", description: "Invalid email or password. Please try again in 30 seconds.", variant: "destructive" });
+      } else {
+        toast({ title: "Sign-in failed", description: "Invalid email or password.", variant: "destructive" });
+      }
     } finally {
       setLoading(false);
     }
@@ -160,7 +181,7 @@ export default function Auth() {
 
           <div style={{ marginTop: "1.75rem", textAlign: "center" }}>
             <p style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-              Powered by <strong style={{ color: "#64748b" }}>Titbeattechsolutions LLC</strong>
+              Powered by <strong style={{ color: "#64748b" }}>Titbeattechsolutions LTD</strong>
             </p>
           </div>
         </div>

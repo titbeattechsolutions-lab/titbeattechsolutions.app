@@ -248,7 +248,7 @@ export default function ActivityLogPage() {
                       {log.school_name ?? (log.school_id ? <span className="font-mono">{log.school_id.slice(0, 8)}…</span> : <span className="text-slate-300">platform</span>)}
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-500 font-mono">
-                      {log.performed_by ? log.performed_by.slice(0, 8) + "…" : "—"}
+                      {log.details?.actor ? log.details.actor : (log.performed_by ? log.performed_by.slice(0, 8) + "…" : "—")}
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-600 max-w-xs">
                       {log.details ? (

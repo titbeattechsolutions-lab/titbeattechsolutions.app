@@ -12,9 +12,10 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { Printer, Mail, CheckCheck, Loader2, AlertTriangle, UserPen, ArrowRight } from "lucide-react";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from "@/components/ui/dialog";
 
 interface ReportCardActionsProps {
@@ -50,8 +51,9 @@ export default function ReportCardSupabaseActions({
   curC,
   schoolSettings,
   tenantId,
-}: ReportCardActionsProps) {
+}) {
   const { toast } = useToast();
+  const { role } = useAuth();
 
   const [schoolId, setSchoolId]         = useState<string | null>(null);
   const [saving, setSaving]             = useState(false);
@@ -328,21 +330,23 @@ export default function ReportCardSupabaseActions({
         </Button>
 
         {/* Send to Parent */}
-        <Button
-          variant="default"
-          size="sm"
-          className="h-10 text-xs font-black uppercase bg-indigo-600 hover:bg-indigo-700"
-          onClick={() => setShowModal(true)}
-          disabled={sending}
-        >
-          {sending
-            ? <Loader2 size={14} className="animate-spin mr-1.5" />
-            : sentTo
-            ? <CheckCheck size={14} className="mr-1.5 text-emerald-300" />
-            : <Mail size={14} className="mr-1.5" />
-          }
-          {sending ? "Sending…" : sentTo ? "Resend to Parent" : "Send to Parent"}
-        </Button>
+        {role !== "teacher" && (
+          <Button
+            variant="default"
+            size="sm"
+            className="h-10 text-xs font-black uppercase bg-indigo-600 hover:bg-indigo-700"
+            onClick={() => setShowModal(true)}
+            disabled={sending}
+          >
+            {sending
+              ? <Loader2 size={14} className="animate-spin mr-1.5" />
+              : sentTo
+              ? <CheckCheck size={14} className="mr-1.5 text-emerald-300" />
+              : <Mail size={14} className="mr-1.5" />
+            }
+            {sending ? "Sending…" : sentTo ? "Resend to Parent" : "Send to Parent"}
+          </Button>
+        )}
       </div>
 
       {/* Last sent timestamp */}
@@ -357,6 +361,7 @@ export default function ReportCardSupabaseActions({
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base font-black uppercase">Send Report Card</DialogTitle>
+            <DialogDescription className="sr-only">Confirm sending the report card to the parent's email address.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">

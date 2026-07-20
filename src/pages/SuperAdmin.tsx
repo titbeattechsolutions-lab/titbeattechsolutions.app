@@ -264,14 +264,23 @@ function TenantRow({ tenant, onChanged, onRecordPayment }: { tenant: Tenant; onC
     : "destructive";
 
   const setStatus = async (status: Tenant["status"]) => {
-    const { error } = await supabase.from("tenants").update({ status }).eq("id", tenant.id);
+    // Uses atomic SECURITY DEFINER RPC — bypasses RLS safely, purges sessions on suspend,
+    // mirrors status on schools table, and writes an audit log entry.
+    const { error } = await (supabase as any).rpc("set_tenant_status", {
+      _tenant_id: tenant.id,
+      _status: status,
+      // _school_id omitted — RPC resolves it from the tenant FK internally
+    });
     if (error) toast({ title: "Failed", description: error.message, variant: "destructive" });
     else { toast({ title: `Status → ${status}` }); onChanged(); }
   };
 
   const resetAdminPin = async () => {
     if (!confirm(`Reset admin PIN for ${tenant.school_name}? They'll set a new one on next login.`)) return;
-    const { error } = await supabase.from("tenants").update({ admin_pin_hash: null }).eq("id", tenant.id);
+    // Uses SECURITY DEFINER RPC — avoids 403 from RLS and bcrypt trigger permission issues.
+    const { error } = await (supabase as any).rpc("reset_admin_pin_to_null", {
+      _tenant_id: tenant.id,
+    });
     if (error) toast({ title: "Failed", description: error.message, variant: "destructive" });
     else { toast({ title: "Admin PIN reset" }); onChanged(); }
   };
@@ -446,12 +455,14 @@ function PaymentDialog({ tenant, onClose, onRecorded }: { tenant: Tenant; onClos
     });
     if (payErr) { toast({ title: "Payment failed", description: payErr.message, variant: "destructive" }); setSaving(false); return; }
 
-    const { error: tErr } = await supabase.from("tenants").update({
-      status: "active",
-      plan,
-      subscription_starts_at: tenant.subscription_starts_at ?? now.toISOString(),
-      subscription_ends_at: newEnd.toISOString(),
-    }).eq("id", tenant.id);
+    // Uses atomic SECURITY DEFINER RPC — updates status + plan + subscription window,
+    // mirrors status=active on the schools row, and audits the action.
+    const { error: tErr } = await (supabase as any).rpc("extend_tenant_subscription", {
+      _tenant_id: tenant.id,
+      _plan: plan,
+      _subscription_starts_at: (tenant.subscription_starts_at ?? now.toISOString()),
+      _subscription_ends_at: newEnd.toISOString(),
+    });
     setSaving(false);
     if (tErr) { toast({ title: "Update failed", description: tErr.message, variant: "destructive" }); return; }
 
@@ -632,13 +643,15 @@ function DuplicatesBanner({ refreshKey, onChanged }: { refreshKey: number; onCha
 
   useEffect(() => { load(); }, [load, refreshKey]);
 
-  const suspendOne = async (tenantId: string, schoolName: string, matchType: string) => {
+  const suspendOne = async (tenantId: string, schoolName: string, _matchType: string) => {
     if (!confirm(`Suspend "${schoolName}" as a duplicate? All active sessions will be revoked.`)) return;
     setBusy(tenantId);
-    const { error } = await supabase.rpc("suspend_duplicate_tenant" as never, {
+    // Unified atomic RPC — syncs schools row, purges sessions, and audits the action.
+    // _school_id omitted — RPC self-resolves from tenant FK (safe for tenant-only records too).
+    const { error } = await (supabase as any).rpc("set_tenant_status", {
       _tenant_id: tenantId,
-      _reason: `duplicate ${matchType}`,
-    } as never);
+      _status: "suspended",
+    });
     setBusy(null);
     if (error) {
       toast({ title: "Suspend failed", description: error.message, variant: "destructive" });

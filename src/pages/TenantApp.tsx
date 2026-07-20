@@ -8,9 +8,11 @@ import {
   saveTenantDataV3,
   clearTenantSession,
   daysRemaining,
+  checkTenantStatus,
   type TenantSession,
 } from "@/lib/tenant-client";
 import { logAuthEvent } from "@/lib/auth-logger";
+import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LogOut, CloudOff, Loader2, Cloud, CloudUpload } from "lucide-react";
@@ -260,6 +262,54 @@ export default function TenantApp() {
       pushIfChanged();
     };
   }, [phase, session, dispatchRehydrate]);
+
+  // 3. Real-time suspension detection
+  // Polls the database every 60 seconds while the tenant is inside the app.
+  // If the provider suspends the account, set_tenant_status purges the session
+  // token from tenant_sessions — checkTenantStatus returns null immediately,
+  // triggering a forced sign-out with a clear toast notification.
+  useEffect(() => {
+    if (phase !== "ready" || !session) return;
+
+    const STATUS_POLL_MS = 60_000;
+
+    const pollStatus = async () => {
+      const liveStatus = await checkTenantStatus(session);
+
+      if (liveStatus === null || liveStatus === "suspended") {
+        // Session was purged or tenant was suspended — force logout immediately.
+        clearTenantSession();
+        localStorage.removeItem(DB_KEY);
+        toast({
+          title: liveStatus === "suspended"
+            ? "Account suspended"
+            : "Session ended",
+          description: liveStatus === "suspended"
+            ? "Your school's access has been suspended by your provider. Please contact them to restore access."
+            : "Your session is no longer valid. Please sign in again.",
+          variant: "destructive",
+        });
+        navigate("/", { replace: true });
+        return;
+      }
+
+      if (liveStatus === "expired") {
+        clearTenantSession();
+        localStorage.removeItem(DB_KEY);
+        toast({
+          title: "Subscription expired",
+          description: "Your subscription has ended. Please contact your provider to renew.",
+          variant: "destructive",
+        });
+        navigate("/", { replace: true });
+      }
+    };
+
+    // Run once immediately on mount (catches suspensions that happened while offline)
+    pollStatus();
+    const statusTimer = setInterval(pollStatus, STATUS_POLL_MS);
+    return () => clearInterval(statusTimer);
+  }, [phase, session, navigate]);
 
   const signOut = async () => {
     // Mark signed-out FIRST so the unmount cleanup's pushIfChanged is a no-op

@@ -68,31 +68,18 @@ export default function SchoolsListPage() {
 
   const setStatus = async (schoolId: string, tenantId: string, status: "active" | "suspended") => {
     setBusy(schoolId);
-    
-    // 1. Update authoritative tenants table (this actually locks/unlocks login)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: tenantErr } = await (supabase as any)
-      .from("tenants")
-      .update({ status })
-      .eq("id", tenantId);
-      
-    if (tenantErr) {
-      setBusy(null);
-      toast({ title: "Tenant update failed", description: tenantErr.message, variant: "destructive" }); return;
+    // _school_id is the 3rd optional param; RPC resolves it from FK when provided.
+    const { error: rpcErr } = await (supabase as any).rpc("set_tenant_status", {
+      _tenant_id: tenantId,
+      _status: status,
+      _school_id: schoolId,
+    });
+
+    setBusy(null);
+    if (rpcErr) {
+      toast({ title: "Update failed", description: rpcErr.message, variant: "destructive" }); return;
     }
 
-    // 2. Update schools table for UI consistency
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: schoolErr } = await (supabase as any)
-      .from("schools")
-      .update({ status })
-      .eq("id", schoolId);
-      
-    setBusy(null);
-    if (schoolErr) {
-      toast({ title: "School update failed", description: schoolErr.message, variant: "destructive" }); return;
-    }
-    
     toast({ title: `School ${status === "suspended" ? "suspended" : "reactivated"}` });
     load();
   };
@@ -257,26 +244,24 @@ function DuplicatesBanner({ onChanged }: { onChanged: () => void }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const suspendOne = async (tenantId: string, schoolName: string, matchType: string) => {
+  const suspendOne = async (tenantId: string, schoolName: string, _matchType: string) => {
     if (!confirm(`Suspend "${schoolName}" as a duplicate? All active sessions will be revoked.`)) return;
     setBusy(tenantId);
-    
-    // 1. Authoritative suspension on tenants table
-    const { error: tErr } = await (supabase as any).rpc("suspend_duplicate_tenant", {
+
+    // Use the same atomic RPC as the main suspend button.
+    // _school_id is omitted — the RPC resolves it internally from the tenant FK.
+    // This guarantees sessions are purged, schools row is synced, and the action is audited.
+    const { error: rpcErr } = await (supabase as any).rpc("set_tenant_status", {
       _tenant_id: tenantId,
-      _reason: `duplicate ${matchType}`,
+      _status: "suspended",
     });
-    
-    if (tErr) {
-      setBusy(null);
-      toast({ title: "Suspend failed", description: tErr.message, variant: "destructive" });
+
+    setBusy(null);
+    if (rpcErr) {
+      toast({ title: "Suspend failed", description: rpcErr.message, variant: "destructive" });
       return;
     }
-    
-    // 2. Sync UI state on schools table
-    await (supabase as any).from("schools").update({ status: 'suspended' }).eq("tenant_id", tenantId);
-    
-    setBusy(null);
+
     toast({ title: "Tenant suspended", description: schoolName });
     await load();
     onChanged();

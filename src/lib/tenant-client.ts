@@ -107,3 +107,30 @@ export function daysRemaining(session: TenantSession): number | null {
   if (!end) return null;
   return Math.ceil((end.getTime() - Date.now()) / 86400_000);
 }
+
+/**
+ * Check whether the tenant session is still valid and return the live status.
+ *
+ * Calls the `check_tenant_session_status` SECURITY DEFINER RPC which:
+ *   - validates the session token against `tenant_sessions`
+ *   - returns the current live `status` from `tenants`
+ *   - returns null if the token has been purged (e.g. by a superadmin suspend)
+ *
+ * Return values:
+ *   'active' | 'trial'              → session is healthy
+ *   'suspended' | 'expired'         → access should be revoked
+ *   null                            → token missing or session was deleted
+ */
+export async function checkTenantStatus(
+  session: TenantSession
+): Promise<"active" | "trial" | "suspended" | "expired" | null> {
+  try {
+    const { data, error } = await supabase.rpc("check_tenant_session_status", {
+      _session_token: session.sessionToken,
+    });
+    if (error) return null;
+    return (data as "active" | "trial" | "suspended" | "expired" | null) ?? null;
+  } catch {
+    return null;
+  }
+}
