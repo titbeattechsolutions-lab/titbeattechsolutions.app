@@ -79,13 +79,7 @@ export async function fetchTenantData(session: TenantSession): Promise<Record<st
   return (data as Record<string, unknown>) ?? {};
 }
 
-export async function saveTenantData(session: TenantSession, data: unknown): Promise<boolean> {
-  const { data: ok, error } = await supabase.rpc("save_tenant_data_v2", {
-    _session_token: session.sessionToken,
-    _data: data as never,
-  });
-  return !error && ok === true;
-}
+
 
 export async function saveTenantDataV3(session: TenantSession, expectedRev: number, data: unknown): Promise<{ success: boolean; rev?: number; error?: string; currentData?: any }> {
   const { data: result, error } = await supabase.rpc("save_tenant_data_v3", {

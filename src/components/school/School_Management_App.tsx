@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { verifyAdminPin, setAdminPin, loadTenantSession } from "@/lib/tenant-client";
 import { exportToCSV } from "@/lib/exportUtils";
-
+import { getOrdinal } from "@/lib/school-helpers";
 
 // ─── Upgrade Imports (CDN-based, no bundler needed) ──────────────────────────
 // Firebase, jsPDF and SheetJS are loaded dynamically at runtime to keep this
@@ -734,10 +734,7 @@ const getGrade = (s: number) => {
   return           { grade:"F9", remark:"Fail",       color:"#dc2626", bg:"#fee2e2" };
 };
 
-const getOrdinal = (n: number) => {
-  const s = ["th","st","nd","rd"], v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
-};
+
 
 const fmtTs = (iso: string) => {
   const d = new Date(iso);
@@ -5471,10 +5468,7 @@ function InboxView({
   );
 }
 
-function getOrdinalRank(n: number) {
-  const s = ["th", "st", "nd", "rd"], v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
-}
+
 
 function RankingsTab({ entries, schoolSettings, can, isAdmin }: { entries: Entry[]; schoolSettings: SchoolSettings; can: (p:string)=>boolean; isAdmin: boolean }) {
   const [rankClass, setRankClass] = useState(ALL_CLASSES[0]);
@@ -5607,7 +5601,7 @@ function RankingsTab({ entries, schoolSettings, can, isAdmin }: { entries: Entry
                       <td className="px-5 py-3 font-black text-slate-900">
                         <div className="flex items-center gap-2">
                           {s.rank <= 3 && <Trophy size={14} className={s.rank === 1 ? "text-amber-500" : s.rank === 2 ? "text-slate-400" : "text-amber-700"} />}
-                          {getOrdinalRank(s.rank)}
+                          {getOrdinal(s.rank)}
                         </div>
                       </td>
                       <td className="px-5 py-3 font-bold text-slate-700">{toTitleCase(s.name)}</td>
@@ -6011,7 +6005,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
       name: student.name,
       class: student.class,
       records,
-      position: pos > 0 ? getOrdinalRank(pos) : "-",
+      position: pos > 0 ? getOrdinal(pos) : "-",
       classCount: standings.length,
       summary: { total, obtainable: records.length * 100, avg: records.length ? (total / records.length).toFixed(1) : "0.0" },
     });
