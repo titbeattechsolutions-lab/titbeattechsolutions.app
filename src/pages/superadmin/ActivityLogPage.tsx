@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw, Loader2, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import LoginActivityDashboard from "@/components/LoginActivityDashboard";
 
 interface ActivityLog {
   id: number;
@@ -45,8 +47,9 @@ const ACTION_COLORS: Record<string, string> = {
 
 export default function ActivityLogPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<"system" | "staff">("system");
+  const [activeTab, setActiveTab] = useState<"system" | "staff" | "my_activity">("system");
   
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [staffLogs, setStaffLogs] = useState<StaffSessionLog[]>([]);
@@ -104,6 +107,28 @@ export default function ActivityLogPage() {
       setLogs((data ?? []) as ActivityLog[]);
       setTotal(count ?? 0);
       setHasMore((count ?? 0) > to + 1);
+    } else if (activeTab === "my_activity") {
+      if (!user) return;
+      // Fetch operations where performed_by in details matches current superadmin
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const query = (supabase as any)
+        .from("activity_logs")
+        .select("*", { count: "exact" })
+        .eq("details->>performed_by", user.id)
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      const { data, error, count } = await query;
+      setLoading(false);
+
+      if (error) {
+        console.error("Failed to fetch my activity logs:", error);
+        toast({ title: "Error", description: error.message, variant: "destructive" }); return;
+      }
+
+      setLogs((data ?? []) as ActivityLog[]);
+      setTotal(count ?? 0);
+      setHasMore((count ?? 0) > to + 1);
     } else {
       let query = supabase
         .from("staff_session_logs")
@@ -127,7 +152,7 @@ export default function ActivityLogPage() {
       setHasMore((count ?? 0) > to + 1);
     }
     setPage(p);
-  }, [activeTab, filterAction, filterSchoolId, toast]);
+  }, [activeTab, filterAction, filterSchoolId, toast, user]);
 
   useEffect(() => { load(0); }, [load, activeTab]);
 
@@ -146,7 +171,7 @@ export default function ActivityLogPage() {
       )
     : staffLogs;
 
-  const distinctActions = activeTab === "system" 
+  const distinctActions = (activeTab === "system" || activeTab === "my_activity")
     ? Array.from(new Set(logs.map((l) => l.action))).sort()
     : Array.from(new Set(staffLogs.map((l) => l.action))).sort();
 
@@ -172,6 +197,12 @@ export default function ActivityLogPage() {
               onClick={() => { setActiveTab("staff"); setPage(0); }}
             >
               Staff Sessions
+            </button>
+            <button 
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === "my_activity" ? "bg-white shadow text-slate-900" : "text-slate-500 hover:text-slate-700"}`}
+              onClick={() => { setActiveTab("my_activity"); setPage(0); }}
+            >
+              My Activity
             </button>
           </div>
           <Button variant="outline" size="sm" onClick={() => load(page)} disabled={loading}>
@@ -211,18 +242,34 @@ export default function ActivityLogPage() {
         </Select>
       </div>
 
+      {activeTab === "my_activity" && user && (
+        <div className="mb-6">
+          <h2 className="text-lg font-bold text-slate-800 mb-2">My Login History</h2>
+          <LoginActivityDashboard
+            authType="super_admin"
+            identifier={user.id}
+            limit={20}
+            showIpAddress={true}
+          />
+        </div>
+      )}
+
+      {activeTab === "my_activity" && (
+        <h2 className="text-lg font-bold text-slate-800 mb-2 mt-4">My System Operations</h2>
+      )}
+
       {/* Log table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         {loading ? (
           <div className="flex justify-center py-12"><Loader2 className="animate-spin text-slate-400" /></div>
-        ) : (activeTab === "system" ? displayedSystem.length === 0 : displayedStaff.length === 0) ? (
+        ) : ((activeTab === "system" || activeTab === "my_activity") ? displayedSystem.length === 0 : displayedStaff.length === 0) ? (
           <p className="text-center text-slate-400 py-12 text-sm">No activity logs found</p>
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                {activeTab === "system" ? (
-                  ["Time", "Action", "School", "Performed By", "Details"].map((h) => (
+                {(activeTab === "system" || activeTab === "my_activity") ? (
+                  ["Time", "Action", "School", "Performed By", "IP Address", "Details"].map((h) => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                   ))
                 ) : (
@@ -233,7 +280,7 @@ export default function ActivityLogPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {activeTab === "system" ? (
+              {(activeTab === "system" || activeTab === "my_activity") ? (
                 displayedSystem.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
@@ -248,7 +295,14 @@ export default function ActivityLogPage() {
                       {log.school_name ?? (log.school_id ? <span className="font-mono">{log.school_id.slice(0, 8)}…</span> : <span className="text-slate-300">platform</span>)}
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-500 font-mono">
-                      {log.details?.actor ? log.details.actor : (log.performed_by ? log.performed_by.slice(0, 8) + "…" : "—")}
+                      {log.details?.actor ? (log.details.actor as string) : (
+                        log.details?.performed_by ? (log.details.performed_by as string).slice(0, 8) + "…" : (
+                          log.performed_by ? log.performed_by.slice(0, 8) + "…" : "—"
+                        )
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500 font-mono">
+                      {log.details?.ip_address ? (log.details.ip_address as string) : "—"}
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-600 max-w-xs">
                       {log.details ? (

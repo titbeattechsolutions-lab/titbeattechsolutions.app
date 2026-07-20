@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 // hashPin no longer needed — server-side bcrypt via create_tenant_v2 RPC
 import { Plus, LogOut, Copy, RefreshCw, ShieldCheck, ShieldOff, KeyRound, DollarSign, History, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Eye, EyeOff, Ban, ShieldAlert, Activity } from "lucide-react";
 
@@ -167,56 +168,76 @@ export default function SuperAdmin() {
           </div>
         </header>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <StatCard label="Total" value={stats.total} />
-          <StatCard label="Active" value={stats.active} tone="success" />
-          <StatCard label="Trial" value={stats.trial} tone="info" />
-          <StatCard label="Expiring ≤14d" value={stats.expiringSoon} tone="warn" />
-          <StatCard label="Expired/Suspended" value={stats.expired} tone="danger" />
-        </div>
+        <Tabs defaultValue="dashboard" className="space-y-4 mt-6">
+          <TabsList className="grid w-full grid-cols-2 max-w-sm">
+            <TabsTrigger value="dashboard">Overview Dashboard</TabsTrigger>
+            <TabsTrigger value="my-activity">My Activity</TabsTrigger>
+          </TabsList>
 
-        <div className="flex justify-between items-center">
-          <h2 className="font-semibold">Tenants ({tenants.length})</h2>
-          <Dialog open={createOpen} onOpenChange={(o) => { setCreateOpen(o); if (!o) setNewPin(null); }}>
-            <DialogTrigger asChild>
-              <Button size="sm"><Plus className="w-4 h-4 mr-1" /> New tenant</Button>
-            </DialogTrigger>
-            <CreateTenantDialog
-              onCreated={(pin) => { setNewPin(pin); loadTenants(); }}
-              newPin={newPin}
-              onClose={() => { setCreateOpen(false); setNewPin(null); }}
-            />
-          </Dialog>
-        </div>
+          <TabsContent value="dashboard" className="space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <StatCard label="Total" value={stats.total} />
+              <StatCard label="Active" value={stats.active} tone="success" />
+              <StatCard label="Trial" value={stats.trial} tone="info" />
+              <StatCard label="Expiring ≤14d" value={stats.expiringSoon} tone="warn" />
+              <StatCard label="Expired/Suspended" value={stats.expired} tone="danger" />
+            </div>
 
-        <DuplicatesBanner refreshKey={tenants.length} onChanged={loadTenants} />
+            <div className="flex justify-between items-center">
+              <h2 className="font-semibold">Tenants ({tenants.length})</h2>
+              <Dialog open={createOpen} onOpenChange={(o) => { setCreateOpen(o); if (!o) setNewPin(null); }}>
+                <DialogTrigger asChild>
+                  <Button size="sm"><Plus className="w-4 h-4 mr-1" /> New tenant</Button>
+                </DialogTrigger>
+                <CreateTenantDialog
+                  onCreated={(pin) => { setNewPin(pin); loadTenants(); }}
+                  newPin={newPin}
+                  onClose={() => { setCreateOpen(false); setNewPin(null); }}
+                />
+              </Dialog>
+            </div>
 
-        <div className="space-y-2">
-          {tenants.length === 0 && (
-            <Card className="p-8 text-center text-muted-foreground text-sm">
-              No tenants yet. Click "New tenant" to onboard your first school.
-            </Card>
-          )}
-          {tenants.map((t) => (
-            <TenantRow key={t.id} tenant={t} onChanged={loadTenants} onRecordPayment={() => setPayOpen(t)} />
-          ))}
-        </div>
+            <DuplicatesBanner refreshKey={tenants.length} onChanged={loadTenants} />
 
-        <SecurityChecksSection />
-        <TokenAuditSection />
-        <TenantAuthAuditSection />
-        
-        {userId && (
-          <div className="space-y-2">
-            <h2 className="font-semibold">Your Login Activity</h2>
-            <LoginActivityDashboard
-              authType="super_admin"
-              identifier={userId}
-              limit={20}
-              showIpAddress={true}
-            />
-          </div>
-        )}
+            <div className="space-y-2">
+              {tenants.length === 0 && (
+                <Card className="p-8 text-center text-muted-foreground text-sm">
+                  No tenants yet. Click "New tenant" to onboard your first school.
+                </Card>
+              )}
+              {tenants.map((t) => (
+                <TenantRow key={t.id} tenant={t} onChanged={loadTenants} onRecordPayment={() => setPayOpen(t)} />
+              ))}
+            </div>
+
+            <SecurityChecksSection />
+            <TokenAuditSection />
+            <TenantAuthAuditSection />
+          </TabsContent>
+
+          <TabsContent value="my-activity">
+            {userId ? (
+              <Card className="p-6 space-y-4">
+                <div>
+                  <h2 className="text-xl font-bold tracking-tight">Superadmin Action Logs</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Review your authentication history and IP address tracking for security auditing.
+                  </p>
+                </div>
+                <LoginActivityDashboard
+                  authType="super_admin"
+                  identifier={userId}
+                  limit={50}
+                  showIpAddress={true}
+                />
+              </Card>
+            ) : (
+              <div className="p-4 text-center text-muted-foreground">
+                Loading user context...
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
 
       {payOpen && (

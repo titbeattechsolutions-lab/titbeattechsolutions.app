@@ -13,6 +13,8 @@ export interface LoginRecord {
   ip_address: string | null;
   user_agent: string | null;
   auth_type: "super_admin" | "tenant" | "staff";
+  location: string | null;
+  is_suspicious: boolean;
 }
 
 /**
@@ -45,6 +47,8 @@ export async function fetchLoginHistory({
         ip_address: record.ip_address,
         user_agent: record.user_agent,
         auth_type: authType,
+        location: record.location,
+        is_suspicious: record.is_suspicious || false,
       })) || []
     );
   } catch (err) {

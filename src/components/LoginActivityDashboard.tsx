@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, LogIn, Loader2 } from "lucide-react";
+import { LogOut, LogIn, Loader2, AlertCircle } from "lucide-react";
 import { fetchLoginHistory as getLoginHistory, type LoginRecord } from "@/lib/login-history";
 
 interface LoginActivityProps {
@@ -105,7 +105,10 @@ export default function LoginActivityDashboard({
               <th className="px-4 py-3 text-left font-semibold">Timestamp</th>
               <th className="px-4 py-3 text-left font-semibold">Duration</th>
               {showIpAddress && (
-                <th className="px-4 py-3 text-left font-semibold">IP Address</th>
+                <>
+                  <th className="px-4 py-3 text-left font-semibold">Location</th>
+                  <th className="px-4 py-3 text-left font-semibold">IP Address</th>
+                </>
               )}
             </tr>
           </thead>
@@ -149,9 +152,21 @@ export default function LoginActivityDashboard({
                     )}
                   </td>
                   {showIpAddress && (
-                    <td className="px-4 py-3 text-xs font-mono text-muted-foreground">
-                      {record.ip_address || "—"}
-                    </td>
+                    <>
+                      <td className="px-4 py-3 text-xs">
+                        {record.is_suspicious ? (
+                          <span className="flex items-center text-red-600 gap-1 font-medium bg-red-50 px-2 py-0.5 rounded w-max">
+                            <AlertCircle size={12} />
+                            {record.location || "Unknown"}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">{record.location || "—"}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs font-mono text-muted-foreground">
+                        {record.ip_address || "—"}
+                      </td>
+                    </>
                   )}
                 </tr>
               );
