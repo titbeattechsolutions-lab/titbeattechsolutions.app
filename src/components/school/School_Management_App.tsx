@@ -5017,6 +5017,24 @@ function TimetableView({
     return [];
   };
 
+
+
+  // Get all classes - same as score entry form
+  const allClasses = useMemo(() => {
+    const fromRolls = Object.keys(classRolls);
+    const fromCells = Object.keys(timetable.cells).map(k => {
+      const parts = k.split("|");
+      return parts.length > 3 ? parts[1] : parts[0];
+    });
+    const extra = [...new Set([...fromRolls, ...fromCells].filter(Boolean).filter(c => !ALL_CLASSES.includes(c) && !["class", "ca", "exam"].includes(c)))];
+    return [...ALL_CLASSES, ...extra];
+  }, [classRolls, timetable.cells]);
+
+  const [activeClass, setActiveClass] = useState<string>(allClasses[0] || "");
+  const [ttType, setTtType] = useState<"class"|"ca"|"exam">("class");
+  const [editing, setEditing] = useState<{ key: string; subject: string; teacherName: string } | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
+
   // Helper: Generate auto-fill for a class using curriculum subjects
   const generateAutoFill = (cls: string) => {
     const subjects = getSubjectsForClass(cls);
@@ -5029,8 +5047,9 @@ function TimetableView({
     periods.forEach((period) => {
       days.forEach((day) => {
         if (subjectIndex < subjects.length) {
-          const key = `${cls}|${day}|${period.id}`;
-          if (!newCells[key]) { // Only fill empty slots
+          const key = ttType === "class" ? `class|${cls}|${day}|${period.id}` : `${ttType}|${cls}|${day}|${period.id}`;
+          const legacyKey = `${cls}|${day}|${period.id}`;
+          if (!newCells[key] && !newCells[legacyKey]) { // Only fill empty slots
             newCells[key] = { subject: subjects[subjectIndex], teacherName: "" };
             subjectIndex = (subjectIndex + 1) % subjects.length;
           }
@@ -5040,18 +5059,6 @@ function TimetableView({
     
     return newCells;
   };
-
-  // Get all classes - same as score entry form
-  const allClasses = useMemo(() => {
-    const fromRolls = Object.keys(classRolls);
-    const fromCells = Object.keys(timetable.cells).map(k => k.split("|")[0]);
-    const extra = [...new Set([...fromRolls, ...fromCells].filter(Boolean).filter(c => !ALL_CLASSES.includes(c)))];
-    return [...ALL_CLASSES, ...extra];
-  }, [classRolls, timetable.cells]);
-
-  const [activeClass, setActiveClass] = useState<string>(allClasses[0] || "");
-  const [editing, setEditing] = useState<{ key: string; subject: string; teacherName: string } | null>(null);
-  const [syncLoading, setSyncLoading] = useState(false);
 
   // ── Sync from Supabase on mount (admin dashboard is source of truth) ──
   useEffect(() => {
@@ -5072,7 +5079,8 @@ function TimetableView({
           const periodId = PERIOD_NUM_TO_ID[s.period_number as number];
           const day = SUPABASE_DAY_TO_SHORT[s.day];
           if (!periodId || !day) return;
-          mapped[`${s.class_name}|${day}|${periodId}`] = {
+          const key = s.class_name ? `class|${s.class_name}|${day}|${periodId}` : `${day}|${periodId}`;
+          mapped[key] = {
             subject: s.subject_name ?? "",
             teacherName: s.teacher_name ?? "",
           };
@@ -5089,43 +5097,92 @@ function TimetableView({
     if (!activeClass && allClasses.length) setActiveClass(allClasses[0]);
   }, [allClasses, activeClass]);
 
-  const cellOf = (day: string, periodId: string) =>
-    timetable.cells[`${activeClass}|${day}|${periodId}`];
+  const cellOf = (day: string, periodId: string) => {
+    if (ttType === "class") {
+      return timetable.cells[`class|${activeClass}|${day}|${periodId}`] || timetable.cells[`${activeClass}|${day}|${periodId}`];
+    }
+    return timetable.cells[`${ttType}|${activeClass}|${day}|${periodId}`];
+  };
+
+  const handleExport = () => {
+    const matrix: any[][] = [["Period", ...timetable.days]];
+    timetable.periods.forEach(p => {
+      const isBreak = ["sbr","lbr","br","asm","cls"].includes(p.id) || /break|lunch|assembly|closing/i.test(p.label);
+      if (isBreak) {
+        matrix.push([`${p.label} (${p.start}-${p.end})`, ...timetable.days.map(() => "---")]);
+      } else {
+        const row = [`${p.label} (${p.start}-${p.end})`];
+        timetable.days.forEach(d => {
+          const cell = cellOf(d, p.id);
+          row.push(cell ? `${cell.subject}${cell.teacherName ? ` (${cell.teacherName})` : ""}` : "");
+        });
+        matrix.push(row);
+      }
+    });
+    const { exportToCSV } = require("@/lib/exportUtils");
+    exportToCSV(matrix, `${activeClass}_${ttType}_Timetable.csv`);
+  };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="space-y-4 print:space-y-0">
+      <div className="flex items-center justify-between flex-wrap gap-3 print:hidden">
         <div>
           <h1 className="text-2xl font-black text-slate-900 uppercase">Timetable</h1>
           <p className="text-xs sm:text-sm text-slate-400">
-            Weekly class schedule {isAdmin ? "— tap a cell to edit" : "— read-only"}
+            Weekly schedule {isAdmin ? "— tap a cell to edit" : "— read-only"}
             {syncLoading && <span className="ml-2 inline-flex items-center gap-1 text-blue-500 text-[10px] font-bold animate-pulse">↻ syncing…</span>}
           </p>
         </div>
-        {!isAdmin && (
-          <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
-            <input type="checkbox" checked={myOnly} onChange={e => setMyOnly(e.target.checked)} />
-            My periods
-          </label>
-        )}
+        <div className="flex items-center gap-3">
+          {!isAdmin && (
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+              <input type="checkbox" checked={myOnly} onChange={e => setMyOnly(e.target.checked)} />
+              My periods
+            </label>
+          )}
+          <button onClick={() => window.print()} className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors" title="Print Timetable">
+            <Printer size={16} />
+          </button>
+          <button onClick={handleExport} className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors" title="Export CSV">
+            <Download size={16} />
+          </button>
+        </div>
       </div>
 
-      <Card className="p-3 sm:p-4 space-y-3">
-        {/* Class Selection - Mobile-friendly Dropdown */}
-        <div className="space-y-2">
-          <label className="text-xs font-black uppercase text-slate-500">Select Class:</label>
-          <select 
-            value={activeClass} 
-            onChange={e => setActiveClass(e.target.value)}
-            className="w-full px-3 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-lg text-sm font-bold focus:border-blue-500 outline-none"
-          >
-            {allClasses.map(cls => (
-              <option key={cls} value={cls}>{cls}</option>
-            ))}
-          </select>
+      <Card className="p-3 sm:p-4 space-y-3 print:shadow-none print:border-none print:p-0">
+        <div className="flex flex-col sm:flex-row gap-3 print:hidden">
+          {/* Class Selection */}
+          <div className="flex-1 space-y-2">
+            <label className="text-xs font-black uppercase text-slate-500">Select Class:</label>
+            <select 
+              value={activeClass} 
+              onChange={e => setActiveClass(e.target.value)}
+              className="w-full px-3 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-lg text-sm font-bold focus:border-blue-500 outline-none"
+            >
+              {allClasses.map(cls => (
+                <option key={cls} value={cls}>{cls}</option>
+              ))}
+            </select>
+          </div>
+          
+          {/* Timetable Type Switcher */}
+          <div className="flex-1 space-y-2">
+            <label className="text-xs font-black uppercase text-slate-500">Schedule Type:</label>
+            <div className="flex w-full bg-slate-100 p-1 rounded-lg">
+              {(["class", "ca", "exam"] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setTtType(t)}
+                  className={`flex-1 py-1.5 text-xs font-black uppercase rounded transition-all ${ttType === t ? "bg-white shadow text-blue-600" : "text-slate-500 hover:text-slate-700"}`}
+                >
+                  {t === "class" ? "Regular" : t === "ca" ? "CA" : "Exam"}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 print:hidden">
           <div className="grid gap-3 md:grid-cols-2">
             {Object.entries(CURRICULUM).map(([section, data]) => (
               <div key={section} className="space-y-2">
@@ -5148,7 +5205,7 @@ function TimetableView({
         </div>
 
         {/* Auto-Set Button for Admins */}
-        {isAdmin && (
+        {isAdmin && ttType === "class" && (
           <button
             onClick={() => setShowAutoSet(true)}
             className="w-full px-3 py-2 bg-emerald-50 border-2 border-emerald-200 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-all"
@@ -5158,8 +5215,7 @@ function TimetableView({
         )}
 
         {/* Timetable Grid - Mobile Responsive */}
-        <div className="overflow-x-auto -mx-3 sm:-mx-4 px-3 sm:px-4">
-          <table className="w-full text-[11px] sm:text-xs border-separate border-spacing-0.5 sm:border-spacing-1 min-w-[640px]">
+          <table className="w-full text-[11px] sm:text-xs border-separate border-spacing-0.5 sm:border-spacing-1 min-w-[640px] print:min-w-0 print:border-collapse print:border-spacing-0">
             <thead>
               <tr>
                 <th className="text-left text-slate-400 font-black uppercase px-1 sm:px-2 py-1">Period</th>
@@ -5228,7 +5284,7 @@ function TimetableView({
                         <button
                           disabled={!isAdmin}
                           onClick={() => isAdmin && setEditing({
-                            key: `${activeClass}|${d}|${p.id}`,
+                            key: ttType === "class" ? `class|${activeClass}|${d}|${p.id}` : `${ttType}|${activeClass}|${d}|${p.id}`,
                             subject: c?.subject || "",
                             teacherName: c?.teacherName || "",
                           })}
