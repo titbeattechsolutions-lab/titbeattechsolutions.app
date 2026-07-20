@@ -5639,7 +5639,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     }
   }, []);
   const { toast, showToast } = useToast();
-  const [needsAdminSetup] = useState<boolean>(false);
+  const [needsAdminSetup, setNeedsAdminSetup] = useState<boolean>(false);
   const [setupPin, setSetupPin] = useState({ nxt: "", cnf: "" });
   const [setupErr, setSetupErr] = useState("");
   const logoRef = useRef<HTMLInputElement>(null);
