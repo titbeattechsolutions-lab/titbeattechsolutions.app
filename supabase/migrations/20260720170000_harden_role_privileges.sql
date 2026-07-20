@@ -21,7 +21,7 @@ DROP POLICY IF EXISTS "profiles_update_staff_linkage_tenant" ON public.profiles;
 CREATE POLICY "profiles_update_staff_linkage_tenant"
   ON public.profiles FOR UPDATE
   USING (
-    school_id = auth.school_id()
+    school_id = public.get_my_school_id()
     AND EXISTS (
       SELECT 1 FROM public.profiles p
       WHERE p.id = auth.uid()
@@ -29,7 +29,7 @@ CREATE POLICY "profiles_update_staff_linkage_tenant"
     )
   )
   WITH CHECK (
-    school_id = auth.school_id()
+    school_id = public.get_my_school_id()
     -- Explicitly forbid privilege escalation through the update policy
     AND role NOT IN ('superadmin', 'super_admin')
   );
