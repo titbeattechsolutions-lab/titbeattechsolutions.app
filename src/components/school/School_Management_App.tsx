@@ -5059,7 +5059,11 @@ function TimetableView({
 
           if (isEmpty) { // Only fill empty slots
             newCells[key] = { subject: subjects[subjectIndex], teacherName: "" };
-            subjectIndex = (subjectIndex + 1) % subjects.length;
+            if (ttType === "class") {
+              subjectIndex = (subjectIndex + 1) % subjects.length;
+            } else {
+              subjectIndex++;
+            }
           }
         }
       });
