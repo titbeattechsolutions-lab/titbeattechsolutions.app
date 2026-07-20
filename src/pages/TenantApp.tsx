@@ -40,6 +40,7 @@ export default function TenantApp() {
   const [syncPhase, setSyncPhase] = useState<SyncPhase>("idle");
   const [lastSyncAt, setLastSyncAt] = useState<number>(0);
   const [polledData, setPolledData] = useState<any>(null);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   const saveTimer = useRef<NodeJS.Timeout>();
   const pullTimer = useRef<NodeJS.Timeout>();
@@ -61,7 +62,18 @@ export default function TenantApp() {
     // Deprecated: No longer dispatching synthetic storage events.
   }, []);
 
-  // 1. Initial Load
+  // 1. Initial Load & Offline Listener
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
   useEffect(() => {
     const s = loadTenantSession();
     if (!s) {
@@ -385,6 +397,13 @@ export default function TenantApp() {
 
   return (
     <div className="min-h-screen">
+      {isOffline && (
+        <div className="bg-amber-100 text-amber-900 text-xs px-3 py-2 text-center font-medium border-b border-amber-200 sticky top-0 z-[100] flex items-center justify-center gap-2 shadow-sm transition-all animate-in slide-in-from-top-2">
+          <CloudOff className="w-3.5 h-3.5" />
+          You are currently offline. Changes are saved locally and will sync when reconnected.
+        </div>
+      )}
+
       {showBanner && (
         <div className="bg-accent text-accent-foreground text-xs px-3 py-1.5 text-center flex items-center justify-center gap-3">
           <span>
