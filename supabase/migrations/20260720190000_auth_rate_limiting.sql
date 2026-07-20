@@ -2,6 +2,8 @@
 ALTER TABLE public.tenant_auth_audit ADD COLUMN IF NOT EXISTS ip_address TEXT;
 
 -- 2. Update verify_school_pin_v2 to include IP logging and Rate Limiting
+DROP FUNCTION IF EXISTS public.verify_school_pin_v2(TEXT);
+
 CREATE OR REPLACE FUNCTION public.verify_school_pin_v2(_pin TEXT)
 RETURNS TABLE(
   session_token TEXT,
@@ -85,6 +87,8 @@ END;
 $$;
 
 -- 3. Update verify_admin_pin_v2 with Rate Limiting by tenant_id
+DROP FUNCTION IF EXISTS public.verify_admin_pin_v2(TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.verify_admin_pin_v2(_session_token TEXT, _pin TEXT)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
