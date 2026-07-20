@@ -3504,11 +3504,11 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
               const f = e.target.files?.[0];
               if (!f) return;
               const validTypes = [
-                "application/pdf",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "application/msword",
+                "image/png",
+                "image/jpeg",
+                "image/jpg"
               ];
-              if (!validTypes.includes(f.type)) return showToast("Please upload a PDF or DOCX file", "error");
+              if (!validTypes.includes(f.type)) return showToast("Please upload a PNG or JPG image", "error");
               if (f.size > 5242880) return showToast("File must be under 5MB", "error");
               const r = new FileReader();
               r.onload = ev => {
@@ -3533,7 +3533,7 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
                 <Card className="p-6 space-y-5">
                   <div>
                     <p className="text-sm font-black uppercase text-slate-700">Upload Report Template</p>
-                    <p className="text-xs text-slate-400 mt-0.5">Upload a custom PDF or DOCX file to use as the base for generated reports.</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Upload a high-resolution PNG or JPG image to use as the background letterhead for generated reports.</p>
                   </div>
                   {tpl.uploadedFile ? (
                     <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 flex items-center gap-3">
@@ -3549,14 +3549,14 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
                   ) : (
                     <label className="w-full flex flex-col items-center gap-2 px-6 py-8 border-2 border-dashed border-slate-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all cursor-pointer group">
                       <Upload size={24} className="text-slate-300 group-hover:text-blue-400" />
-                      <p className="text-xs font-black uppercase text-slate-400 group-hover:text-blue-500">Click to upload PDF or DOCX</p>
-                      <p className="text-xs text-slate-300">Max 5MB</p>
-                      <input type="file" accept=".pdf,.docx,.doc" className="hidden" onChange={handleTemplateUpload} />
+                      <p className="text-xs font-black uppercase text-slate-400 group-hover:text-blue-500">Click to upload PNG or JPG image</p>
+                      <p className="text-xs text-slate-300">Max 5MB, A4 Ratio Recommended</p>
+                      <input type="file" accept=".png,.jpg,.jpeg" className="hidden" onChange={handleTemplateUpload} />
                     </label>
                   )}
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                     <p className="text-xs text-amber-700 font-bold leading-relaxed">
-                      💡 Uploaded templates serve as a reference design. The system will match the layout style when generating student reports.
+                      💡 Uploaded images act as a background letterhead overlay. Report tables will be printed securely over the image.
                     </p>
                   </div>
                 </Card>
@@ -4074,7 +4074,16 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
     ...(tpl.showPrincipalRemark ? [["principal", "Principal's Remark", "principalSig", "principal"] as const] : []),
   ];
   return (
-    <div id="report-print-area" className="bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-lg" style={{ fontFamily: `${tpl.fontFamily},serif` }}>
+    <div id="report-print-area" className="bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-lg relative" style={{ fontFamily: `${tpl.fontFamily},serif` }}>
+      {tpl.uploadedFile && (
+        <div className="absolute inset-0 w-full h-full z-0 pointer-events-none" style={{
+          backgroundImage: `url(${tpl.uploadedFile})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        }} />
+      )}
+      <div className="relative z-10 h-full flex flex-col">
       <div className="h-1.5" style={{ backgroundColor: tpl.accentColor }} />
       <div className="px-8 pt-7 pb-5 border-b-2 flex items-center justify-between gap-4" style={{ borderColor: tpl.headerColor }}>
         <div className="flex items-center gap-4 min-w-0">
@@ -4089,7 +4098,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
           <p className="text-xs text-slate-500 font-bold mt-1.5">{schoolSettings.session} · {schoolSettings.term}</p>
         </div>
       </div>
-      <div className="bg-slate-50 px-8 py-3.5 border-b border-slate-100" style={{ display: "grid", gridTemplateColumns: `repeat(${studentFields.length}, 1fr)`, gap: "0.75rem" }}>
+      <div className="px-8 py-3.5 border-b border-slate-100" style={{ display: "grid", gridTemplateColumns: `repeat(${studentFields.length}, 1fr)`, gap: "0.75rem", backgroundColor: "rgba(248, 250, 252, 0.75)" }}>
         {studentFields.map(([l, v, x]) => (
           <div key={l as string}>
             <p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-0.5">{l}</p>
@@ -4110,7 +4119,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
           <tbody>
             {report.records.map((r: any, i: number) => {
               const g = getGrade(r.total);
-              const bg = tpl.tableStyle === "striped" ? (i % 2 === 0 ? "#fff" : "#f8fafc") : "#fff";
+              const bg = tpl.tableStyle === "striped" ? (i % 2 === 0 ? "transparent" : "rgba(248,250,252,0.65)") : "transparent";
               const border = tpl.tableStyle === "minimal" ? "none" : "1px solid #e2e8f0";
               return (
                 <tr key={i} style={{ background: bg }}>
@@ -4883,6 +4892,7 @@ const AttendanceTab = memo(() => {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 });
