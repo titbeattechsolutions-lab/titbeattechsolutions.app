@@ -6337,10 +6337,10 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                         <p className="text-2xl font-black text-slate-900">{v}</p>
                       </Card>
                     ))}
-                    <Card className="p-5 bg-slate-900 border-slate-900 col-span-2 md:col-span-1">
-                      <p className="text-xs font-black uppercase text-blue-400 tracking-wide mb-1">Session</p>
-                      <p className="text-lg font-black text-white leading-tight">{schoolSettings.session || "—"}</p>
-                      <p className="text-xs text-slate-400 mt-1 font-bold">{schoolSettings.term || "—"}</p>
+                    <Card className="p-5 border-l-4 border-l-amber-500 col-span-2 md:col-span-1">
+                      <p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-1">Session</p>
+                      <p className="text-2xl font-black text-slate-900 leading-tight">{schoolSettings.term || "—"}</p>
+                      <p className="text-xs text-slate-500 font-bold mt-1">{schoolSettings.session || "—"}</p>
                     </Card>
                   </div>
 
@@ -6416,7 +6416,11 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                                 <span className={`text-xs font-black px-2 py-0.5 rounded-md flex-shrink-0 ${ac}`}>{log.action}</span>
                                 <div className="min-w-0">
                                   <p className="text-xs font-black text-slate-900 truncate">
-                                    {log.student}
+                                    {log.student.includes("Signed In") ? "User logged in" : 
+                                     log.action === "Recorded" ? `Payment recorded for ${log.student}` :
+                                     log.action === "Added" && log.subject ? `Grade added for ${log.student}` :
+                                     log.action === "Deleted" && log.subject ? `Record deleted for ${log.student}` :
+                                     log.student}
                                     {isAdmin && log.actor && (
                                       <span className="ml-2 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">by {log.actor}</span>
                                     )}

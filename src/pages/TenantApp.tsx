@@ -403,10 +403,6 @@ export default function TenantApp() {
         <div className="fixed bottom-2 right-2 z-50 text-[10px] bg-white/90 backdrop-blur border border-slate-200 rounded-full px-2 py-1 shadow-sm flex items-center gap-2 text-slate-600">
           <SyncIcon className={`w-3 h-3 ${syncPhase === "pulling" || syncPhase === "pushing" ? "animate-pulse text-blue-500" : syncPhase === "error" ? "text-red-500" : "text-emerald-500"}`} />
           {syncLabel}
-          <span className="w-px h-3 bg-slate-200" />
-          <button onClick={signOut} className="text-slate-400 hover:text-red-500 transition-colors" title="Sign out of school portal">
-            <LogOut className="w-3 h-3" />
-          </button>
         </div>
       )}
 
