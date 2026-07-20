@@ -1216,7 +1216,7 @@ const PinAuth = ({ title, subtitle, headerColor = "bg-blue-600", icon: Icon, chi
     } finally {
       setChecking(false);
     }
-  }, [pin, correctPin, onConfirm, checking]);
+  }, [pin, onConfirm, checking]);
 
   return (
     <Modal onBgClick={onCancel}>
@@ -5639,7 +5639,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     }
   }, []);
   const { toast, showToast } = useToast();
-  const [needsAdminSetup] = useState<boolean>(false);
+  const [needsAdminSetup, setNeedsAdminSetup] = useState<boolean>(false);
   const [setupPin, setSetupPin] = useState({ nxt: "", cnf: "" });
   const [setupErr, setSetupErr] = useState("");
   const logoRef = useRef<HTMLInputElement>(null);
