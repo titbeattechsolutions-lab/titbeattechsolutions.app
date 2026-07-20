@@ -2322,7 +2322,16 @@ const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) =
     if (!payingStudent || !payAmount) return;
     const amt = parseFloat(payAmount);
     if (isNaN(amt) || amt <= 0) { showToast("Enter a valid amount", "error"); return; }
+    
     const key = `${activeClass}|${payingStudent}|${periodKey}`;
+    const currentPaid = payments[key]?.paid || 0;
+    const balance = Math.max(expectedPerStudent - currentPaid, 0);
+    
+    if (amt > balance) {
+      showToast(`Amount cannot exceed the outstanding balance of ₦${balance.toLocaleString()}`, "error");
+      return;
+    }
+
     setPayments(prev => {
       const cur = prev[key] || { paid: 0, history: [] };
       return {
@@ -3313,7 +3322,7 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
 
     const fetchLogs = () => {
       import("@/integrations/supabase/client").then(async ({ supabase }) => {
-        const { data, error } = await supabase.rpc("get_tenant_activity_logs", { _session_token: sessionToken });
+        const { data, error } = await supabase.rpc("get_activity_logs_v2", { _session_token: sessionToken });
         if (error) console.error("Failed to fetch staff action logs:", error);
         if (!error && data) setActionLogs(data);
         setLoadingActionLogs(false);
