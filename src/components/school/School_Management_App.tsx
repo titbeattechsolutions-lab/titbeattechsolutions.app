@@ -5048,8 +5048,16 @@ function TimetableView({
       days.forEach((day) => {
         if (subjectIndex < subjects.length) {
           const key = ttType === "class" ? `class|${cls}|${day}|${period.id}` : `${ttType}|${cls}|${day}|${period.id}`;
-          const legacyKey = `${cls}|${day}|${period.id}`;
-          if (!newCells[key] && !newCells[legacyKey]) { // Only fill empty slots
+          
+          let isEmpty = false;
+          if (ttType === "class") {
+            const legacyKey = `${cls}|${day}|${period.id}`;
+            isEmpty = !newCells[key] && !newCells[legacyKey];
+          } else {
+            isEmpty = !newCells[key];
+          }
+
+          if (isEmpty) { // Only fill empty slots
             newCells[key] = { subject: subjects[subjectIndex], teacherName: "" };
             subjectIndex = (subjectIndex + 1) % subjects.length;
           }
@@ -5205,12 +5213,12 @@ function TimetableView({
         </div>
 
         {/* Auto-Set Button for Admins */}
-        {isAdmin && ttType === "class" && (
+        {isAdmin && (
           <button
             onClick={() => setShowAutoSet(true)}
             className="w-full px-3 py-2 bg-emerald-50 border-2 border-emerald-200 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-all"
           >
-            ⚡ Auto-Set Timetable for {activeClass}
+            ⚡ Auto-Set {ttType === "class" ? "Regular" : ttType === "ca" ? "CA" : "Exam"} Timetable for {activeClass}
           </button>
         )}
 
