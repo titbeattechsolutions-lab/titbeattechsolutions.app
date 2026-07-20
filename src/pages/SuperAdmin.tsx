@@ -370,7 +370,7 @@ function TenantRow({ tenant, onChanged, onRecordPayment }: { tenant: Tenant; onC
             <DialogTitle>Activity & Audit — {tenant.school_name}</DialogTitle>
             <DialogDescription>Comprehensive view of tenant usage and access logs</DialogDescription>
           </DialogHeader>
-          <TenantActivityAudit tenantId={tenant.id} />
+          <TenantActivityAudit schoolId={tenant.id} />
         </DialogContent>
       </Dialog>
     </Card>
