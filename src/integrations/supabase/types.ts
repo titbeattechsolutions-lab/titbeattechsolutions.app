@@ -114,9 +114,13 @@ export type Database = {
       }
       billing: {
         Row: {
+          billing_cycle: string | null
           created_at: string | null
           current_period_end: string | null
+          current_period_start: string | null
           id: string
+          notes: string | null
+          payment_method: string | null
           plan: string
           school_id: string
           status: string
@@ -124,9 +128,13 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          billing_cycle?: string | null
           created_at?: string | null
           current_period_end?: string | null
+          current_period_start?: string | null
           id?: string
+          notes?: string | null
+          payment_method?: string | null
           plan?: string
           school_id: string
           status?: string
@@ -134,9 +142,13 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          billing_cycle?: string | null
           created_at?: string | null
           current_period_end?: string | null
+          current_period_start?: string | null
           id?: string
+          notes?: string | null
+          payment_method?: string | null
           plan?: string
           school_id?: string
           status?: string
@@ -262,6 +274,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      login_logs: {
+        Row: {
+          auth_type: string
+          created_at: string
+          event_type: string
+          id: number
+          ip_address: string | null
+          session_token: string | null
+          staff_id: string | null
+          tenant_id: string | null
+          timestamp: string
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          auth_type: string
+          created_at?: string
+          event_type: string
+          id?: number
+          ip_address?: string | null
+          session_token?: string | null
+          staff_id?: string | null
+          tenant_id?: string | null
+          timestamp?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          auth_type?: string
+          created_at?: string
+          event_type?: string
+          id?: number
+          ip_address?: string | null
+          session_token?: string | null
+          staff_id?: string | null
+          tenant_id?: string | null
+          timestamp?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
       }
       payments: {
         Row: {
@@ -402,6 +456,41 @@ export type Database = {
         }
         Relationships: []
       }
+      pre_registrations: {
+        Row: {
+          claimed_at: string | null
+          created_at: string
+          email: string
+          id: string
+          role: string
+          school_id: string
+        }
+        Insert: {
+          claimed_at?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          role: string
+          school_id: string
+        }
+        Update: {
+          claimed_at?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          role?: string
+          school_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pre_registrations_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string | null
@@ -411,6 +500,8 @@ export type Database = {
           last_name: string | null
           role: string
           school_id: string | null
+          signature: string | null
+          staff_member_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -421,6 +512,8 @@ export type Database = {
           last_name?: string | null
           role?: string
           school_id?: string | null
+          signature?: string | null
+          staff_member_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -431,6 +524,8 @@ export type Database = {
           last_name?: string | null
           role?: string
           school_id?: string | null
+          signature?: string | null
+          staff_member_id?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -730,6 +825,8 @@ export type Database = {
           created_at: string | null
           current_students: number
           current_term: string | null
+          default_principal_signature: string | null
+          default_teacher_signature: string | null
           email: string | null
           features: Json | null
           id: string
@@ -752,6 +849,8 @@ export type Database = {
           created_at?: string | null
           current_students?: number
           current_term?: string | null
+          default_principal_signature?: string | null
+          default_teacher_signature?: string | null
           email?: string | null
           features?: Json | null
           id?: string
@@ -774,6 +873,8 @@ export type Database = {
           created_at?: string | null
           current_students?: number
           current_term?: string | null
+          default_principal_signature?: string | null
+          default_teacher_signature?: string | null
           email?: string | null
           features?: Json | null
           id?: string
@@ -795,9 +896,12 @@ export type Database = {
           device: string | null
           id: string
           ip_address: string | null
+          is_suspicious: boolean | null
+          location: string | null
           role: string
           school_id: string | null
-          user_id: string
+          staff_member_id: string | null
+          user_id: string | null
           user_name: string
         }
         Insert: {
@@ -806,9 +910,12 @@ export type Database = {
           device?: string | null
           id?: string
           ip_address?: string | null
+          is_suspicious?: boolean | null
+          location?: string | null
           role: string
           school_id?: string | null
-          user_id: string
+          staff_member_id?: string | null
+          user_id?: string | null
           user_name: string
         }
         Update: {
@@ -817,9 +924,12 @@ export type Database = {
           device?: string | null
           id?: string
           ip_address?: string | null
+          is_suspicious?: boolean | null
+          location?: string | null
           role?: string
           school_id?: string | null
-          user_id?: string
+          staff_member_id?: string | null
+          user_id?: string | null
           user_name?: string
         }
         Relationships: [
@@ -913,6 +1023,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "staff_invite_tokens_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_session_logs: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          role: string
+          staff_member_id: string
+          staff_name: string
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          role: string
+          staff_member_id: string
+          staff_name: string
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          role?: string
+          staff_member_id?: string
+          staff_name?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_session_logs_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -1092,6 +1240,7 @@ export type Database = {
           recorded_by: string | null
           reference: string | null
           tenant_id: string
+          tier: string | null
         }
         Insert: {
           amount: number
@@ -1105,6 +1254,7 @@ export type Database = {
           recorded_by?: string | null
           reference?: string | null
           tenant_id: string
+          tier?: string | null
         }
         Update: {
           amount?: number
@@ -1118,6 +1268,7 @@ export type Database = {
           recorded_by?: string | null
           reference?: string | null
           tenant_id?: string
+          tier?: string | null
         }
         Relationships: [
           {
@@ -1682,7 +1833,13 @@ export type Database = {
         }
         Returns: string
       }
+      check_tenant_session_status: {
+        Args: { _session_token: string }
+        Returns: string
+      }
+      claim_pre_registration: { Args: never; Returns: boolean }
       cleanup_expired_sessions: { Args: never; Returns: undefined }
+      cleanup_orphaned_schools: { Args: never; Returns: number }
       complete_password_change: { Args: never; Returns: boolean }
       create_tenant_v2: {
         Args: {
@@ -1695,6 +1852,15 @@ export type Database = {
         }
         Returns: string
       }
+      extend_tenant_subscription: {
+        Args: {
+          _plan: string
+          _subscription_ends_at: string
+          _subscription_starts_at: string
+          _tenant_id: string
+        }
+        Returns: boolean
+      }
       find_duplicate_tenants: {
         Args: never
         Returns: {
@@ -1705,11 +1871,30 @@ export type Database = {
           tenant_ids: string[]
         }[]
       }
+      find_orphaned_schools: {
+        Args: never
+        Returns: {
+          created_at: string
+          school_id: string
+          school_name: string
+          tenant_id: string
+        }[]
+      }
       generate_staff_invite_token: {
         Args: { _school_slug: string }
         Returns: {
           expires_at: string
           token: string
+        }[]
+      }
+      get_activity_logs_v2: {
+        Args: { _limit?: number; _session_token: string }
+        Returns: {
+          action: string
+          details: string
+          id: number
+          staff_id: string
+          timestamp: string
         }[]
       }
       get_all_session_logs: {
@@ -1726,20 +1911,79 @@ export type Database = {
           user_name: string
         }[]
       }
+      get_fee_data: {
+        Args: { _session_token: string }
+        Returns: {
+          academic_year: string
+          class_name: string
+          fee_amount: number
+          fee_id: string
+          fee_name: string
+          paid_amount: number
+          paid_at: string
+          paid_by: string
+          payment_id: string
+          student_name: string
+          term: string
+        }[]
+      }
       get_login_history: {
         Args: { _auth_type: string; _identifier: string; _limit?: number }
         Returns: {
           event_type: string
           id: string
           ip_address: string
+          is_suspicious: boolean
+          location: string
           timestamp: string
           user_agent: string
         }[]
       }
       get_my_role: { Args: never; Returns: string }
       get_my_school_id: { Args: never; Returns: string }
+      get_or_create_student: {
+        Args: {
+          _admission_no: string
+          _class_name: string
+          _full_name: string
+          _session_token: string
+        }
+        Returns: string
+      }
+      get_staff_session_logs: {
+        Args: { _session_token: string }
+        Returns: {
+          action: string
+          created_at: string
+          id: string
+          role: string
+          staff_member_id: string
+          staff_name: string
+          tenant_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "staff_session_logs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      get_student_counts_by_school: {
+        Args: never
+        Returns: {
+          school_id: string
+          student_count: number
+        }[]
+      }
+      get_teacher_counts_by_school: {
+        Args: never
+        Returns: {
+          school_id: string
+          teacher_count: number
+        }[]
+      }
       get_tenant_activity_logs: {
-        Args: { _limit?: number; _tenant_id: string }
+        Args: { _limit?: number; _session_token: string }
         Returns: {
           action: string
           details: string
@@ -1761,6 +2005,7 @@ export type Database = {
         Returns: Json
       }
       get_tenant_data_v2: { Args: { _session_token: string }; Returns: Json }
+      get_tenant_staff_count: { Args: { _school_id: string }; Returns: number }
       get_today_attendance_by_class: {
         Args: { p_school_id: string }
         Returns: {
@@ -1794,6 +2039,19 @@ export type Database = {
         Args: { _hours_valid?: number; _target_user_id: string }
         Returns: string
       }
+      log_auth_event: {
+        Args: {
+          _auth_type: string
+          _event_type: string
+          _ip_address?: string
+          _session_token?: string
+          _staff_id?: string
+          _tenant_id?: string
+          _user_agent?: string
+          _user_id?: string
+        }
+        Returns: undefined
+      }
       log_pin_session: {
         Args: {
           _event_type: string
@@ -1804,7 +2062,27 @@ export type Database = {
         }
         Returns: undefined
       }
+      log_staff_session_event: {
+        Args: {
+          _action: string
+          _role: string
+          _session_token: string
+          _staff_member_id: string
+          _staff_name: string
+        }
+        Returns: undefined
+      }
       log_tenant_activity: {
+        Args: {
+          _action: string
+          _details?: string
+          _staff_id: string
+          _tenant_id: string
+          _timestamp?: string
+        }
+        Returns: undefined
+      }
+      log_tenant_activity_v2: {
         Args: {
           _action: string
           _details?: string
@@ -1829,10 +2107,42 @@ export type Database = {
         }[]
       }
       pin_logout: { Args: { _session_token: string }; Returns: boolean }
+      record_payment: {
+        Args: {
+          _academic_year: string
+          _admission_no: string
+          _amount: number
+          _class_name: string
+          _note: string
+          _session_token: string
+          _student_name: string
+          _term: string
+        }
+        Returns: string
+      }
       redeem_super_admin_token: { Args: { _token: string }; Returns: boolean }
+      renew_tenant_subscription: {
+        Args: { _months: number; _tenant_id: string }
+        Returns: undefined
+      }
+      reset_admin_pin_to_null: {
+        Args: { _tenant_id: string }
+        Returns: boolean
+      }
       reset_school_pin: {
         Args: { _new_pin: string; _tenant_id: string }
         Returns: boolean
+      }
+      save_fee_structure: {
+        Args: {
+          _academic_year: string
+          _amount: number
+          _class_name: string
+          _details: string
+          _session_token: string
+          _term: string
+        }
+        Returns: string
       }
       save_tenant_data: {
         Args: { _data: Json; _school_pin_hash: string; _tenant_id: string }
@@ -1842,6 +2152,11 @@ export type Database = {
         Args: { _data: Json; _session_token: string }
         Returns: boolean
       }
+      save_tenant_data_v3: {
+        Args: { _data: Json; _expected_rev: number; _session_token: string }
+        Returns: Json
+      }
+      school_id: { Args: never; Returns: string }
       security_regression_check: {
         Args: never
         Returns: {
@@ -1866,6 +2181,10 @@ export type Database = {
         Args: { _new_pin: string; _teacher_id: string }
         Returns: boolean
       }
+      set_tenant_status: {
+        Args: { _school_id?: string; _status: string; _tenant_id: string }
+        Returns: boolean
+      }
       superadmin_get_all_tenant_activity: {
         Args: { _limit?: number; _offset?: number; _school_id?: string }
         Returns: {
@@ -1882,6 +2201,10 @@ export type Database = {
       suspend_duplicate_tenant: {
         Args: { _reason?: string; _tenant_id: string }
         Returns: boolean
+      }
+      update_session_location: {
+        Args: { _location: string; _session_id: string; _user_id: string }
+        Returns: undefined
       }
       upsert_staff_signature: {
         Args: {

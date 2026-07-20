@@ -107,7 +107,7 @@ export default function ProviderActivityDashboard() {
         console.warn("Direct tenant_activity_logs query failed, falling back to per-tenant RPC", directActivityError);
         const tenantsWithRecords = await Promise.allSettled(
           tenants.map(async (tenant) => {
-            const { data: rpcData, error: rpcError } = await supabase.rpc("get_tenant_activity_logs", {
+            const { data: rpcData, error: rpcError } = await (supabase.rpc as any)("get_tenant_activity_logs", {
               _tenant_id: tenant.id,
               _limit: 50,
             });
