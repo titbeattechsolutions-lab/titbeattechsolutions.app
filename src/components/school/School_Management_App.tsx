@@ -4205,6 +4205,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
         </div>
       )}
       <div className="h-1.5" style={{ backgroundColor: tpl.accentColor }} />
+      </div>
     </div>
   );
 });
