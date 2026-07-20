@@ -5215,6 +5215,7 @@ function TimetableView({
         )}
 
         {/* Timetable Grid - Mobile Responsive */}
+        <div className="overflow-x-auto -mx-3 sm:-mx-4 px-3 sm:px-4">
           <table className="w-full text-[11px] sm:text-xs border-separate border-spacing-0.5 sm:border-spacing-1 min-w-[640px] print:min-w-0 print:border-collapse print:border-spacing-0">
             <thead>
               <tr>
