@@ -4893,7 +4893,6 @@ const AttendanceTab = memo(() => {
           )}
         </div>
       )}
-      </div>
     </div>
   );
 });
