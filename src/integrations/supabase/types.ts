@@ -1449,6 +1449,7 @@ export type Database = {
           created_at: string
           event_type: string
           id: string
+          ip_address: string | null
           reason: string | null
           session_ref: string | null
           success: boolean
@@ -1458,6 +1459,7 @@ export type Database = {
           created_at?: string
           event_type: string
           id?: string
+          ip_address?: string | null
           reason?: string | null
           session_ref?: string | null
           success: boolean
@@ -1467,6 +1469,7 @@ export type Database = {
           created_at?: string
           event_type?: string
           id?: string
+          ip_address?: string | null
           reason?: string | null
           session_ref?: string | null
           success?: boolean
@@ -1590,6 +1593,7 @@ export type Database = {
           id: string
           notes: string | null
           plan: Database["public"]["Enums"]["tenant_plan"]
+          school_code: string | null
           school_name: string
           school_pin_hash: string
           slug: string
@@ -1608,6 +1612,7 @@ export type Database = {
           id?: string
           notes?: string | null
           plan?: Database["public"]["Enums"]["tenant_plan"]
+          school_code?: string | null
           school_name: string
           school_pin_hash: string
           slug: string
@@ -1626,6 +1631,7 @@ export type Database = {
           id?: string
           notes?: string | null
           plan?: Database["public"]["Enums"]["tenant_plan"]
+          school_code?: string | null
           school_name?: string
           school_pin_hash?: string
           slug?: string
@@ -2107,6 +2113,14 @@ export type Database = {
         }[]
       }
       pin_logout: { Args: { _session_token: string }; Returns: boolean }
+      promote_students: {
+        Args: {
+          _current_class: string
+          _next_class: string
+          _school_id: string
+        }
+        Returns: undefined
+      }
       record_payment: {
         Args: {
           _academic_year: string
@@ -2148,10 +2162,6 @@ export type Database = {
         Args: { _data: Json; _school_pin_hash: string; _tenant_id: string }
         Returns: boolean
       }
-      save_tenant_data_v2: {
-        Args: { _data: Json; _session_token: string }
-        Returns: boolean
-      }
       save_tenant_data_v3: {
         Args: { _data: Json; _expected_rev: number; _session_token: string }
         Returns: Json
@@ -2164,10 +2174,6 @@ export type Database = {
           detail: string
           passed: boolean
         }[]
-      }
-      set_admin_pin: {
-        Args: { _pin_hash: string; _tenant_id: string }
-        Returns: boolean
       }
       set_admin_pin_v2: {
         Args: { _pin: string; _session_token: string }
@@ -2206,6 +2212,10 @@ export type Database = {
         Args: { _location: string; _session_id: string; _user_id: string }
         Returns: undefined
       }
+      upgrade_school_tier: {
+        Args: { _new_plan: string; _school_id: string }
+        Returns: undefined
+      }
       upsert_staff_signature: {
         Args: {
           p_school_id: string
@@ -2234,25 +2244,9 @@ export type Database = {
           trial_started_at: string
         }[]
       }
-      verify_admin_pin: {
-        Args: { _pin_hash: string; _tenant_id: string }
-        Returns: boolean
-      }
       verify_admin_pin_v2: {
         Args: { _pin: string; _session_token: string }
         Returns: boolean
-      }
-      verify_school_pin: {
-        Args: { _pin_hash: string }
-        Returns: {
-          has_admin_pin: boolean
-          plan: Database["public"]["Enums"]["tenant_plan"]
-          school_name: string
-          status: Database["public"]["Enums"]["tenant_status"]
-          subscription_ends_at: string
-          tenant_id: string
-          trial_started_at: string
-        }[]
       }
       verify_school_pin_v2: {
         Args: { _pin: string }
@@ -2261,7 +2255,6 @@ export type Database = {
           plan: Database["public"]["Enums"]["tenant_plan"]
           school_name: string
           session_token: string
-          slug: string
           status: Database["public"]["Enums"]["tenant_status"]
           subscription_ends_at: string
           tenant_id: string
