@@ -4,7 +4,6 @@ import App from "@/components/school/School_Management_App";
 import {
   loadTenantSession,
   fetchTenantData,
-  saveTenantData,
   saveTenantDataV3,
   clearTenantSession,
   daysRemaining,
