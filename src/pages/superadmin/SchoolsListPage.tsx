@@ -43,25 +43,16 @@ export default function SchoolsListPage() {
   const load = useCallback(async () => {
     setLoading(true);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const [schoolsRes, countsRes] = await Promise.all([
-      (supabase as any)
-        .from("schools")
-        .select("id,tenant_id,name,code,email,max_students,features,academic_year,current_term,created_at,status")
-        .order("created_at", { ascending: false }),
-      (supabase as any).rpc("get_student_counts_by_school")
-    ]);
+    const { data: schoolsData, error } = await (supabase as any)
+      .from("schools")
+      .select("id,tenant_id,name,code,email,current_students,max_students,features,academic_year,current_term,created_at,status")
+      .order("created_at", { ascending: false });
     setLoading(false);
-    if (schoolsRes.error) {
-      toast({ title: "Error loading schools", description: schoolsRes.error.message, variant: "destructive" }); return;
+    if (error) {
+      toast({ title: "Error loading schools", description: error.message, variant: "destructive" }); return;
     }
     
-    const countsData = countsRes.data || [];
-    const mapped = (schoolsRes.data ?? []).map((s: any) => {
-      const countMatch = countsData.find((c: any) => c.school_id === s.id);
-      return { ...s, current_students: countMatch ? countMatch.student_count : 0 };
-    });
-    
-    setSchools(mapped as SchoolRow[]);
+    setSchools((schoolsData as SchoolRow[]) || []);
   }, [toast]);
 
   useEffect(() => { load(); }, [load]);

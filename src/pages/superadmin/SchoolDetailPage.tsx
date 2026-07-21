@@ -113,10 +113,9 @@ export default function SchoolDetailPage() {
     if (!schoolId) return;
     setLoading(true);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const [schoolRes, billingRes, countsRes] = await Promise.all([
+    const [schoolRes, billingRes] = await Promise.all([
       (supabase as any).from("schools").select("*").eq("id", schoolId).single(),
-      (supabase as any).from("billing").select("plan,status,trial_ends_at,current_period_start,current_period_end").eq("school_id", schoolId).maybeSingle(),
-      (supabase as any).rpc("get_student_counts_by_school")
+      (supabase as any).from("billing").select("plan,status,trial_ends_at,current_period_start,current_period_end").eq("school_id", schoolId).maybeSingle()
     ]);
     setLoading(false);
     if (schoolRes.error) {
@@ -124,10 +123,6 @@ export default function SchoolDetailPage() {
     }
     
     const schoolData = schoolRes.data;
-    if (schoolData && countsRes.data) {
-      const countMatch = countsRes.data.find((c: any) => c.school_id === schoolId);
-      schoolData.current_students = countMatch ? countMatch.student_count : 0;
-    }
     setSchool(schoolData as SchoolDetail);
     setSelectedPlan(billingRes.data?.plan ?? "starter");
     setBilling(billingRes.data as BillingDetail | null);
@@ -140,24 +135,14 @@ export default function SchoolDetailPage() {
     if (!schoolId) return;
     setSavingPlan(true);
     try {
-      // Atomically update school features + max_students to match plan
+      // Call the securely defined RPC to update billing plan, max_students, and merge JSONB features
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: schoolErr } = await (supabase as any)
-        .from("schools")
-        .update({
-          features: PLAN_FEATURES[selectedPlan],
-          max_students: PLAN_LIMITS[selectedPlan],
-        })
-        .eq("id", schoolId);
-      if (schoolErr) throw new Error(schoolErr.message);
-
-      // Update billing plan
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: billingErr } = await (supabase as any)
-        .from("billing")
-        .update({ plan: selectedPlan })
-        .eq("school_id", schoolId);
-      if (billingErr) throw new Error(billingErr.message);
+      const { error } = await (supabase as any).rpc("upgrade_school_tier", {
+        _school_id: schoolId,
+        _new_plan: selectedPlan
+      });
+      
+      if (error) throw new Error(error.message);
 
       toast({ title: "Plan updated", description: `Switched to ${selectedPlan}` });
       load();

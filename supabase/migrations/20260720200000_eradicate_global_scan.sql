@@ -138,38 +138,12 @@ BEGIN
     RETURN;
   END IF;
 
-  -- SLOW PATH: Legacy O(N) Hash Scan (The Lazy Migration)
-  FOR _t IN SELECT * FROM public.tenants WHERE school_code IS NULL LOOP
-    IF public._verify_pin_any(_pin, _t.school_pin_hash) THEN
-      
-      -- Auto-upgrade to Fast Path for all future logins
-      UPDATE public.tenants
-      SET school_code = _pin,
-          updated_at = now()
-      WHERE id = _t.id;
 
-      _token := encode(gen_random_bytes(32), 'hex');
-      INSERT INTO public.tenant_sessions(token, tenant_id)
-      VALUES (_token, _t.id);
-
-      INSERT INTO public.tenant_auth_audit(
-        event_type, tenant_id, success, reason, session_ref, ip_address
-      ) VALUES (
-        'school_pin_verify', _t.id, TRUE,
-        'session issued (migrated); tenant_status=' || _t.status::text,
-        public._session_ref(_token), _ip
-      );
-
-      RETURN QUERY SELECT
-        _token, _t.id, _t.school_name, _t.status, _t.plan,
-        _t.subscription_ends_at, _t.trial_started_at,
-        (_t.admin_pin_hash IS NOT NULL);
-      RETURN;
-    END IF;
-  END LOOP;
 
   -- No match found
   INSERT INTO public.tenant_auth_audit(event_type, success, reason, ip_address)
   VALUES ('school_pin_verify', FALSE, 'no tenant matched supplied pin', _ip);
 END;
 $$;
+
+GRANT EXECUTE ON FUNCTION public.verify_school_pin_v2(TEXT) TO anon, authenticated;

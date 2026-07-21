@@ -48,6 +48,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: "name, code, and tenantId are required" }, { status: 400, headers: corsHeaders });
     }
 
+    let maxStudentsLimit = 500;
+    if (plan === "pro") maxStudentsLimit = 2000;
+    if (plan === "enterprise") maxStudentsLimit = 10000;
+
     // ── 4. INSERT school ──────────────────────────────────────────────
     const { data: school, error: schoolError } = await serviceClient
       .from("schools")
@@ -60,6 +64,7 @@ Deno.serve(async (req) => {
         address_street: address?.street ?? null,
         address_city: address?.city ?? null,
         address_state: address?.state ?? null,
+        max_students: maxStudentsLimit,
       })
       .select("id")
       .single();
