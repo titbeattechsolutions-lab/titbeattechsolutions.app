@@ -1103,6 +1103,54 @@ export type Database = {
           },
         ]
       }
+      student_lifecycle_events: {
+        Row: {
+          academic_year: string
+          created_at: string | null
+          event_type: string
+          id: string
+          reason: string | null
+          recorded_by: string | null
+          school_id: string
+          student_id: string
+        }
+        Insert: {
+          academic_year: string
+          created_at?: string | null
+          event_type: string
+          id?: string
+          reason?: string | null
+          recorded_by?: string | null
+          school_id: string
+          student_id: string
+        }
+        Update: {
+          academic_year?: string
+          created_at?: string | null
+          event_type?: string
+          id?: string
+          reason?: string | null
+          recorded_by?: string | null
+          school_id?: string
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_lifecycle_events_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_lifecycle_events_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       students: {
         Row: {
           admission_no: string
@@ -2075,6 +2123,15 @@ export type Database = {
           _session_token: string
           _staff_member_id: string
           _staff_name: string
+        }
+        Returns: undefined
+      }
+      log_student_exit: {
+        Args: {
+          _academic_year: string
+          _new_status: string
+          _reason?: string
+          _student_id: string
         }
         Returns: undefined
       }
