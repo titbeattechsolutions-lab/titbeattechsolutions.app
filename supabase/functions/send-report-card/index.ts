@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
     // Tenant session calls (PIN-based app) — allowed without Supabase auth
 
     // ── 2. Parse request body ─────────────────────────────────────────────────
-    const { reportCardId, schoolId } = await req.json();
+    const { reportCardId, schoolId, overrideEmail } = await req.json();
     if (!reportCardId || !schoolId) {
       return Response.json(
         { error: "reportCardId and schoolId are required" },
@@ -71,8 +71,9 @@ Deno.serve(async (req) => {
     }
 
     // ── 4. Fetch guardian email ───────────────────────────────────────────────
-    let guardianEmail: string | null = null;
-    if (rc.student_id) {
+    let guardianEmail: string | null = overrideEmail ?? null;
+    
+    if (!guardianEmail && rc.student_id) {
       const { data: student } = await admin
         .from("students")
         .select("guardian_email")
@@ -97,7 +98,7 @@ Deno.serve(async (req) => {
     }
     if (!guardianEmail) {
       return Response.json(
-        { error: "No parent email on file for this student. Please update the student profile first." },
+        { error: "No parent email on file for this student. Please provide one." },
         { status: 422, headers: corsHeaders }
       );
     }

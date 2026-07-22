@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  getStudents, createStudent, updateStudent, archiveStudent,
+  getStudents, createStudent, updateStudent, changeStudentStatus,
   getClasses, getSubjects, getTeachers,
   getResults, saveResult, bulkSaveResults,
   getAttendance, saveAttendance,
@@ -65,8 +65,9 @@ export interface StudentFilters {
 
 export const STUDENT_PAGE_SIZE = 25;
 
-export function useStudentsPaged(page: number, filters: StudentFilters = {}) {
-  const { schoolId } = useAuth();
+export function useStudentsPaged(page: number, filters: StudentFilters = {}, overrideSchoolId?: string) {
+  const { schoolId: authSchoolId } = useAuth();
+  const schoolId = overrideSchoolId || authSchoolId;
   return useQuery<{ students: Student[]; total: number }>({
     queryKey: ["students", schoolId, page, filters],
     queryFn: () => getStudentsPaged(schoolId, page, filters),
@@ -127,11 +128,17 @@ export function useUpdateStudent() {
   });
 }
 
-export function useArchiveStudent() {
-  const { schoolId } = useAuth();
+export function useChangeStudentStatus(overrideSchoolId?: string) {
+  const { schoolId: authSchoolId } = useAuth();
+  const schoolId = overrideSchoolId || authSchoolId;
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (studentId: string) => archiveStudent(schoolId, studentId),
+    mutationFn: ({ studentId, newStatus, academicYear, reason }: {
+      studentId: string;
+      newStatus: "graduated" | "withdrawn" | "suspended" | "active";
+      academicYear: string;
+      reason?: string;
+    }) => changeStudentStatus(schoolId, studentId, newStatus, academicYear, reason),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["students", schoolId] }),
   });
 }

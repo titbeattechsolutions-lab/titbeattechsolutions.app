@@ -109,51 +109,19 @@ export default function ReportCardSupabaseActions({
     })();
   }, [activeReport?.id, schoolId]); // eslint-disable-line
 
-  // ─── Save guardian email to students table ────────────────────────────────
+  // ─── Set guardian email locally ──────────────────────────────────────────
   const handleSaveGuardianEmail = useCallback(async () => {
     const trimmed = emailDraft.trim();
     if (!trimmed || !trimmed.includes("@")) {
       toast({ title: "Invalid email", description: "Enter a valid email address.", variant: "destructive" });
       return;
     }
-    setSavingEmail(true);
-    try {
-      if (studentDbId) {
-        // Update existing student row
-        const { error } = await (supabase as any)
-          .from("students")
-          .update({ guardian_email: trimmed })
-          .eq("id", studentDbId);
-        if (error) throw error;
-      } else if (schoolId && activeReport) {
-        // No DB row yet — insert minimal student record
-        const names = activeReport.name.trim().split(/\s+/);
-        const firstName = names[0];
-        const lastName  = names.slice(1).join(" ") || "-";
-        const { data: inserted, error } = await (supabase as any)
-          .from("students")
-          .insert({
-            school_id:     schoolId,
-            first_name:    firstName,
-            last_name:     lastName,
-            guardian_email: trimmed,
-          })
-          .select("id")
-          .single();
-        if (error) throw error;
-        setStudentDbId(inserted?.id ?? null);
-      } else {
-        throw new Error("Cannot save — school not linked.");
-      }
-      setGuardianEmail(trimmed);
-      setShowEmailEditor(false);
-      toast({ title: "Parent email saved", description: trimmed });
-    } catch (e: any) {
-      toast({ title: "Save failed", description: e.message, variant: "destructive" });
-    } finally {
-      setSavingEmail(false);
-    }
-  }, [emailDraft, studentDbId, schoolId, activeReport, toast]);
+    // We strictly avoid inserting into the students table to respect RLS rules.
+    // Instead, we just keep the email in state and pass it dynamically to the Edge Function!
+    setGuardianEmail(trimmed);
+    setShowEmailEditor(false);
+    toast({ title: "Email verified for sending", description: trimmed });
+  }, [emailDraft, toast]);
 
   // ─── Normalise term value ─────────────────────────────────────────────────
   const normaliseTerm = (t: string): "first" | "second" | "third" => {
@@ -266,7 +234,7 @@ export default function ReportCardSupabaseActions({
       if (!rcId) throw new Error("Report card not saved — please save first.");
 
       const { data, error } = await supabase.functions.invoke("send-report-card", {
-        body: { reportCardId: rcId, schoolId },
+        body: { reportCardId: rcId, schoolId, overrideEmail: guardianEmail },
       });
 
       if (error) throw error;
@@ -413,7 +381,7 @@ export default function ReportCardSupabaseActions({
                       className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white text-xs font-black uppercase rounded-lg transition-colors"
                     >
                       <UserPen size={13} />
-                      Update Student Profile
+                      Verify Parent Email
                       <ArrowRight size={13} />
                     </button>
                   </div>
@@ -449,7 +417,7 @@ export default function ReportCardSupabaseActions({
                           ? <Loader2 size={12} className="animate-spin" />
                           : <CheckCheck size={12} />
                         }
-                        {savingEmail ? "Saving…" : "Save Email"}
+                        {savingEmail ? "Verifying…" : "Verify Email"}
                       </button>
                     </div>
                   </div>

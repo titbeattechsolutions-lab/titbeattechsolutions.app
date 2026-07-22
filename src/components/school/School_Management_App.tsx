@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useCallback, memo, useReducer, createContext
 import { logAuthEvent } from "@/lib/auth-logger";
 import { syncActivityLog } from "@/lib/activity-sync";
 import ReportCardSupabaseActions from "./ReportCardSupabaseActions";
+import { StudentsDirectoryTab } from "./StudentsDirectoryTab";
 import { NAPPS_CURRICULUM } from "./data/nappsCurriculum";
 import { E_NOTES } from "./data/eNotes";
 import { RESOURCE_SOURCES } from "./data/resourceSources";
@@ -15,7 +16,7 @@ import {
   Menu, BookOpen, MoreVertical, ChevronRight, ChevronLeft,
   CalendarDays, ClipboardList, BookMarked, Edit2, ArrowLeft,
   Bell, CalendarClock, Send, Inbox, MessageSquare, Wallet, CheckCircle,
-  FileSpreadsheet, Lock, Info, DollarSign, Loader2, Trophy, Download
+  FileSpreadsheet, Lock, Info, DollarSign, Loader2, Trophy, Download, UserCircle
 } from "lucide-react";
 import { verifyAdminPin, setAdminPin, loadTenantSession } from "@/lib/tenant-client";
 import { exportToCSV } from "@/lib/exportUtils";
@@ -67,6 +68,7 @@ interface RollStudent {
   id: string;
   name: string;
   admNo: string;
+  gender?: string;
   suggested?: boolean;
 }
 interface Entry {
@@ -96,6 +98,7 @@ interface StaffMember {
   assignedClasses: string[];
   assignedSubjects?: string[]; // empty/undefined = all subjects of assigned classes
   permissions: Record<string, boolean>;
+  signature?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -140,6 +143,7 @@ interface SchoolSettings {
   session: string;
   term: string;
   resumptionDate: string;
+  principalName?: string;
   reportTemplate?: ReportTemplateConfig;
   staffCodeMigrationDone?: boolean;
 }
@@ -1032,9 +1036,10 @@ interface AppCtxType {
   dispatch: React.Dispatch<any>;
   showToast: (msg: string, type?: string) => void;
   currentActor: string;
+  tenantId?: string;
 }
 const AppCtx = createContext<AppCtxType | null>(null);
-const useApp = () => useContext(AppCtx)!;
+export const useApp = () => useContext(AppCtx)!;
 
 function useToast() {
   const [toast, setToast] = useState<{ msg: string; type: string; id: string } | null>(null);
@@ -3457,6 +3462,7 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
                 <p className="text-xs text-slate-400 mt-0.5">Shown on reports and login screen.</p>
               </div>
               <Inp label="School Name" value={draft.name} onChange={(e: any) => setDraft(d => ({ ...d, name: e.target.value }))} />
+              <Inp label="Principal's Full Name" value={draft.principalName || ""} onChange={(e: any) => setDraft(d => ({ ...d, principalName: e.target.value }))} placeholder="e.g. Mr. John Doe" />
               <Inp label="School Motto" value={draft.motto} onChange={(e: any) => setDraft(d => ({ ...d, motto: e.target.value }))} />
               <div className="pt-2 border-t border-slate-100">
                 <Btn variant="primary" size="lg" className="w-full" onClick={saveInfo}>
@@ -4067,7 +4073,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
     ...(tpl.showPosition ? [["Position", report.position, "font-black text-emerald-700"], ["In Class", report.classCount, ""]] : []),
   ];
   const remarkSections = [
-    ...(tpl.showTeacherRemark ? [["teacher", "Class Teacher's Remark", "teacherSig", ""] as const] : []),
+    ...(tpl.showTeacherRemark ? [["teacher", "Class Teacher's Remark", "teacherSig", "teacher"] as const] : []),
     ...(tpl.showPrincipalRemark ? [["principal", "Principal's Remark", "principalSig", "principal"] as const] : []),
   ];
   return (
@@ -4162,8 +4168,9 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
         <div className={`px-8 pt-4 pb-5 grid gap-4 ${remarkSections.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
           {remarkSections.map(([f, l, sf, role]) => {
             const linkedTeacherSig = (sf === "teacherSig" && classTeacher && linkedSignatures) ? linkedSignatures[classTeacher.id] : null;
-            const sigValue = curC[sf] || linkedTeacherSig || (sf === "teacherSig" ? schoolSettings.defaultTeacherSignature : schoolSettings.defaultPrincipalSignature);
-            const isAutoLinked = !curC[sf] && !!linkedTeacherSig;
+            const staffJsonSig = (sf === "teacherSig" && classTeacher) ? classTeacher.signature : null;
+            const sigValue = curC[sf] || staffJsonSig || linkedTeacherSig || (sf === "teacherSig" ? schoolSettings.defaultTeacherSignature : schoolSettings.defaultPrincipalSignature);
+            const isAutoLinked = !curC[sf] && (!!staffJsonSig || !!linkedTeacherSig);
 
             return (
             <div key={f} className="border border-slate-200 rounded-xl p-4">
@@ -4174,7 +4181,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
               <div className="flex items-end justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-black uppercase text-slate-400 mb-1">
-                    Signature {isAutoLinked && <span className="text-[10px] text-slate-400 italic normal-case tracking-normal ml-1">(auto-applied)</span>}
+                    {role === "teacher" ? "Class Teacher" : "Principal"} {isAutoLinked && <span className="text-[10px] text-slate-400 italic normal-case tracking-normal ml-1">(auto-applied)</span>}
                   </p>
                   {sigValue && typeof sigValue === "string" && sigValue.startsWith("data:image") ? (
                     <img src={sigValue} alt="signature" style={{ maxHeight: "48px", maxWidth: "100%", objectFit: "contain" }} />
@@ -4182,6 +4189,11 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
                     <p className="italic text-base" style={{ fontFamily:`${tpl.fontFamily},serif`, color: tpl.accentColor }}>{sigValue}</p>
                   ) : (
                     <p className="italic text-xs text-slate-300">_____________________</p>
+                  )}
+                  {((role === "teacher" && classTeacher) || (role === "principal" && schoolSettings.principalName)) && (
+                    <p className="text-[11px] font-bold text-slate-800 uppercase tracking-wide mt-1.5">
+                      {role === "teacher" ? classTeacher?.name : schoolSettings.principalName}
+                    </p>
                   )}
                 </div>
                 {role === "principal" && tpl.showStamp && (
@@ -4210,7 +4222,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
 // ATTENDANCE TAB
 // ─────────────────────────────────────────────────────────────────────────────
 const AttendanceTab = memo(() => {
-  const { state, dispatch, showToast, currentActor } = useApp();
+  const { state, dispatch, showToast, currentActor, tenantId } = useApp();
   const { attendance, classRolls, entries } = state;
   const [attTab, setAttTab] = useState<"roll" | "mark" | "history">("roll");
 
@@ -4219,6 +4231,7 @@ const AttendanceTab = memo(() => {
   const [rollSearch, setRollSearch] = useState("");
   const [newName, setNewName] = useState("");
   const [newAdmNo, setNewAdmNo] = useState("");
+  const [newGender, setNewGender] = useState<"male"|"female"|"">("");
   const [bulkText, setBulkText] = useState("");
   const [showBulk, setShowBulk] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -4268,6 +4281,19 @@ const AttendanceTab = memo(() => {
     const dupes = csvPreview.length - newStudents.length;
     if (!newStudents.length) { showToast("All students already in roll", "warning"); return; }
     dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: [...existing, ...newStudents], actor: currentActor });
+    
+    // Phase 4 Roster Cutover Dual-Write
+    if (tenantId) {
+      import("@/supabase/schoolService").then(({ bulkCreateStudents }) => {
+        bulkCreateStudents(tenantId, newStudents.map(s => ({
+          first_name: s.name.split(" ")[0] || "",
+          last_name: s.name.split(" ").slice(1).join(" ") || "",
+          admission_no: s.admNo,
+          class_name: rollClass,
+        }))).catch(console.error);
+      });
+    }
+
     showToast(`${newStudents.length} added${dupes ? `, ${dupes} duplicate${dupes > 1 ? "s" : ""} skipped` : ""}`);
     setCsvImportMode("done");
     setCsvPreview([]);
@@ -4301,10 +4327,24 @@ const AttendanceTab = memo(() => {
     dispatch({
       type: "SAVE_CLASS_ROLL",
       className: rollClass,
-      students: [...existing, { id: uid(), name: newName.trim(), admNo: newAdmNo.trim() }],
+      students: [...existing, { id: uid(), name: newName.trim(), admNo: newAdmNo.trim(), gender: newGender || undefined }],
       actor: currentActor,
     });
-    setNewName(""); setNewAdmNo("");
+
+    // Phase 4 Roster Cutover Dual-Write
+    if (tenantId) {
+      import("@/supabase/schoolService").then(({ bulkCreateStudents }) => {
+        bulkCreateStudents(tenantId, [{
+          first_name: newName.trim().split(" ")[0] || "",
+          last_name: newName.trim().split(" ").slice(1).join(" ") || "",
+          admission_no: newAdmNo.trim(),
+          class_name: rollClass,
+          gender: newGender || undefined,
+        }]).catch(console.error);
+      });
+    }
+
+    setNewName(""); setNewAdmNo(""); setNewGender("");
     showToast("Student added to roll");
   };
 
@@ -4318,6 +4358,19 @@ const AttendanceTab = memo(() => {
       .map(l => ({ id: uid(), name: l, admNo: "" }));
     if (!newStudents.length) return showToast("All students already in roll", "warning");
     dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: [...existing, ...newStudents], actor: currentActor });
+
+    // Phase 4 Roster Cutover Dual-Write
+    if (tenantId) {
+      import("@/supabase/schoolService").then(({ bulkCreateStudents }) => {
+        bulkCreateStudents(tenantId, newStudents.map(s => ({
+          first_name: s.name.split(" ")[0] || "",
+          last_name: s.name.split(" ").slice(1).join(" ") || "",
+          admission_no: "",
+          class_name: rollClass,
+        }))).catch(console.error);
+      });
+    }
+
     setBulkText(""); setShowBulk(false);
     showToast(`${newStudents.length} student${newStudents.length !== 1 ? "s" : ""} added`);
   };
@@ -4603,13 +4656,22 @@ const AttendanceTab = memo(() => {
 
               <Card className="p-5 space-y-3">
                 <p className="text-xs font-black uppercase text-slate-400 tracking-wide">Add Individual Student</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div className="sm:col-span-2">
                     <Inp value={newName} onChange={(e: any) => setNewName(e.target.value)} placeholder="Student full name"
                       onKeyDown={(e: any) => e.key === "Enter" && addStudent()} />
                   </div>
-                  <Inp value={newAdmNo} onChange={(e: any) => setNewAdmNo(e.target.value)} placeholder="Adm No. (optional)"
-                    onKeyDown={(e: any) => e.key === "Enter" && addStudent()} />
+                  <div className="sm:col-span-1">
+                    <select value={newGender} onChange={e => setNewGender(e.target.value as any)} className="w-full px-3 py-2.5 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-blue-500 outline-none">
+                      <option value="">Gender</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                    </select>
+                  </div>
+                  <div className="sm:col-span-1">
+                    <Inp value={newAdmNo} onChange={(e: any) => setNewAdmNo(e.target.value)} placeholder="Adm No."
+                      onKeyDown={(e: any) => e.key === "Enter" && addStudent()} />
+                  </div>
                 </div>
                 <Btn variant="primary" onClick={addStudent} disabled={!newName.trim()}>
                   <PlusCircle size={14} />Add to Roll
@@ -5740,7 +5802,10 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
   const [activeReport, setActiveReport] = useState<any>(null);
   const [linkedSignatures, setLinkedSignatures] = useState<Record<string, string>>({});
   const classTeacher = useMemo(() => {
-    return activeReport ? appState.staffList.find(s => s.assignedClasses.includes(activeReport.class)) : null;
+    if (!activeReport) return null;
+    const candidates = appState.staffList.filter(s => s.assignedClasses.includes(activeReport.class));
+    const exact = candidates.find(s => s.role.toLowerCase().includes("class teacher"));
+    return exact || candidates[0] || null;
   }, [activeReport, appState.staffList]);
 
   useEffect(() => {
@@ -5871,12 +5936,14 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
 
   const TABS = useMemo(() => [
     { id:"dashboard",  label:"Dashboard",  icon:LayoutDashboard, show:true,                                   primary:true },
+    { id:"my_profile", label:"My Profile", icon:UserCircle,       show:!isAdmin,                              primary:true },
     { id:"staff",      label:"Staff",      icon:Users,            show:isAdmin,                               primary:false },
     { id:"fees",       label:"Fees",       icon:DollarSign,       show:isAdmin||can("fees"),                  primary:false },
     { id:"inbox",      label:"Inbox",      icon:Inbox,            show:true,                                  primary:false },
     { id:"timetable",  label:"Timetable",  icon:CalendarClock,    show:true,                                  primary:false },
     { id:"attendance", label:"Attendance", icon:CalendarDays,     show:can("scoreEntry")||isAdmin,            primary:false },
     { id:"database",   label:"Records",    icon:Database,         show:isAdmin||can("manageRecords")||can("scoreEntry"), primary:true },
+    { id:"students",   label:"Directory",  icon:Users,            show:isAdmin||can("manageRecords"), primary:true },
     { id:"reports",    label:"Reports",    icon:FileText,         show:can("viewReports"),                    primary:true },
     { id:"rankings",   label:"Rankings",   icon:Trophy,           show:isAdmin||can("rankings"),              primary:false },
     { id:"entry",      label:"Score Entry",icon:PlusCircle,       show:can("scoreEntry"),                     primary:true },
@@ -6099,7 +6166,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     () => appState.notifications.filter(n => notificationVisible(n, isAdmin, currentActor) && !n.readBy.includes(currentActor)).length,
     [appState.notifications, isAdmin, currentActor]
   );
-  const ctxValue = useMemo<AppCtxType>(() => ({ state: appState, dispatch, showToast, currentActor }), [appState, showToast, currentActor]);
+  const ctxValue = useMemo<AppCtxType>(() => ({ state: appState, dispatch, showToast, currentActor, tenantId }), [appState, showToast, currentActor, tenantId]);
 
   // ── Ref to distinguish local edits from remote state replacements ───────
   const isApplyingRemoteRef = useRef(false);
@@ -6859,6 +6926,11 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                 <RankingsTab entries={entries} schoolSettings={schoolSettings} can={can} isAdmin={isAdmin} />
               )}
 
+              {/* STUDENTS DIRECTORY */}
+              {activeTab === "students" && (isAdmin || can("manageRecords")) && (
+                <StudentsDirectoryTab tenantId={tenantId} />
+              )}
+
               {/* REPORTS */}
               {activeTab === "reports" && can("viewReports") && (
                 !activeReport ? (
@@ -7026,9 +7098,26 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                             {([
                               ["teacher",   "Class Teacher's Remark", "teacherSig",   "Teacher Signature"],
                               ["principal", "Principal's Remark",     "principalSig", "Principal's Signature"],
-                            ] as const).map(([f, l, sf, sl]) => (
-                              <div key={f} className="space-y-3 p-4 bg-white rounded-xl border border-slate-200">
-                                <label className="block text-xs font-black uppercase text-slate-400 tracking-wide">{l}</label>
+                            ] as const).map(([f, l, sf, sl]) => {
+                              const isTeacher = sf === "teacherSig";
+                              const staffJsonSig = (isTeacher && classTeacher) ? classTeacher.signature : null;
+                              const linkedProfileSig = (isTeacher && classTeacher && linkedSignatures) ? linkedSignatures[classTeacher.id] : null;
+                              const globalFallbackSig = isTeacher ? (schoolSettings as any).defaultTeacherSignature : (schoolSettings as any).defaultPrincipalSignature;
+                              const hasAutoSig = !!staffJsonSig || !!linkedProfileSig || !!globalFallbackSig;
+                              const isOverriding = curC[sf] === "OVERRIDE";
+                              const hasCustomSig = !!curC[sf] && curC[sf] !== "OVERRIDE";
+                              const showPad = !hasAutoSig || hasCustomSig || isOverriding;
+
+                              const isPrincipalField = f === "principal";
+                              const canEditPrincipal = isAdmin || (auth.user?.role?.toLowerCase().includes("principal") ?? false) || (auth.user?.role?.toLowerCase().includes("admin") ?? false);
+                              const disableInput = isPrincipalField && !canEditPrincipal;
+
+                              return (
+                              <div key={f} className={`space-y-3 p-4 rounded-xl border ${disableInput ? 'bg-slate-50 border-slate-200 opacity-80' : 'bg-white border-slate-200'}`}>
+                                <div className="flex justify-between items-center">
+                                  <label className="block text-xs font-black uppercase text-slate-400 tracking-wide">{l}</label>
+                                  {disableInput && <Lock size={12} className="text-slate-400" />}
+                                </div>
                                 <div className="flex gap-2">
                                   <Sel
                                     value={Object.keys(BUILTIN_REMARKS).find(key => BUILTIN_REMARKS[key as keyof typeof BUILTIN_REMARKS] === curC[f]) || "custom"}
@@ -7041,6 +7130,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                                       }
                                     }}
                                     className="flex-1"
+                                    disabled={disableInput}
                                   >
                                     <option value="custom">Custom Remark</option>
                                     <option value="excellent">Excellent Performance</option>
@@ -7053,17 +7143,39 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                                 <textarea
                                   value={curC[f] || ""}
                                   onChange={e => dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:f, value:e.target.value })}
-                                  rows={3} placeholder="Enter remark…"
-                                  className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-medium focus:border-blue-500 outline-none transition-all resize-none"
+                                  rows={3} placeholder={disableInput ? "Only administrators can edit this remark." : "Enter remark…"}
+                                  disabled={disableInput}
+                                  className={`w-full px-4 py-3 border-2 rounded-xl text-sm font-medium outline-none transition-all resize-none ${disableInput ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed' : 'bg-slate-50 border-slate-100 focus:border-blue-500 text-slate-900'}`}
                                 />
                                 <label className="block text-xs font-black uppercase text-slate-400 tracking-wide">{sl}</label>
-                                <SignaturePad
-                                  value={curC[sf] || ""}
-                                  onChange={(val) => dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:sf, value:val })}
-                                  onClear={() => dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:sf, value:"" })}
-                                />
+                                {showPad ? (
+                                  <div className="relative border-2 border-dashed border-slate-100 rounded-xl overflow-hidden bg-slate-50">
+                                    <SignaturePad
+                                      value={hasCustomSig ? curC[sf] : ""}
+                                      onChange={(val) => dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:sf, value:val })}
+                                      onClear={() => dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:sf, value:"" })}
+                                    />
+                                    {hasAutoSig && (
+                                      <button onClick={() => dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:sf, value:"" })} className="absolute top-2 right-2 text-[10px] font-black uppercase tracking-wide text-slate-400 hover:text-slate-600 bg-white px-2 py-1 rounded shadow-sm border border-slate-200 z-10 transition-colors">
+                                        Cancel Override
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-between p-3.5 bg-indigo-50/50 border border-indigo-100 rounded-xl">
+                                    <div className="flex items-center gap-2 text-indigo-700">
+                                      <CheckCircle size={15} />
+                                      <span className="text-sm font-bold">Auto-Applied</span>
+                                    </div>
+                                    {isAdmin && (
+                                      <button onClick={() => dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:sf, value:"OVERRIDE" })} className="text-[10px] font-black text-indigo-600 hover:text-indigo-800 uppercase tracking-widest bg-indigo-100/50 px-3 py-1.5 rounded-lg transition-colors">
+                                        Override
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
                               </div>
-                            ))}
+                            )})}
                           </div>
                         </Card>
                         {can("printReports") && (
@@ -7131,6 +7243,50 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
               {activeTab === "resources" && isAdmin && (
                 <ResourcesTab showToast={showToast} />
               )}
+
+              {/* MY PROFILE (For PIN-authenticated teachers) */}
+              {activeTab === "my_profile" && !isAdmin && (() => {
+                const myStaffRecord = appState.staffList.find(s => s.id === auth.user?.id);
+                if (!myStaffRecord) return <div className="p-10 text-center text-slate-500 font-bold">Profile not found.</div>;
+                return (
+                  <div className="space-y-5 max-w-2xl mx-auto pb-10">
+                    <div>
+                      <h1 className="text-2xl font-black text-slate-900 uppercase">My Profile</h1>
+                      <p className="text-sm text-slate-400 mt-0.5">Manage your personal details and default signature.</p>
+                    </div>
+                    <Card className="p-6 space-y-5">
+                      <div className="flex items-center gap-4 border-b border-slate-100 pb-5">
+                        <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-black text-xl">
+                          {myStaffRecord.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="text-lg font-black uppercase text-slate-800">{myStaffRecord.name}</p>
+                          <p className="text-sm text-slate-500 font-bold">{myStaffRecord.role}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-black uppercase text-slate-700">My Signature</p>
+                        <p className="text-xs text-slate-400 mt-0.5 mb-3">Draw your signature below. This will be automatically applied to report cards for classes you manage.</p>
+                        <div className="border-2 border-dashed border-slate-100 rounded-xl overflow-hidden">
+                          <SignaturePad 
+                            value={myStaffRecord.signature || ""}
+                            onChange={(val) => {
+                              const updated = { ...myStaffRecord, signature: val, updatedAt: new Date().toISOString() };
+                              dispatch({ type: "SAVE_STAFF", payload: updated });
+                              showToast("Signature saved successfully", "success");
+                            }}
+                            onClear={() => {
+                              const updated = { ...myStaffRecord, signature: "", updatedAt: new Date().toISOString() };
+                              dispatch({ type: "SAVE_STAFF", payload: updated });
+                              showToast("Signature cleared", "info");
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+                );
+              })()}
 
               {/* STAFF */}
               {activeTab === "staff" && isAdmin && (() => {

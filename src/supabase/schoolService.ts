@@ -311,17 +311,21 @@ export async function updateStudent(
   return data as Student;
 }
 
-export async function archiveStudent(
+export async function changeStudentStatus(
   schoolId: string | null,
-  studentId: string
+  studentId: string,
+  newStatus: "graduated" | "withdrawn" | "suspended" | "active",
+  academicYear: string,
+  reason?: string
 ): Promise<void> {
   const sid = requireSchoolId(schoolId);
-  const { error } = await db()
-    .from("students")
-    .update({ status: "withdrawn" })
-    .eq("id", studentId)
-    .eq("school_id", sid);
-  throwIfError(error, "archiveStudent");
+  const { error } = await db().rpc("log_student_exit", {
+    _student_id: studentId,
+    _new_status: newStatus,
+    _academic_year: academicYear,
+    _reason: reason || null
+  });
+  throwIfError(error, "changeStudentStatus");
 }
 
 export async function bulkCreateStudents(
