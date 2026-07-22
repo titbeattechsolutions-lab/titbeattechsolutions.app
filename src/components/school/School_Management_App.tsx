@@ -3303,6 +3303,9 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
         if (error) console.error("Failed to fetch staff session logs:", error);
         if (!error && data) setLogs(data);
         setLoadingLogs(false);
+      }).catch(err => {
+        console.error("Import failed:", err);
+        setLoadingLogs(false);
       });
     };
 
@@ -3327,6 +3330,9 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
         const { data, error } = await supabase.rpc("get_activity_logs_v2", { _session_token: sessionToken });
         if (error) console.error("Failed to fetch staff action logs:", error);
         if (!error && data) setActionLogs(data);
+        setLoadingActionLogs(false);
+      }).catch(err => {
+        console.error("Import failed:", err);
         setLoadingActionLogs(false);
       });
     };
@@ -6551,14 +6557,14 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                       <div className="divide-y divide-slate-50 max-h-[420px] overflow-y-auto">
                         {visibleLogs.slice(0, isAdmin ? 30 : 15).map((log: any) => {
                           const { date, time } = fmtTs(log.ts);
-                          const ac = log.action === "Deleted" ? "bg-red-100 text-red-600" : log.action === "Restored" ? "bg-emerald-100 text-emerald-700" : log.action.includes("Revok") ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700";
+                          const ac = log.action === "Deleted" ? "bg-red-100 text-red-600" : log.action === "Restored" ? "bg-emerald-100 text-emerald-700" : (log.action || "").includes("Revok") ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700";
                           return (
                             <div key={log.id} className="flex items-center justify-between gap-3 px-5 py-3">
                               <div className="flex items-center gap-3 min-w-0">
                                 <span className={`text-xs font-black px-2 py-0.5 rounded-md flex-shrink-0 ${ac}`}>{log.action}</span>
                                 <div className="min-w-0">
                                   <p className="text-xs font-black text-slate-900 truncate">
-                                    {log.student.includes("Signed In") ? "User logged in" : 
+                                    {(log.student || "").includes("Signed In") ? "User logged in" : 
                                      log.action === "Recorded" ? `Payment recorded for ${log.student}` :
                                      log.action === "Added" && log.subject ? `Grade added for ${log.student}` :
                                      log.action === "Deleted" && log.subject ? `Record deleted for ${log.student}` :
