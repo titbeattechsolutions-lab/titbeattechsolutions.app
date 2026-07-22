@@ -2093,6 +2093,10 @@ export type Database = {
         Args: { _hours_valid?: number; _target_user_id: string }
         Returns: string
       }
+      link_anon_to_tenant: {
+        Args: { _session_token: string }
+        Returns: boolean
+      }
       log_auth_event: {
         Args: {
           _auth_type: string
