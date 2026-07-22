@@ -48,9 +48,17 @@ export default function TenantApp() {
   const isSyncing = useRef<boolean>(false);
   const signedOut = useRef<boolean>(false);
   const latestAppRef = useRef<Record<string, unknown> | null>(null);
+  const pendingRetry = useRef<number>(0);
+  const pushIfChangedRef = useRef<((retryCount: number, explicitState?: Record<string, unknown>) => Promise<void>) | null>(null);
 
   const handleStateChange = useCallback((state: Record<string, unknown>) => {
     latestAppRef.current = state;
+    if (pendingRetry.current > 0 && pushIfChangedRef.current) {
+      const retry = pendingRetry.current;
+      pendingRetry.current = 0;
+      // Guarantee React has flushed the state merge before we push
+      setTimeout(() => pushIfChangedRef.current!(retry, state), 10);
+    }
   }, []);
   const handleLocalEdit = useCallback((state: Record<string, unknown>) => {
     window.dispatchEvent(new CustomEvent("tenant_local_edit", { detail: state }));
@@ -190,12 +198,15 @@ export default function TenantApp() {
         localRev.current = result.currentData._rev ?? expectedRev;
         setPolledData(result.currentData);
         isSyncing.current = false;
-        setTimeout(() => pushIfChanged(retryCount + 1), 300);
+        // Deterministically wait for School_Management_App to merge and call onStateChange
+        pendingRetry.current = retryCount + 1;
       } else {
         setSyncPhase("error");
         isSyncing.current = false;
       }
     };
+
+    pushIfChangedRef.current = pushIfChanged;
 
     const pull = async () => {
       if (isSyncing.current) return;

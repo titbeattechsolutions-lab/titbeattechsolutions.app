@@ -6187,6 +6187,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     // it back out to avoid feedback loops and unnecessary writes.
     if (isApplyingRemoteRef.current) {
       isApplyingRemoteRef.current = false;
+      // Ensure merged state is persisted locally to prevent data loss on reload
+      debouncedSaveDB(appState, false);
       return;
     }
     debouncedSaveDB(appState);
