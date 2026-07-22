@@ -136,11 +136,16 @@ export default function ReportCardSupabaseActions({
     if (!activeReport || !schoolId) return;
     setSaving(true);
     try {
+      if (!studentDbId) {
+        throw new Error("Student must be migrated to the relational database before a report card can be saved.");
+      }
+
       // Pick the principal signature (prefer principalSig, fallback teacherSig)
       const signature = curC.principalSig || curC.teacherSig || null;
 
       const payload = {
         school_id:       schoolId,
+        student_id:      studentDbId,
         student_name:    activeReport.name,
         student_class:   activeReport.class,
         term:            normaliseTerm(schoolSettings.term),
@@ -154,8 +159,7 @@ export default function ReportCardSupabaseActions({
         status: "ready" as const,
       };
 
-      // Upsert by school_id + student_name + class + term + year
-      // (student_id is nullable since this app uses names not UUIDs)
+      // Upsert by school_id + student_id + term + year
       const { data, error } = await (supabase as any)
         .from("report_cards")
         .upsert(payload, {
@@ -203,7 +207,7 @@ export default function ReportCardSupabaseActions({
     } finally {
       setSaving(false);
     }
-  }, [activeReport, curC, schoolId, schoolSettings, toast]);
+  }, [activeReport, curC, schoolId, schoolSettings, studentDbId, toast]);
 
   // ─── Print ────────────────────────────────────────────────────────────────
   const handlePrint = () => window.print();
