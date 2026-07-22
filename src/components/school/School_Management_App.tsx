@@ -4077,7 +4077,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
     ...(tpl.showPrincipalRemark ? [["principal", "Principal's Remark", "principalSig", "principal"] as const] : []),
   ];
   return (
-    <div id="report-print-area" className="bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-lg relative" style={{ fontFamily: `${tpl.fontFamily},serif` }}>
+    <div id="report-print-area" className="bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-lg relative" style={{ fontFamily: tpl.fontFamily === 'Helvetica' ? 'Helvetica, Arial, sans-serif' : tpl.fontFamily === 'Times' ? '"Times New Roman", Times, serif' : tpl.fontFamily === 'Courier' ? 'Courier, monospace' : 'Georgia, serif' }}>
       {tpl.uploadedFile && (
         <div className="absolute inset-0 w-full h-full z-0 pointer-events-none" style={{
           backgroundImage: `url(${tpl.uploadedFile})`,
@@ -7196,6 +7196,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                           curC={curC}
                           schoolSettings={schoolSettings}
                           tenantId={tenantId}
+                          canPrint={can("printReports") || isAdmin}
                         />
                       </div>
                     </Card>

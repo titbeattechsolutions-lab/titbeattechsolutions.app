@@ -51,6 +51,13 @@ export default function ReportCardSupabaseActions({
   curC,
   schoolSettings,
   tenantId,
+  canPrint = false,
+}: {
+  activeReport: any;
+  curC: any;
+  schoolSettings: any;
+  tenantId: string | null;
+  canPrint?: boolean;
 }) {
   const { toast } = useToast();
   const { role } = useAuth();
@@ -291,18 +298,20 @@ export default function ReportCardSupabaseActions({
         </Button>
 
         {/* Print */}
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-10 text-xs font-black uppercase"
-          onClick={handlePrint}
-        >
-          <Printer size={14} className="mr-1.5" />
-          Print Report
-        </Button>
+        {canPrint && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-10 text-xs font-black uppercase"
+            onClick={handlePrint}
+          >
+            <Printer size={14} className="mr-1.5" />
+            Print Report
+          </Button>
+        )}
 
         {/* Send to Parent */}
-        {role !== "teacher" && (
+        {canPrint && role !== "teacher" && (
           <Button
             variant="default"
             size="sm"
