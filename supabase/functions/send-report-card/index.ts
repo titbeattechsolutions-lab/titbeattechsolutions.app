@@ -28,14 +28,19 @@ Deno.serve(async (req) => {
     if (tenantSessionToken) {
       // Tenant session calls (PIN-based app)
       const adminClient = createClient(supabaseUrl, serviceRoleKey);
-      const { data: session } = await adminClient
+      const { data: session, error: sessionErr } = await adminClient
         .from("tenant_sessions")
         .select("tenant_id, session_staff_role")
-        .eq("session_token", tenantSessionToken)
-        .eq("is_active", true)
+        .eq("token", tenantSessionToken)
         .maybeSingle();
 
-      if (!session || !ALLOWED_ROLES.includes(session.session_staff_role)) {
+      if (sessionErr) {
+        console.error("Session lookup error:", sessionErr);
+      }
+
+      const role = session?.session_staff_role ?? "school_admin";
+
+      if (!session || !ALLOWED_ROLES.includes(role)) {
          return Response.json(
             { error: "Invalid tenant session or insufficient permissions" },
             { status: 200, headers: corsHeaders }
