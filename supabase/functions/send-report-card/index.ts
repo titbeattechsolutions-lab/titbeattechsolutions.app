@@ -22,34 +22,10 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     const tenantSessionToken = req.headers.get("x-tenant-session");
     
-    // Support both Supabase auth and tenant session token
-    const isTenantCall = !authHeader?.startsWith("Bearer eyJ");
     let callerUserId: string | null = null;
     let callerSchoolId: string | null = null;
 
-    if (authHeader && !isTenantCall) {
-      const callerClient = createClient(supabaseUrl, anonKey, {
-        global: { headers: { Authorization: authHeader } },
-      });
-      const { data: { user }, error: userError } = await callerClient.auth.getUser();
-      if (!userError && user) {
-        callerUserId = user.id;
-        // Check profile role
-        const adminClient = createClient(supabaseUrl, serviceRoleKey);
-        const { data: profile } = await adminClient
-          .from("profiles")
-          .select("role, school_id")
-          .eq("id", user.id)
-          .maybeSingle();
-        if (!profile || !ALLOWED_ROLES.includes(profile.role)) {
-          return Response.json(
-            { error: "Insufficient permissions" },
-            { status: 200, headers: corsHeaders }
-          );
-        }
-        callerSchoolId = profile.school_id;
-      }
-    } else if (tenantSessionToken) {
+    if (tenantSessionToken) {
       // Tenant session calls (PIN-based app)
       const adminClient = createClient(supabaseUrl, serviceRoleKey);
       const { data: session } = await adminClient
@@ -72,6 +48,29 @@ Deno.serve(async (req) => {
         .eq("tenant_id", session.tenant_id)
         .maybeSingle();
       callerSchoolId = school?.id ?? session.tenant_id;
+    } else if (authHeader) {
+      // GoTrue Auth
+      const callerClient = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error: userError } = await callerClient.auth.getUser();
+      if (!userError && user) {
+        callerUserId = user.id;
+        // Check profile role
+        const adminClient = createClient(supabaseUrl, serviceRoleKey);
+        const { data: profile } = await adminClient
+          .from("profiles")
+          .select("role, school_id")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (!profile || !ALLOWED_ROLES.includes(profile.role)) {
+          return Response.json(
+            { error: "Insufficient permissions" },
+            { status: 200, headers: corsHeaders }
+          );
+        }
+        callerSchoolId = profile.school_id;
+      }
     }
 
     if (!callerSchoolId) {
