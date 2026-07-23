@@ -10,10 +10,33 @@
  *  - UI components import ONLY from this file, never call supabase directly.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db = () => (supabase as any);
-
 import { supabase } from "@/integrations/supabase/client";
+import { createClient } from "@supabase/supabase-js";
+
+let _tenantDb: any = null;
+let _lastToken: string | null = null;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = (): any => {
+  try {
+    const raw = sessionStorage.getItem("schoolapp_tenant_session_v2");
+    const token = raw ? JSON.parse(raw).sessionToken : null;
+    if (!token) return supabase;
+
+    if (!_tenantDb || _lastToken !== token) {
+      const url = import.meta.env.VITE_SUPABASE_URL;
+      const key = import.meta.env.VITE_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      _tenantDb = createClient(url, key, {
+        global: { headers: { "x-tenant-session": token } },
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+      });
+      _lastToken = token;
+    }
+    return _tenantDb;
+  } catch {
+    return supabase;
+  }
+};
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -251,17 +274,33 @@ export async function getStudentSummary(
 
 export async function getStudents(
   schoolId: string | null,
-  filters?: { class_id?: string; status?: string }
+  filters?: { class_id?: string; status?: string; search?: string }
 ): Promise<Student[]> {
   const sid = requireSchoolId(schoolId);
+  
+  // Resolve tenantId to actual schools.id if necessary
+  let actualSchoolId = sid;
+  const { data: sRow } = await db()
+    .from("schools")
+    .select("id")
+    .eq("tenant_id", sid)
+    .maybeSingle();
+  if (sRow?.id) {
+    actualSchoolId = sRow.id;
+  }
+
   let query = db()
     .from("students")
     .select("*")
-    .eq("school_id", sid)
+    .eq("school_id", actualSchoolId)
     .order("last_name", { ascending: true });
 
   if (filters?.class_id) query = query.eq("class_id", filters.class_id);
   if (filters?.status) query = query.eq("status", filters.status);
+  if (filters?.search) {
+    const s = filters.search.trim();
+    query = query.or(`first_name.ilike.%${s}%,last_name.ilike.%${s}%,admission_no.ilike.%${s}%`);
+  }
 
   const { data, error } = await query;
   throwIfError(error, "getStudents");
@@ -285,9 +324,18 @@ export async function createStudent(
   data: Omit<Student, "id" | "school_id" | "created_at" | "updated_at" | "enrolled_at">
 ): Promise<Student> {
   const sid = requireSchoolId(schoolId);
+  
+  // Resolve tenantId to actual schools.id to prevent FK violation
+  const { data: sRow } = await db()
+    .from("schools")
+    .select("id")
+    .eq("tenant_id", sid)
+    .single();
+  const actualSchoolId = sRow?.id || sid;
+
   const { data: row, error } = await db()
     .from("students")
-    .insert({ ...data, school_id: sid })
+    .insert({ ...data, school_id: actualSchoolId })
     .select()
     .single();
   throwIfError(error, "createStudent");
@@ -333,12 +381,21 @@ export async function bulkCreateStudents(
   rows: Omit<Student, "id" | "school_id" | "created_at" | "updated_at" | "enrolled_at">[]
 ): Promise<{ inserted: number; errors: { row: number; reason: string }[] }> {
   const sid = requireSchoolId(schoolId);
+  
+  // Resolve tenantId to actual schools.id to prevent FK violation
+  const { data: sRow } = await db()
+    .from("schools")
+    .select("id")
+    .eq("tenant_id", sid)
+    .single();
+  const actualSchoolId = sRow?.id || sid;
+
   const CHUNK = 500;
   let inserted = 0;
   const errors: { row: number; reason: string }[] = [];
 
   for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK).map((r) => ({ ...r, school_id: sid }));
+    const chunk = rows.slice(i, i + CHUNK).map((r) => ({ ...r, school_id: actualSchoolId }));
     const { data, error } = await db()
       .from("students")
       .insert(chunk)
@@ -418,10 +475,22 @@ export async function updateTeacher(
 
 export async function getClasses(schoolId: string | null): Promise<Class[]> {
   const sid = requireSchoolId(schoolId);
+  
+  // Resolve tenantId to actual schools.id if necessary
+  let actualSchoolId = sid;
+  const { data: sRow } = await db()
+    .from("schools")
+    .select("id")
+    .eq("tenant_id", sid)
+    .maybeSingle();
+  if (sRow?.id) {
+    actualSchoolId = sRow.id;
+  }
+
   const { data, error } = await db()
     .from("classes")
     .select("*")
-    .eq("school_id", sid)
+    .eq("school_id", actualSchoolId)
     .order("name", { ascending: true });
   throwIfError(error, "getClasses");
   return (data ?? []) as Class[];

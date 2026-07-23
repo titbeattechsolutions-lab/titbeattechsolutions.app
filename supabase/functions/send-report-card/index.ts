@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ALLOWED_ROLES = ["school_admin", "principal", "head_teacher"];
+const ALLOWED_ROLES = ["school_admin", "principal", "head_teacher", "teacher"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -20,10 +20,12 @@ Deno.serve(async (req) => {
 
     // ── 1. Auth: verify caller has allowed role ──────────────────────────────
     const authHeader = req.headers.get("Authorization");
-
+    const tenantSessionToken = req.headers.get("x-tenant-session");
+    
     // Support both Supabase auth and tenant session token
     const isTenantCall = !authHeader?.startsWith("Bearer eyJ");
     let callerUserId: string | null = null;
+    let callerSchoolId: string | null = null;
 
     if (authHeader && !isTenantCall) {
       const callerClient = createClient(supabaseUrl, anonKey, {
@@ -36,25 +38,63 @@ Deno.serve(async (req) => {
         const adminClient = createClient(supabaseUrl, serviceRoleKey);
         const { data: profile } = await adminClient
           .from("profiles")
-          .select("role")
+          .select("role, school_id")
           .eq("id", user.id)
           .maybeSingle();
         if (!profile || !ALLOWED_ROLES.includes(profile.role)) {
           return Response.json(
             { error: "Insufficient permissions" },
-            { status: 403, headers: corsHeaders }
+            { status: 200, headers: corsHeaders }
           );
         }
+        callerSchoolId = profile.school_id;
       }
+    } else if (tenantSessionToken) {
+      // Tenant session calls (PIN-based app)
+      const adminClient = createClient(supabaseUrl, serviceRoleKey);
+      const { data: session } = await adminClient
+        .from("tenant_sessions")
+        .select("tenant_id, session_staff_role")
+        .eq("session_token", tenantSessionToken)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (!session || !ALLOWED_ROLES.includes(session.session_staff_role)) {
+         return Response.json(
+            { error: "Invalid tenant session or insufficient permissions" },
+            { status: 200, headers: corsHeaders }
+          );
+      }
+      // Resolve tenant_id to school_id
+      const { data: school } = await adminClient
+        .from("schools")
+        .select("id")
+        .eq("tenant_id", session.tenant_id)
+        .maybeSingle();
+      callerSchoolId = school?.id ?? session.tenant_id;
     }
-    // Tenant session calls (PIN-based app) — allowed without Supabase auth
+
+    if (!callerSchoolId) {
+      return Response.json(
+        { error: "Unauthorized request" },
+        { status: 200, headers: corsHeaders }
+      );
+    }
 
     // ── 2. Parse request body ─────────────────────────────────────────────────
     const { reportCardId, schoolId, overrideEmail } = await req.json();
     if (!reportCardId || !schoolId) {
       return Response.json(
         { error: "reportCardId and schoolId are required" },
-        { status: 400, headers: corsHeaders }
+        { status: 200, headers: corsHeaders }
+      );
+    }
+
+    // Cross-school protection
+    if (callerSchoolId !== schoolId) {
+      return Response.json(
+        { error: "Cross-school access is prohibited" },
+        { status: 200, headers: corsHeaders }
       );
     }
 
@@ -67,7 +107,7 @@ Deno.serve(async (req) => {
       .eq("id", reportCardId)
       .single();
     if (rcErr || !rc) {
-      return Response.json({ error: "Report card not found" }, { status: 404, headers: corsHeaders });
+      return Response.json({ error: "Report card not found" }, { status: 200, headers: corsHeaders });
     }
 
     // ── 4. Fetch guardian email ───────────────────────────────────────────────
@@ -99,22 +139,25 @@ Deno.serve(async (req) => {
     if (!guardianEmail) {
       return Response.json(
         { error: "No parent email on file for this student. Please provide one." },
-        { status: 422, headers: corsHeaders }
+        { status: 200, headers: corsHeaders }
       );
     }
 
     // ── 5. Fetch subject results ──────────────────────────────────────────────
-    const { data: results } = await admin
+    let resultsQuery = admin
       .from("results")
       .select("subject_name, ca1, ca2, exam_score, total_score, grade, remark")
       .eq("school_id", schoolId)
       .eq("term", rc.term)
-      .eq("academic_year", rc.academic_year)
-      .or(
-        rc.student_id
-          ? `student_id.eq.${rc.student_id}`
-          : `student_name.ilike.${rc.student_name}`
-      );
+      .eq("academic_year", rc.academic_year);
+
+    if (rc.student_id) {
+      resultsQuery = resultsQuery.eq("student_id", rc.student_id);
+    } else if (rc.student_name) {
+      resultsQuery = resultsQuery.ilike("student_name", rc.student_name);
+    }
+
+    const { data: results } = await resultsQuery;
 
     // ── 6. Fetch school profile ───────────────────────────────────────────────
     const { data: school } = await admin
@@ -291,6 +334,7 @@ Deno.serve(async (req) => {
 </html>`;
 
     // ── 8. Send via Resend ────────────────────────────────────────────────────
+    const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "noreply@schoolgradeflow.com";
     const emailResp = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -298,7 +342,7 @@ Deno.serve(async (req) => {
         "Authorization": `Bearer ${resendApiKey}`,
       },
       body: JSON.stringify({
-        from: "noreply@schoolgradeflow.com",
+        from: resendFromEmail,
         to: guardianEmail,
         reply_to: schoolEmail || undefined,
         subject: `${schoolName} — ${rc.student_name} Report Card — ${termLabel} ${rc.academic_year}`,
@@ -310,8 +354,8 @@ Deno.serve(async (req) => {
     if (!emailResp.ok) {
       console.error("Resend error:", emailData);
       return Response.json(
-        { error: emailData.message ?? "Email sending failed" },
-        { status: 502, headers: corsHeaders }
+        { error: `Resend API Error: ${emailData.message ?? "Email sending failed"}` },
+        { status: 200, headers: corsHeaders }
       );
     }
 
@@ -335,7 +379,7 @@ Deno.serve(async (req) => {
     console.error("send-report-card error:", err);
     return Response.json(
       { error: err.message ?? "Internal server error" },
-      { status: 500, headers: corsHeaders }
+      { status: 200, headers: corsHeaders }
     );
   }
 });

@@ -14,8 +14,9 @@ const STALE_LONG  = 2  * 60 * 1000; // 2 min — stable reference data
 const STALE_SHORT = 30 * 1000;      // 30 s  — attendance / results
 
 // ─── Classes ─────────────────────────────────────────────────────────
-export function useClasses() {
-  const { schoolId } = useAuth();
+export function useClasses(overrideSchoolId?: string) {
+  const { schoolId: authSchoolId } = useAuth();
+  const schoolId = overrideSchoolId || authSchoolId;
   return useQuery<Class[]>({
     queryKey: ["classes", schoolId],
     queryFn: () => getClasses(schoolId),
@@ -85,6 +86,17 @@ async function getStudentsPaged(
   const { supabase } = await import("@/integrations/supabase/client");
   if (!schoolId) return { students: [], total: 0 };
 
+  // Resolve tenantId to actual schools.id if necessary
+  let actualSchoolId = schoolId;
+  const { data: sRow } = await (supabase as any)
+    .from("schools")
+    .select("id")
+    .eq("tenant_id", schoolId)
+    .maybeSingle();
+  if (sRow?.id) {
+    actualSchoolId = sRow.id;
+  }
+
   const from = page * STUDENT_PAGE_SIZE;
   const to   = from + STUDENT_PAGE_SIZE - 1;
 
@@ -92,7 +104,7 @@ async function getStudentsPaged(
   let q = (supabase as any)
     .from("students")
     .select("*", { count: "exact" })
-    .eq("school_id", schoolId)
+    .eq("school_id", actualSchoolId)
     .order("last_name")
     .range(from, to);
 

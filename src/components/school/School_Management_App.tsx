@@ -4187,7 +4187,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
               <div className="flex items-end justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-black uppercase text-slate-400 mb-1">
-                    {role === "teacher" ? "Class Teacher" : "Principal"} {isAutoLinked && <span className="text-[10px] text-slate-400 italic normal-case tracking-normal ml-1">(auto-applied)</span>}
+                    {role === "teacher" ? "Class Teacher" : "Principal"} {(isAutoLinked && role !== "teacher") && <span className="text-[10px] text-slate-400 italic normal-case tracking-normal ml-1">(auto-applied)</span>}
                   </p>
                   {sigValue && typeof sigValue === "string" && sigValue.startsWith("data:image") ? (
                     <img src={sigValue} alt="signature" style={{ maxHeight: "48px", maxWidth: "100%", objectFit: "contain" }} />
@@ -5975,6 +5975,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
       setAuth({ loggedIn: true, user: null });
       setActiveTab("dashboard");
       logSignIn("Admin", "Administrator");
+      
       let st = "";
       try { const r = sessionStorage.getItem("schoolapp_tenant_session_v2"); if (r) st = JSON.parse(r).sessionToken; } catch {}
       if (st) {
@@ -6003,6 +6004,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     setAuth({ loggedIn: true, user: s });
     setActiveTab("dashboard");
     logSignIn(s.name, s.role);
+    
     let st = "";
     try { const r = sessionStorage.getItem("schoolapp_tenant_session_v2"); if (r) st = JSON.parse(r).sessionToken; } catch {}
     if (st) {
@@ -6976,13 +6978,15 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                           {filteredStudents.map(s => {
                             const sc = appState.comments[s.id] || {};
+                            const sCandidates = appState.staffList.filter(staff => staff.assignedClasses.includes(s.class));
+                            const sClassTeacher = sCandidates.find(staff => staff.role.toLowerCase().includes("class teacher")) || sCandidates[0] || null;
                             const checks = [
                               ((s as any).records?.length || 0) > 0,
                               !!(sc.daysOpen && sc.daysPresent),
                               !!sc.teacher,
                               !!sc.principal,
-                              !!sc.teacherSig,
-                              !!sc.principalSig,
+                              !!sc.teacherSig || !!(sClassTeacher && sClassTeacher.signature) || !!(schoolSettings as any).defaultTeacherSignature,
+                              !!sc.principalSig || !!(schoolSettings as any).defaultPrincipalSignature,
                             ];
                             const done = checks.filter(Boolean).length;
                             const pct = Math.round((done / checks.length) * 100);
@@ -7028,13 +7032,15 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                         </div>
                       </div>
                       {(() => {
+                        const staffJsonSig = classTeacher ? classTeacher.signature : null;
+                        const linkedProfileSig = (classTeacher && linkedSignatures) ? linkedSignatures[classTeacher.id] : null;
                         const checks = [
                           { label: "Scores", done: (activeReport.records?.length || 0) > 0 },
                           { label: "Attendance", done: !!(curC.daysOpen && curC.daysPresent) },
                           { label: "Teacher Remark", done: !!curC.teacher },
                           { label: "Principal Remark", done: !!curC.principal },
-                          { label: "Teacher Signature", done: !!curC.teacherSig },
-                          { label: "Principal Signature", done: !!curC.principalSig },
+                          { label: "Teacher Signature", done: !!curC.teacherSig || !!staffJsonSig || !!linkedProfileSig || !!(schoolSettings as any).defaultTeacherSignature },
+                          { label: "Principal Signature", done: !!curC.principalSig || !!(schoolSettings as any).defaultPrincipalSignature },
                         ];
                         const completed = checks.filter(c => c.done).length;
                         const pct = Math.round((completed / checks.length) * 100);

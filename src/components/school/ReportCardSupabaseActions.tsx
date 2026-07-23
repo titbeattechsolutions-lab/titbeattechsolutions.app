@@ -46,6 +46,14 @@ interface ReportCardActionsProps {
   tenantId?: string | null;
 }
 
+// ─── Normalise term value ─────────────────────────────────────────────────
+const normaliseTerm = (t: string): "first" | "second" | "third" => {
+  const lower = t.toLowerCase();
+  if (lower.includes("second")) return "second";
+  if (lower.includes("third"))  return "third";
+  return "first";
+};
+
 export default function ReportCardSupabaseActions({
   activeReport,
   curC,
@@ -74,6 +82,9 @@ export default function ReportCardSupabaseActions({
   const [emailDraft, setEmailDraft]             = useState("");
   const [savingEmail, setSavingEmail]           = useState(false);
   const [studentDbId, setStudentDbId]           = useState<string | null>(null);
+  const [studentAdmissionNo, setStudentAdmissionNo] = useState<string | null>(null);
+  const [studentClassId, setStudentClassId] = useState<string | null>(null);
+  const [classErrorMsg, setClassErrorMsg] = useState<string | null>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
 
   // Look up schoolId from tenantId once on mount
@@ -98,6 +109,9 @@ export default function ReportCardSupabaseActions({
     setSentAt(null);
     setGuardianEmail(null);
     setStudentDbId(null);
+    setStudentAdmissionNo(null);
+    setStudentClassId(null);
+    setClassErrorMsg(null);
     setShowEmailEditor(false);
     setEmailDraft("");
     if (!activeReport || !schoolId) return;
@@ -105,14 +119,69 @@ export default function ReportCardSupabaseActions({
       try {
         const { data } = await (supabase as any)
           .from("students")
-          .select("id, guardian_email")
+          .select("id, guardian_email, first_name, last_name, other_names, admission_no, class_id")
           .eq("school_id", schoolId)
-          .ilike("first_name || ' ' || last_name", `%${activeReport.name}%`)
-          .limit(1)
-          .maybeSingle();
-        setGuardianEmail(data?.guardian_email ?? null);
-        setStudentDbId(data?.id ?? null);
-      } catch { /* non-critical */ }
+          .ilike("class_name", activeReport.class);
+          
+        let foundClassId: string | null = null;
+
+        if (data && data.length > 0) {
+          const target = (activeReport.name || "").toLowerCase().trim();
+          const match = data.find((s: any) => {
+            const first = (s.first_name || "").toLowerCase();
+            const last = (s.last_name || "").toLowerCase();
+            const other = (s.other_names || "").toLowerCase();
+            const f1 = `${first} ${last}`.trim();
+            const f2 = `${first} ${other} ${last}`.replace(/\s+/g, ' ').trim();
+            return f1 === target || f2 === target || (first && target.includes(first));
+          });
+          setGuardianEmail(match?.guardian_email ?? null);
+          setStudentDbId(match?.id ?? null);
+          setStudentAdmissionNo(match?.admission_no ?? null);
+          foundClassId = match?.class_id ?? null;
+        } else {
+          setGuardianEmail(null);
+          setStudentDbId(null);
+          setStudentAdmissionNo(null);
+        }
+
+        if (!foundClassId) {
+          const { data: classData } = await (supabase as any)
+            .from("classes")
+            .select("id")
+            .eq("school_id", schoolId)
+            .ilike("name", activeReport.class)
+            .maybeSingle();
+          foundClassId = classData?.id ?? null;
+
+          if (!foundClassId) {
+            // Auto-create class if it does not exist
+            const { data: newClass, error: classErr } = await (supabase as any)
+              .from("classes")
+              .insert({
+                school_id: schoolId,
+                name: activeReport.class,
+                academic_year: schoolSettings.session,
+                term: normaliseTerm(schoolSettings.term)
+              })
+              .select("id")
+              .single();
+            if (classErr) {
+               console.error("Class auto-creation failed:", classErr);
+               setClassErrorMsg(classErr.message || JSON.stringify(classErr));
+            } else if (newClass?.id) {
+              foundClassId = newClass.id;
+            } else {
+               setClassErrorMsg("Insert succeeded but no ID returned (RLS SELECT blocked it)");
+            }
+          }
+        }
+        
+        setStudentClassId(foundClassId);
+      } catch (err: any) {
+        console.error("Lookup error:", err);
+        setClassErrorMsg(err.message || String(err));
+      }
     })();
   }, [activeReport?.id, schoolId]); // eslint-disable-line
 
@@ -130,14 +199,6 @@ export default function ReportCardSupabaseActions({
     toast({ title: "Email verified for sending", description: trimmed });
   }, [emailDraft, toast]);
 
-  // ─── Normalise term value ─────────────────────────────────────────────────
-  const normaliseTerm = (t: string): "first" | "second" | "third" => {
-    const lower = t.toLowerCase();
-    if (lower.includes("second")) return "second";
-    if (lower.includes("third"))  return "third";
-    return "first";
-  };
-
   // ─── Save to Supabase ─────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     if (!activeReport || !schoolId) return;
@@ -146,6 +207,46 @@ export default function ReportCardSupabaseActions({
       if (!studentDbId) {
         throw new Error("Student must be migrated to the relational database before a report card can be saved.");
       }
+      
+      // Resolve class_id synchronously here to avoid race conditions with useEffect
+      let finalClassId = studentClassId;
+      if (!finalClassId) {
+         // Attempt to find it
+         const { data: classData } = await (supabase as any)
+           .from("classes")
+           .select("id")
+           .eq("school_id", schoolId)
+           .ilike("name", activeReport.class)
+           .maybeSingle();
+           
+         if (classData?.id) {
+           finalClassId = classData.id;
+         } else {
+           // Auto-create
+           const { data: newClass, error: classErr } = await (supabase as any)
+             .from("classes")
+             .insert({
+               school_id: schoolId,
+               name: activeReport.class,
+               academic_year: schoolSettings.session,
+               term: normaliseTerm(schoolSettings.term)
+             })
+             .select("id")
+             .single();
+             
+           if (classErr) {
+             throw new Error("Class auto-creation failed: " + (classErr.message || JSON.stringify(classErr)));
+           } else if (newClass?.id) {
+             finalClassId = newClass.id;
+           } else {
+             throw new Error("Insert succeeded but no Class ID was returned (RLS SELECT blocked it).");
+           }
+         }
+      }
+
+      if (!finalClassId) {
+        throw new Error("Could not resolve a valid Class ID for '" + activeReport.class + "'. Ensure it exists or check permissions.");
+      }
 
       // Pick the principal signature (prefer principalSig, fallback teacherSig)
       const signature = curC.principalSig || curC.teacherSig || null;
@@ -153,8 +254,11 @@ export default function ReportCardSupabaseActions({
       const payload = {
         school_id:       schoolId,
         student_id:      studentDbId,
+        admission_no:    studentAdmissionNo || "",
+        class_id:        finalClassId,
         student_name:    activeReport.name,
         student_class:   activeReport.class,
+        class_name:      activeReport.class,
         term:            normaliseTerm(schoolSettings.term),
         academic_year:   schoolSettings.session,
         teacher_remark:  curC.teacher   || null,
@@ -163,7 +267,6 @@ export default function ReportCardSupabaseActions({
         days_present:    curC.daysPresent ? parseInt(curC.daysPresent) : null,
         days_absent:     curC.daysAbsent  ? parseInt(curC.daysAbsent)  : null,
         signature,
-        status: "ready" as const,
       };
 
       // Upsert by school_id + student_id + term + year
@@ -244,8 +347,14 @@ export default function ReportCardSupabaseActions({
 
       if (!rcId) throw new Error("Report card not saved — please save first.");
 
+      const raw = sessionStorage.getItem("schoolapp_tenant_session_v2");
+      const token = raw ? JSON.parse(raw).sessionToken : null;
+      const headers: Record<string, string> = {};
+      if (token) headers["x-tenant-session"] = token;
+
       const { data, error } = await supabase.functions.invoke("send-report-card", {
         body: { reportCardId: rcId, schoolId, overrideEmail: guardianEmail },
+        headers
       });
 
       if (error) throw error;
@@ -273,6 +382,7 @@ export default function ReportCardSupabaseActions({
       <style>{`
         @media print {
           * { -webkit-print-color-adjust: exact !important; }
+          html, body, main { overflow: visible !important; height: auto !important; margin: 0; padding: 0; }
           body * { visibility: hidden; }
           #report-print-area, #report-print-area * { visibility: visible; }
           #report-print-area { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; }
