@@ -1585,6 +1585,8 @@ export type Database = {
           created_at: string
           expires_at: string
           role: string | null
+          session_staff_id: string | null
+          session_staff_role: string | null
           staff_id: string | null
           student_id: string | null
           tenant_id: string
@@ -1594,6 +1596,8 @@ export type Database = {
           created_at?: string
           expires_at?: string
           role?: string | null
+          session_staff_id?: string | null
+          session_staff_role?: string | null
           staff_id?: string | null
           student_id?: string | null
           tenant_id: string
@@ -1603,6 +1607,8 @@ export type Database = {
           created_at?: string
           expires_at?: string
           role?: string | null
+          session_staff_id?: string | null
+          session_staff_role?: string | null
           staff_id?: string | null
           student_id?: string | null
           tenant_id?: string
@@ -2059,6 +2065,7 @@ export type Database = {
         Returns: Json
       }
       get_tenant_data_v2: { Args: { _session_token: string }; Returns: Json }
+      get_tenant_from_session: { Args: never; Returns: string }
       get_tenant_staff_count: { Args: { _school_id: string }; Returns: number }
       get_today_attendance_by_class: {
         Args: { p_school_id: string }
@@ -2096,6 +2103,10 @@ export type Database = {
       link_anon_to_tenant: {
         Args: { _session_token: string }
         Returns: boolean
+      }
+      link_staff_auth: {
+        Args: { _role: string; _staff_member_id: string; _tenant_id: string }
+        Returns: undefined
       }
       log_auth_event: {
         Args: {
