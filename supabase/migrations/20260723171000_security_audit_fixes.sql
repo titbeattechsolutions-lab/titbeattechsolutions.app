@@ -13,7 +13,7 @@ CREATE POLICY "profiles_read_tenant"
   ON public.profiles FOR SELECT
   USING (
     id = auth.uid() OR 
-    (school_id = auth.school_id() AND auth.is_school_admin())
+    (school_id = public.get_my_school_id() AND public.is_school_admin())
   );
 
 -- 2. Fix activity_logs_insert
@@ -25,7 +25,7 @@ CREATE POLICY "activity_logs_insert"
     (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('super_admin') OR
     (
       (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('school_admin', 'principal') 
-      AND school_id = auth.school_id()
+      AND school_id = public.get_my_school_id()
     )
   );
 
