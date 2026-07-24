@@ -126,8 +126,8 @@ export default function Auth() {
           </button>
 
           <div style={{ marginBottom: "2rem" }}>
-            <div className="auth-logo-ring admin">
-              <Shield size={26} color="#fff" strokeWidth={2.5} />
+            <div style={{ display: "flex", marginBottom: "1rem" }}>
+              <img src="/logo.png" alt="Titbeattechsolutions Logo" className="h-12 w-auto object-contain" />
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", marginBottom: "0.25rem" }}>
@@ -180,9 +180,11 @@ export default function Auth() {
           </div>
 
           <div style={{ marginTop: "1.75rem", textAlign: "center" }}>
-            <p style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-              Powered by <strong style={{ color: "#64748b" }}>Titbeattechsolutions LTD</strong>
-            </p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+              <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Powered by</span>
+              <img src="/logo.png" alt="Titbeattechsolutions Logo" style={{ height: "28px", width: "auto", objectFit: "contain" }} />
+              <strong style={{ color: "#64748b", fontSize: "0.75rem" }}>Titbeattechsolutions LTD</strong>
+            </div>
           </div>
         </div>
       </div>

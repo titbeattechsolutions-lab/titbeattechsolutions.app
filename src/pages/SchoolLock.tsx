@@ -28,6 +28,7 @@ function Spinner() {
 export default function SchoolLock() {
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>("school");
+  const [tenantCode, setTenantCode] = useState("");
   const [schoolPin, setSchoolPin] = useState("");
   const [adminPin, setAdminPinInput] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -53,7 +54,7 @@ export default function SchoolLock() {
   const handleSchool = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const res = await verifySchoolPin(schoolPin.trim());
+    const res = await verifySchoolPin(tenantCode.trim(), schoolPin.trim());
     setLoading(false);
     if (!res) {
       toast({ title: "Invalid school PIN", description: "Check with your provider.", variant: "destructive" });
@@ -207,11 +208,23 @@ export default function SchoolLock() {
             {step === "school" && (
               <form onSubmit={handleSchool} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                 <div>
+                  <label className="auth-label" htmlFor="tenantCode">School Code</label>
+                  <input
+                    id="tenantCode" className="auth-input" type="text" inputMode="text"
+                    value={tenantCode} onChange={(e) => setTenantCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. SC-123" required autoFocus
+                    style={{ letterSpacing: tenantCode ? "0.1em" : "normal", fontWeight: tenantCode ? 600 : 400 }}
+                  />
+                  <p style={{ marginTop: "0.4rem", fontSize: "0.75rem", color: "#64748b" }}>
+                    The 6-character code given by your provider.
+                  </p>
+                </div>
+                <div>
                   <label className="auth-label" htmlFor="schoolPin">School PIN</label>
                   <input
                     id="schoolPin" className="auth-input" type="text" inputMode="text"
                     value={schoolPin} onChange={(e) => setSchoolPin(e.target.value.toUpperCase())}
-                    placeholder="e.g. SCH-7K2P" required autoFocus
+                    placeholder="e.g. SCH-7K2P" required
                     style={{ letterSpacing: schoolPin ? "0.1em" : "normal", fontWeight: schoolPin ? 600 : 400 }}
                   />
                   <p style={{ marginTop: "0.4rem", fontSize: "0.75rem", color: "#64748b" }}>
@@ -289,9 +302,11 @@ export default function SchoolLock() {
           </div>
 
           <div style={{ marginTop: "1.75rem", textAlign: "center" }}>
-            <p style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-              Powered by <strong style={{ color: "#64748b" }}>Titbeattechsolutions LTD</strong>
-            </p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+              <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Powered by</span>
+              <img src="/logo.png" alt="Titbeattechsolutions Logo" style={{ height: "28px", width: "auto", objectFit: "contain" }} />
+              <strong style={{ color: "#64748b", fontSize: "0.75rem" }}>Titbeattechsolutions LTD</strong>
+            </div>
           </div>
         </div>
       </div>

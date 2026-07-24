@@ -135,6 +135,7 @@ interface ReportTemplateConfig {
   showPosition: boolean;
   showGrade: boolean;
   showStamp: boolean;
+  showBehavioural?: boolean;
   tableStyle: "grid" | "striped" | "minimal";
 }
 interface SchoolSettings {
@@ -146,6 +147,7 @@ interface SchoolSettings {
   principalName?: string;
   reportTemplate?: ReportTemplateConfig;
   staffCodeMigrationDone?: boolean;
+  adminUsername?: string;
 }
 interface TimetableCell { subject: string; teacherName: string }
 interface TimetableState {
@@ -557,7 +559,7 @@ async function exportReportToPDF(report: any, curC: any, attRate: number | null,
 async function loadSheetJS(): Promise<boolean> {
   if (typeof XLSX !== "undefined") return true;
   try {
-    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
+    await loadScript("https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js");
     return true;
   } catch { return false; }
 }
@@ -603,6 +605,16 @@ async function exportClassToExcel(
 
   const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
   summarySheet["!cols"] = [{ wch: 28 }, ...subjects.map(() => ({ wch: 10 })), { wch: 10 }, { wch: 10 }, { wch: 8 }];
+  
+  // Style headers
+  summarySheet["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: subjects.length + 3 } }];
+  const headerStyle = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "1E3A8A" } }, alignment: { horizontal: "center", vertical: "center" } };
+  if (summarySheet["A1"]) summarySheet["A1"].s = { font: { bold: true, sz: 16 }, alignment: { horizontal: "center", vertical: "center" } };
+  for (let c = 0; c <= subjects.length + 3; c++) {
+    const cellRef = XLSX.utils.encode_cell({ r: 2, c });
+    if (summarySheet[cellRef]) summarySheet[cellRef].s = headerStyle;
+  }
+  
   XLSX.utils.book_append_sheet(wb, summarySheet, "Class Summary");
 
   // ── Per-student detailed sheets (max 20 to keep Excel manageable) ──
@@ -627,6 +639,16 @@ async function exportClassToExcel(
     ];
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
     ws["!cols"] = [{ wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 12 }];
+    
+    // Style student sheet headers
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }];
+    if (ws["A1"]) ws["A1"].s = { font: { bold: true, sz: 14 }, alignment: { horizontal: "center" } };
+    if (ws["A2"]) ws["A2"].s = { font: { bold: true, sz: 11 }, alignment: { horizontal: "center" } };
+    for (let c = 0; c <= 5; c++) {
+      const cellRef = XLSX.utils.encode_cell({ r: 3, c });
+      if (ws[cellRef]) ws[cellRef].s = headerStyle;
+    }
+    
     // Safe sheet name: max 31 chars, no special chars
     const sheetName = student.slice(0, 28).replace(/[:\\/?*[\]]/g, "_");
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
@@ -643,6 +665,15 @@ async function exportClassToExcel(
   ];
   const attSheet = XLSX.utils.aoa_to_sheet(attData);
   attSheet["!cols"] = [{ wch: 28 }, { wch: 14 }, { wch: 12 }, { wch: 30 }];
+  
+  // Style attendance sheet headers
+  attSheet["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
+  if (attSheet["A1"]) attSheet["A1"].s = { font: { bold: true, sz: 14 }, alignment: { horizontal: "center" } };
+  for (let c = 0; c <= 3; c++) {
+    const cellRef = XLSX.utils.encode_cell({ r: 1, c });
+    if (attSheet[cellRef]) attSheet[cellRef].s = headerStyle;
+  }
+  
   XLSX.utils.book_append_sheet(wb, attSheet, "Attendance Log");
 
   XLSX.writeFile(wb, `${className.replace(/\s+/g, "_")}_${term.replace(/\s+/g, "_")}_Report.xlsx`);
@@ -654,32 +685,117 @@ async function exportSingleStudentExcel(report: any, curC: any, attRate: number 
   if (!ok) return;
   const wb = XLSX.utils.book_new();
   const g = getGrade(parseFloat(report.summary.avg));
+  
+  const borderAll = { top: { style: "thin", color: { auto: 1 } }, bottom: { style: "thin", color: { auto: 1 } }, left: { style: "thin", color: { auto: 1 } }, right: { style: "thin", color: { auto: 1 } } };
+  const headerStyle = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "1E3A8A" } }, alignment: { horizontal: "center", vertical: "center" }, border: borderAll };
+  const titleStyle = { font: { bold: true, sz: 16, color: { rgb: "1E3A8A" } }, alignment: { horizontal: "center", vertical: "center" } };
+  const subTitleStyle = { font: { bold: true, sz: 12, color: { rgb: "475569" } }, alignment: { horizontal: "center", vertical: "center" } };
+  const cellCenter = { border: borderAll, alignment: { horizontal: "center", vertical: "center" } };
+  const cellLeft = { border: borderAll, alignment: { horizontal: "left", vertical: "center" } };
+  const boldLeft = { font: { bold: true }, border: borderAll, alignment: { horizontal: "left", vertical: "center" } };
+
+  // Helper to safely get affective/psychomotor values
+  const getTraits = () => {
+    const traits = [...AFFECTIVE_TRAITS, ...PSYCHOMOTOR_SKILLS];
+    return traits.map(t => [t.label, curC[t.key] || "-"]);
+  };
+  const behaviouralData = getTraits();
+
   const sheetData: any[][] = [
-    [schoolSettings.name],
-    [`${schoolSettings.session} — ${schoolSettings.term}`],
-    [""],
-    [`Student: ${report.name}`, `Class: ${report.class}`, `Position: ${report.position}`],
-    [""],
+    [schoolSettings.name, "", "", "", "", ""],
+    [`${schoolSettings.session} — ${schoolSettings.term}`, "", "", "", "", ""],
+    ["", "", "", "", "", ""],
+    [`Student Name:`, report.name, "", `Class:`, report.class, ""],
+    [`Admission No:`, report.admNo || "—", "", `Position:`, report.position || "—", ""],
+    ["", "", "", "", "", ""],
+    ["ACADEMIC PERFORMANCE", "", "", "", "", ""],
     ["Subject", "CA /40", "Exam /60", "Total /100", "Grade", "Remark"],
     ...report.records.map((r: any) => {
       const gr = getGrade(r.total);
       return [r.subject, r.caScore, r.examScore, r.total, gr.grade, gr.remark];
     }),
-    [""],
     ["CUMULATIVE TOTAL", "", "", report.summary.total, `${report.summary.avg}%`, g.remark],
-    [""],
-    ["Attendance"],
-    ["Days Opened",  curC.daysOpen  || "—"],
-    ["Days Present", curC.daysPresent || "—"],
-    ["Days Absent",  curC.daysAbsent  || "—"],
-    ["Attendance Rate", attRate !== null ? `${attRate}%` : "—"],
-    [""],
-    ["Class Teacher's Remark", curC.teacher || ""],
-    ["Principal's Remark",     curC.principal || ""],
-    ["Next Resumption",        schoolSettings.resumptionDate],
+    ["", "", "", "", "", ""],
+    ["BEHAVIOURAL ASSESSMENT", "", "", "ATTENDANCE & REMARKS", "", ""],
   ];
+
+  // We need to place Behavioural Data side-by-side with Attendance & Remarks
+  const leftCol = behaviouralData;
+  const rightCol = [
+    ["Days Opened", curC.daysOpen || "—"],
+    ["Days Present", curC.daysPresent || "—"],
+    ["Days Absent", curC.daysAbsent || "—"],
+    ["Attendance Rate", attRate !== null ? `${attRate}%` : "—"],
+    ["Class Teacher's Remark", curC.teacher || "—"],
+    ["Principal's Remark", curC.principal || "—"],
+    ["Next Resumption", schoolSettings.resumptionDate || "—"]
+  ];
+
+  const maxRows = Math.max(leftCol.length, rightCol.length);
+  for (let i = 0; i < maxRows; i++) {
+    const l = leftCol[i] || ["", ""];
+    const r = rightCol[i] || ["", ""];
+    // Merging columns for Remarks so it fits nicely
+    sheetData.push([l[0], l[1], "", r[0], r[1], ""]); 
+  }
+
   const ws = XLSX.utils.aoa_to_sheet(sheetData);
-  ws["!cols"] = [{ wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 14 }];
+
+  // Apply Merges
+  ws["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, // School Name
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }, // Session/Term
+    { s: { r: 3, c: 1 }, e: { r: 3, c: 2 } }, // Student Name value merge
+    { s: { r: 3, c: 4 }, e: { r: 3, c: 5 } }, // Class value merge
+    { s: { r: 4, c: 1 }, e: { r: 4, c: 2 } }, // Adm No value merge
+    { s: { r: 4, c: 4 }, e: { r: 4, c: 5 } }, // Position value merge
+    { s: { r: 6, c: 0 }, e: { r: 6, c: 5 } }, // Academic Performance header
+    { s: { r: 9 + report.records.length, c: 0 }, e: { r: 9 + report.records.length, c: 2 } }, // Cumulative Total text
+    { s: { r: 11 + report.records.length, c: 0 }, e: { r: 11 + report.records.length, c: 2 } }, // Behavioural Assessment header
+    { s: { r: 11 + report.records.length, c: 3 }, e: { r: 11 + report.records.length, c: 5 } }, // Attendance & Remarks header
+  ];
+  
+  // Also merge the right columns for the Remarks so they have more space
+  const startRow = 12 + report.records.length;
+  for (let i = 0; i < maxRows; i++) {
+    ws["!merges"].push({ s: { r: startRow + i, c: 4 }, e: { r: startRow + i, c: 5 } });
+    ws["!merges"].push({ s: { r: startRow + i, c: 0 }, e: { r: startRow + i, c: 1 } });
+  }
+
+  // Apply Styles
+  for (const cell in ws) {
+    if (cell[0] === '!') continue;
+    
+    const r = XLSX.utils.decode_cell(cell).r;
+    const c = XLSX.utils.decode_cell(cell).c;
+    
+    if (r === 0) ws[cell].s = titleStyle;
+    else if (r === 1) ws[cell].s = subTitleStyle;
+    else if (r === 3 || r === 4) {
+      if (c === 0 || c === 3) ws[cell].s = boldLeft;
+      else ws[cell].s = cellLeft;
+    }
+    else if (r === 6 || r === 11 + report.records.length) ws[cell].s = headerStyle;
+    else if (r === 7) ws[cell].s = headerStyle;
+    else if (r >= 8 && r < 8 + report.records.length) {
+      if (c === 0) ws[cell].s = cellLeft;
+      else ws[cell].s = cellCenter;
+    }
+    else if (r === 9 + report.records.length) {
+       ws[cell].s = { ...cellCenter, font: { bold: true } };
+    }
+    else if (r >= startRow && r < startRow + maxRows) {
+       if (c === 0 || c === 3) ws[cell].s = boldLeft;
+       else if (c === 1) ws[cell].s = cellCenter;
+       else if (c === 4) ws[cell].s = cellLeft;
+       else ws[cell].s = { alignment: { vertical: "center" } }; // blank spacing columns
+    }
+    else {
+      if (!ws[cell].s) ws[cell].s = { alignment: { vertical: "center" } }; // default empty spaces
+    }
+  }
+
+  ws["!cols"] = [{ wch: 18 }, { wch: 15 }, { wch: 10 }, { wch: 22 }, { wch: 12 }, { wch: 25 }];
   XLSX.utils.book_append_sheet(wb, ws, "Report");
   XLSX.writeFile(wb, `${report.name.replace(/\s+/g, "_")}_${schoolSettings.term.replace(/\s+/g, "_")}.xlsx`);
 }
@@ -814,7 +930,7 @@ function appReducer(state: AppState, action: any): AppState {
       return {
         ...state,
         entries: state.entries.filter(x => x.id !== action.id),
-        bin: [{ ...e, deletedAt: new Date().toISOString() }, ...state.bin],
+        bin: [{ ...e, deletedAt: new Date().toISOString() }, ...state.bin].slice(0, 200),
         logs: [mkLog("Deleted", e.studentName, e.subject, `Score: ${e.total}`), ...state.logs].slice(0, 100),
       };
     }
@@ -2119,8 +2235,26 @@ const DEFAULT_REPORT_TEMPLATE: ReportTemplateConfig = {
   showPosition: true,
   showGrade: true,
   showStamp: true,
+  showBehavioural: true,
   tableStyle: "striped",
 };
+
+const AFFECTIVE_TRAITS = [
+  { key: "bh_punctuality", label: "Punctuality" },
+  { key: "bh_attendance", label: "Attendance" },
+  { key: "bh_reliability", label: "Reliability" },
+  { key: "bh_neatness", label: "Neatness" },
+  { key: "bh_politeness", label: "Politeness" },
+  { key: "bh_honesty", label: "Honesty" },
+  { key: "bh_teamwork", label: "Teamwork" },
+];
+
+const PSYCHOMOTOR_SKILLS = [
+  { key: "ps_handwriting", label: "Handwriting" },
+  { key: "ps_sports", label: "Games & Sports" },
+  { key: "ps_crafts", label: "Crafts" },
+  { key: "ps_drawing", label: "Drawing & Painting" },
+];
 
 const SETTINGS_SECTIONS = [
   { id:"logo",     label:"School Logo",    icon:"🖼️" },
@@ -3261,11 +3395,8 @@ const ResourcesTab = memo(({ showToast }: { showToast: (msg: string, type?: stri
   );
 });
 
-const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast, tenantId }: {
+const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
   isAdmin: boolean;
-  logoUrl: string | null;
-  setSchoolLogo: (url: string | null) => void;
-  logoRef: React.RefObject<HTMLInputElement>;
   showToast: (msg: string, type?: string) => void;
   tenantId?: string;
 }) => {
@@ -3277,6 +3408,9 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
   const [draft, setDraft] = useState({ ...schoolSettings });
   const [pinF, setPinF] = useState({ cur: "", nxt: "", cnf: "" });
   const [pinErr, setPinErr] = useState("");
+  const logoRef = useRef<HTMLInputElement>(null);
+  
+  const logoUrl = draft.logoUrl || schoolSettings?.logoUrl || null;
   const [pinSh, setPinSh] = useState({ cur: false, nxt: false, cnf: false });
   const [saved, setSaved] = useState(false);
   const [dbStats, setDbStats] = useState<{ size: string; keys: string[] }>({ size: "—", keys: [] });
@@ -3365,14 +3499,42 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const handleLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
     if (!f.type.startsWith("image/")) return showToast("Invalid image", "error");
     if (f.size > 2097152) return showToast("Image must be under 2MB", "error");
     const r = new FileReader();
-    r.onload = ev => { setSchoolLogo(ev.target?.result as string); showToast("Logo uploaded"); };
+    r.onload = async ev => { 
+      const base64 = ev.target?.result as string;
+      dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { ...schoolSettings, logoUrl: base64 } });
+      setDraft(prev => ({ ...prev, logoUrl: base64 }));
+      if (tenantId) {
+        try {
+          const { updateSchoolProfile } = await import("@/supabase/schoolService");
+          await updateSchoolProfile(tenantId, { logo: base64 });
+        } catch (err) {
+          console.error("Failed to sync logo to backend", err);
+        }
+      }
+      showToast("Logo uploaded"); 
+    };
     r.readAsDataURL(f);
+  };
+
+  const removeLogo = async () => {
+    dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { ...schoolSettings, logoUrl: null } });
+    setDraft(prev => ({ ...prev, logoUrl: null }));
+    if (logoRef.current) logoRef.current.value = "";
+    if (tenantId) {
+      try {
+        const { updateSchoolProfile } = await import("@/supabase/schoolService");
+        await updateSchoolProfile(tenantId, { logo: null });
+      } catch (err) {
+        console.error("Failed to remove logo from backend", err);
+      }
+    }
+    showToast("Logo removed");
   };
 
   const changePin = async () => {
@@ -3437,7 +3599,7 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
                       <Upload size={13} />{logoUrl ? "Replace" : "Upload"}
                     </Btn>
                     {logoUrl && (
-                      <Btn variant="ghost" size="sm" onClick={() => { setSchoolLogo(null); if (logoRef.current) logoRef.current.value = ""; showToast("Logo removed"); }}>
+                      <Btn variant="ghost" size="sm" onClick={removeLogo}>
                         <X size={13} />Remove
                       </Btn>
                     )}
@@ -3470,6 +3632,7 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
               <Inp label="School Name" value={draft.name} onChange={(e: any) => setDraft(d => ({ ...d, name: e.target.value }))} />
               <Inp label="Principal's Full Name" value={draft.principalName || ""} onChange={(e: any) => setDraft(d => ({ ...d, principalName: e.target.value }))} placeholder="e.g. Mr. John Doe" />
               <Inp label="School Motto" value={draft.motto} onChange={(e: any) => setDraft(d => ({ ...d, motto: e.target.value }))} />
+              <Inp label="Admin Username" value={draft.adminUsername || ""} onChange={(e: any) => setDraft(d => ({ ...d, adminUsername: e.target.value }))} placeholder="e.g. admin" />
               <div className="pt-2 border-t border-slate-100">
                 <Btn variant="primary" size="lg" className="w-full" onClick={saveInfo}>
                   {saved ? <><Check size={15} />Saved!</> : <><Save size={15} />Save Information</>}
@@ -3585,6 +3748,7 @@ const SettingsTab = memo(({ isAdmin, logoUrl, setSchoolLogo, logoRef, showToast,
                     <Toggle label="Show Teacher's Remark" checked={tpl.showTeacherRemark} onChange={v => updateTpl({ showTeacherRemark: v })} />
                     <Toggle label="Show Principal's Remark" checked={tpl.showPrincipalRemark} onChange={v => updateTpl({ showPrincipalRemark: v })} />
                     <Toggle label="Show Stamp Box" checked={tpl.showStamp} onChange={v => updateTpl({ showStamp: v })} />
+                    <Toggle label="Show Behavioural Assessments" checked={tpl.showBehavioural ?? true} onChange={v => updateTpl({ showBehavioural: v })} />
                     <Toggle label="Show Resumption Date" checked={tpl.showResumptionDate} onChange={v => updateTpl({ showResumptionDate: v })} />
                   </div>
                 </Card>
@@ -4121,7 +4285,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
           <thead>
             <tr style={{ backgroundColor: tpl.headerColor, color: "#fff" }}>
               {headers.map((h, i) => (
-                <th key={i} style={{ padding:"9px 10px", textAlign: i === 0 ? "left" : "center", fontWeight:800, fontSize:"9px", letterSpacing:"0.1em", textTransform:"uppercase", borderRight: i < headers.length - 1 ? "1px solid rgba(255,255,255,0.2)" : "none" }}>{h}</th>
+                <th key={i} style={{ padding: report.records.length > 12 ? "6px 8px" : "9px 10px", textAlign: i === 0 ? "left" : "center", fontWeight:800, fontSize:"9px", letterSpacing:"0.1em", textTransform:"uppercase", borderRight: i < headers.length - 1 ? "1px solid rgba(255,255,255,0.2)" : "none" }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -4130,31 +4294,32 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
               const g = getGrade(r.total);
               const bg = tpl.tableStyle === "striped" ? (i % 2 === 0 ? "transparent" : "rgba(248,250,252,0.65)") : "transparent";
               const border = tpl.tableStyle === "minimal" ? "none" : "1px solid #e2e8f0";
+              const pad = report.records.length > 12 ? "4px 8px" : "8px 10px";
               return (
                 <tr key={i} style={{ background: bg }}>
-                  <td style={{ padding:"8px 10px", borderRight: border, borderBottom: border, fontWeight:700, textTransform:"uppercase", fontSize:"10px" }}>{r.subject}</td>
-                  <td style={{ padding:"8px 10px", borderRight: border, borderBottom: border, textAlign:"center", fontWeight:700 }}>{r.caScore}</td>
-                  <td style={{ padding:"8px 10px", borderRight: border, borderBottom: border, textAlign:"center", fontWeight:700 }}>{r.examScore}</td>
-                  <td style={{ padding:"8px 10px", borderRight: border, borderBottom: border, textAlign:"center", fontWeight:900, fontSize:"12px" }}>{r.total}</td>
-                  {tpl.showGrade && <td style={{ padding:"8px 10px", borderRight: border, borderBottom: border, textAlign:"center", fontWeight:900, color:g.color }}>{g.grade}</td>}
-                  {tpl.showGrade && <td style={{ padding:"8px 10px", borderBottom: border, fontStyle:"italic", color:"#64748b", fontSize:"10px" }}>{g.remark}</td>}
+                  <td style={{ padding: pad, borderRight: border, borderBottom: border, fontWeight:700, textTransform:"uppercase", fontSize:"10px" }}>{r.subject}</td>
+                  <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign:"center", fontWeight:700 }}>{r.caScore}</td>
+                  <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign:"center", fontWeight:700 }}>{r.examScore}</td>
+                  <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign:"center", fontWeight:900, fontSize:"12px" }}>{r.total}</td>
+                  {tpl.showGrade && <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign:"center", fontWeight:900, color:g.color }}>{g.grade}</td>}
+                  {tpl.showGrade && <td style={{ padding: pad, borderBottom: border, fontStyle:"italic", color:"#64748b", fontSize:"10px" }}>{g.remark}</td>}
                 </tr>
               );
             })}
           </tbody>
           <tfoot>
             <tr style={{ background: tpl.headerColor }}>
-              <td colSpan={tpl.showGrade ? 3 : 3} style={{ padding:"9px 10px", color:"#94a3b8", fontWeight:800, fontSize:"9px", textTransform:"uppercase", letterSpacing:"0.1em" }}>Cumulative Total</td>
-              <td style={{ padding:"9px 10px", textAlign:"center", color:"#fff", fontWeight:900, fontSize:"14px" }}>{report.summary.total}<span style={{ fontSize:"9px", opacity:0.5 }}>/{report.summary.obtainable}</span></td>
-              {tpl.showGrade && <td style={{ padding:"9px 10px", textAlign:"center", color:"#34d399", fontWeight:900, fontSize:"12px" }}>{report.summary.avg}%</td>}
-              {tpl.showGrade && <td style={{ padding:"9px 10px", color:"#94a3b8", fontWeight:800, fontSize:"9px", textTransform:"uppercase" }}>Avg.</td>}
+              <td colSpan={tpl.showGrade ? 3 : 3} style={{ padding: report.records.length > 12 ? "6px 8px" : "9px 10px", color:"#94a3b8", fontWeight:800, fontSize:"9px", textTransform:"uppercase", letterSpacing:"0.1em" }}>Cumulative Total</td>
+              <td style={{ padding: report.records.length > 12 ? "6px 8px" : "9px 10px", textAlign:"center", color:"#fff", fontWeight:900, fontSize:"14px" }}>{report.summary.total}<span style={{ fontSize:"9px", opacity:0.5 }}>/{report.summary.obtainable}</span></td>
+              {tpl.showGrade && <td style={{ padding: report.records.length > 12 ? "6px 8px" : "9px 10px", textAlign:"center", color:"#34d399", fontWeight:900, fontSize:"12px" }}>{report.summary.avg}%</td>}
+              {tpl.showGrade && <td style={{ padding: report.records.length > 12 ? "6px 8px" : "9px 10px", color:"#94a3b8", fontWeight:800, fontSize:"9px", textTransform:"uppercase" }}>Avg.</td>}
             </tr>
           </tfoot>
         </table>
       </div>
       {tpl.showAttendance && (
         <div className="px-8 pt-4 pb-3">
-          <p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-2">Attendance</p>
+          <p className="text-[10px] font-black uppercase text-slate-400 tracking-wide mb-1.5">Attendance</p>
           <div className="grid grid-cols-4 gap-2">
             {([
               ["Days Opened",  curC.daysOpen    || "—", "bg-slate-100 text-slate-800"],
@@ -4163,11 +4328,25 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
               ["Rate", attRate !== null ? `${attRate}%` : "—", attRate === null ? "bg-slate-100 text-slate-800" : attRate >= 75 ? "bg-emerald-100 text-emerald-900" : "bg-red-100 text-red-900"],
             ] as const).map(([l, v, c]) => (
               <div key={l} className={`${c} rounded-xl p-3 text-center`}>
-                <p className="text-xs font-black uppercase opacity-60 mb-0.5">{l}</p>
+                <p className="text-[10px] font-black uppercase opacity-60 mb-0.5">{l}</p>
                 <p className="text-xl font-black">{v}</p>
               </div>
             ))}
           </div>
+        </div>
+      )}
+      {tpl.showBehavioural && (
+        <div className="px-8 pt-4 pb-3">
+          <p className="text-[10px] font-black uppercase text-slate-400 tracking-wide mb-2">Affective & Psychomotor Domains</p>
+          <div className="grid grid-cols-4 gap-2">
+            {[...AFFECTIVE_TRAITS, ...PSYCHOMOTOR_SKILLS].map(t => (
+              <div key={t.key} className="flex items-center justify-between text-[10px] border border-slate-300 rounded px-2 py-1" style={{ fontFamily:tpl.fontFamily }}>
+                <span className="text-slate-700 truncate mr-2">{t.label}</span>
+                <span className="font-bold flex-shrink-0" style={{ color: tpl.accentColor }}>{curC[t.key] || "—"}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[8px] text-slate-400 mt-2 font-bold uppercase tracking-wide">Key: A = Excellent, B = Good, C = Fair, D = Poor, E = Unacceptable</p>
         </div>
       )}
       {remarkSections.length > 0 && (
@@ -4180,21 +4359,21 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
 
             return (
             <div key={f} className="border border-slate-200 rounded-xl p-4">
-              <p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-2">{l}</p>
+              <p className="text-[10px] font-black uppercase text-slate-400 tracking-wide mb-2">{l}</p>
               <div className="min-h-10 text-sm text-slate-700 italic border-b border-dashed border-slate-200 pb-2 mb-3">
-                {curC[f] || <span className="text-slate-300 not-italic text-xs">No remark entered</span>}
+                {curC[f] || <span className="text-slate-300 not-italic text-[10px]">No remark entered</span>}
               </div>
               <div className="flex items-end justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-black uppercase text-slate-400 mb-1">
-                    {role === "teacher" ? "Class Teacher" : "Principal"} {(isAutoLinked && role !== "teacher") && <span className="text-[10px] text-slate-400 italic normal-case tracking-normal ml-1">(auto-applied)</span>}
+                  <p className="text-[10px] font-black uppercase text-slate-400 mb-1">
+                    {role === "teacher" ? "Class Teacher" : "Principal"} {(isAutoLinked && role !== "teacher") && <span className="text-[9px] text-slate-400 italic normal-case tracking-normal ml-1">(auto-applied)</span>}
                   </p>
                   {sigValue && typeof sigValue === "string" && sigValue.startsWith("data:image") ? (
                     <img src={sigValue} alt="signature" style={{ maxHeight: "48px", maxWidth: "100%", objectFit: "contain" }} />
                   ) : sigValue ? (
                     <p className="italic text-base" style={{ fontFamily:`${tpl.fontFamily},serif`, color: tpl.accentColor }}>{sigValue}</p>
                   ) : (
-                    <p className="italic text-xs text-slate-300">_____________________</p>
+                    <p className="italic text-[10px] text-slate-300">_____________________</p>
                   )}
                   {((role === "teacher" && classTeacher) || (role === "principal" && schoolSettings.principalName)) && (
                     <p className="text-[11px] font-bold text-slate-800 uppercase tracking-wide mt-1.5">
@@ -4204,7 +4383,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
                 </div>
                 {role === "principal" && tpl.showStamp && (
                   <div className="w-16 h-10 border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <p className="text-xs text-slate-300 font-bold">Stamp</p>
+                    <p className="text-[10px] text-slate-300 font-bold">Stamp</p>
                   </div>
                 )}
               </div>
@@ -5783,8 +5962,6 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
   const [needsAdminSetup, setNeedsAdminSetup] = useState<boolean>(false);
   const [setupPin, setSetupPin] = useState({ nxt: "", cnf: "" });
   const [setupErr, setSetupErr] = useState("");
-  const logoRef = useRef<HTMLInputElement>(null);
-  const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
   const [showLogout, setShowLogout] = useState(false);
@@ -5793,7 +5970,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
   const [showBin, setShowBin] = useState(false);
   const [staffDetailId, setStaffDetailId] = useState<string | null>(null);
   const [auth, setAuth] = useState<{ loggedIn: boolean; user: StaffMember | null }>({ loggedIn: false, user: null });
-  const [loginId, setLoginId] = useState("admin");
+  const [loginId, setLoginId] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [loginErr, setLoginErr] = useState("");
   const [forgotOpen, setForgotOpen] = useState(false);
@@ -5963,7 +6140,9 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
   const doLogin = useCallback(async () => {
     setLoginErr("");
 
-    if (loginId.toLowerCase() === "admin") {
+    const expectedAdminUsername = appState.schoolSettings?.adminUsername || "admin";
+
+    if (loginId.toLowerCase() === expectedAdminUsername.toLowerCase()) {
       if (!loginPass) return setLoginErr("Enter a password");
       
       const session = loadTenantSession();
@@ -6014,7 +6193,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
       });
     }
     if (s.status === "restricted") showToast("Account restricted — limited access.", "warning");
-  }, [loginId, loginPass, staffList, showToast]);
+  }, [loginId, loginPass, staffList, showToast, appState.schoolSettings]);
 
   // Record one sign-in per staff per day (admin or staff). Idempotent in reducer.
   const logSignIn = useCallback((staffName: string, role: string) => {
@@ -6270,7 +6449,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
       <Card className="w-full max-w-sm p-8 border-t-4 border-t-blue-600">
         <div className="text-center mb-6">
-          <SchoolLogo logoUrl={schoolLogo} size="lg" className="mx-auto mb-4" />
+          <SchoolLogo logoUrl={appState.schoolSettings?.logoUrl || null} size="lg" className="mx-auto mb-4" />
           <h2 className="text-xl font-black text-slate-900">Set Admin PIN</h2>
           <p className="text-xs text-slate-500 mt-2">First-time setup. Choose a strong password of at least 4 characters — letters, numbers and symbols are all supported. Keep it private; it grants full administrative access and cannot be recovered.</p>
         </div>
@@ -6308,12 +6487,12 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
       <Card className="w-full max-w-sm p-8 border-t-4 border-t-blue-600">
         <div className="text-center mb-8">
-          <SchoolLogo logoUrl={schoolLogo} size="lg" className="mx-auto mb-4" />
+          <SchoolLogo logoUrl={appState.schoolSettings?.logoUrl || null} size="lg" className="mx-auto mb-4" />
           <h1 className="text-xl font-black text-slate-900">{schoolSettings.name}</h1>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Staff Authentication</p>
         </div>
         <div className="space-y-4">
-          <Inp label="Staff ID / Username" value={loginId} onChange={(e: any) => { setLoginId(e.target.value); setLoginErr(""); }} placeholder="admin or Staff ID (e.g. AO-001)" />
+          <Inp label="Staff ID / Username" value={loginId} onChange={(e: any) => { setLoginId(e.target.value); setLoginErr(""); }} placeholder="" autoComplete="off" />
           <Field label="Password / PIN" error={loginErr}>
             <input
               type="password"
@@ -6347,7 +6526,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
         {/* Sidebar */}
         <aside className="hidden md:flex flex-col w-60 bg-white border-r border-slate-100 flex-shrink-0">
           <div className="p-5 border-b border-slate-100 flex items-center gap-3">
-            <SchoolLogo logoUrl={schoolLogo} size="sm" />
+            <SchoolLogo logoUrl={appState.schoolSettings?.logoUrl || null} size="sm" />
             <div className="min-w-0 flex-1">
               <p className="font-black text-sm text-slate-900 truncate">{schoolSettings.name}</p>
               <p className="text-xs text-slate-400">{schoolSettings.term}</p>
@@ -6363,7 +6542,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                 {isAdmin ? <Shield size={14} /> : <span className="font-black text-xs">{auth.user!.name[0]}</span>}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-black text-slate-900 truncate">{isAdmin ? "Super Admin" : auth.user!.name}</p>
+                <p className="text-xs font-black text-slate-900 truncate">{isAdmin ? "School Admin" : auth.user!.name}</p>
                 <p className="text-xs text-slate-400 truncate">{isAdmin ? "Full Access" : auth.user!.role}</p>
               </div>
               {auth.user && <StatusPill status={auth.user.status} />}
@@ -6396,7 +6575,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
           {/* Mobile top bar */}
           <header className="md:hidden bg-white border-b border-slate-100 px-4 py-3 flex items-center justify-between flex-shrink-0 z-40 relative">
             <div className="flex items-center gap-2.5">
-              <SchoolLogo logoUrl={schoolLogo} size="xs" />
+              <SchoolLogo logoUrl={appState.schoolSettings?.logoUrl || null} size="xs" />
               <p className="font-black text-sm text-slate-900 truncate max-w-[160px]">{schoolSettings.name}</p>
             </div>
             <div className="flex items-center gap-1">
@@ -6424,7 +6603,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                   {isAdmin ? <Shield size={14} /> : <span className="font-black text-xs">{auth.user!.name[0]}</span>}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-black text-slate-900 truncate">{isAdmin ? "Super Admin" : auth.user!.name}</p>
+                  <p className="text-xs font-black text-slate-900 truncate">{isAdmin ? "School Admin" : auth.user!.name}</p>
                   <p className="text-xs text-slate-400">{isAdmin ? "Full Access" : auth.user!.role}</p>
                 </div>
                 {auth.user && <StatusPill status={auth.user.status} />}
@@ -7192,29 +7371,48 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                             )})}
                           </div>
                         </Card>
-                        {can("printReports") && (
-                          <div className="grid grid-cols-2 gap-3 no-print">
-                            <Btn variant="primary" size="lg" onClick={() => setShowPrint(true)}>
-                              <Printer size={16} />Print / Export PDF
-                            </Btn>
-                            <Btn variant="outline" size="lg" onClick={async () => {
-                              await exportSingleStudentExcel(activeReport, curC, attRate, schoolSettings);
-                              showToast("Excel exported");
-                            }}>
-                              📊 Export Excel
-                            </Btn>
+                        <Card className="p-5 border-2 border-slate-100 bg-slate-50 mt-5">
+                          <div className="flex items-center gap-2 mb-4">
+                            <Trophy size={16} className="text-emerald-600" />
+                            <p className="text-sm font-black uppercase text-slate-900">Affective & Psychomotor Domains</p>
                           </div>
-                        )}
+                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            {[...AFFECTIVE_TRAITS, ...PSYCHOMOTOR_SKILLS].map(t => (
+                              <div key={t.key} className="flex gap-2 items-center justify-between text-sm border border-slate-200 rounded-lg p-2 bg-white shadow-sm">
+                                <span className="text-slate-700 font-medium truncate">{t.label}</span>
+                                <select
+                                  className="border border-slate-200 rounded px-2 py-1 bg-slate-50 text-xs font-bold outline-none shrink-0"
+                                  value={curC[t.key] || ""}
+                                  onChange={e => dispatch({ type: "SET_COMMENT", studentId: activeReport.id, field: t.key, value: e.target.value })}
+                                >
+                                  <option value="">-</option>
+                                  <option value="A">A</option>
+                                  <option value="B">B</option>
+                                  <option value="C">C</option>
+                                  <option value="D">D</option>
+                                  <option value="E">E</option>
+                                </select>
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
                         <ReportCardSupabaseActions
                           activeReport={activeReport}
                           curC={curC}
                           schoolSettings={schoolSettings}
                           tenantId={tenantId}
                           canPrint={can("printReports") || isAdmin}
+                          dispatch={dispatch}
+                          onExportExcel={async () => {
+                            if (can("printReports") || isAdmin) {
+                              await exportSingleStudentExcel(activeReport, curC, attRate, schoolSettings);
+                              showToast("Excel exported");
+                            }
+                          }}
                         />
                       </div>
                     </Card>
-                    <ReportSheet report={activeReport} curC={curC} attRate={attRate} schoolLogo={schoolLogo} schoolSettings={schoolSettings} classTeacher={classTeacher} linkedSignatures={linkedSignatures} />
+                    <ReportSheet report={activeReport} curC={curC} attRate={attRate} schoolLogo={appState.schoolSettings?.logoUrl || null} schoolSettings={schoolSettings} classTeacher={classTeacher} linkedSignatures={linkedSignatures} />
                   </div>
                 )
               )}
@@ -7412,9 +7610,6 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
               {activeTab === "settings" && isAdmin && (
                 <SettingsTab
                   isAdmin={isAdmin}
-                  logoUrl={schoolLogo}
-                  setSchoolLogo={setSchoolLogo}
-                  logoRef={logoRef as React.RefObject<HTMLInputElement>}
                   showToast={showToast}
                   tenantId={tenantId}
                 />
@@ -7450,7 +7645,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
         <PrintDialog
           student={activeReport}
           schoolName={schoolSettings.name}
-          schoolLogo={schoolLogo}
+          schoolLogo={appState.schoolSettings?.logoUrl || null}
           curC={curC}
           attRate={attRate}
           schoolSettings={schoolSettings}
@@ -7555,7 +7750,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
 
                 // 3. Destroy local state (guaranteed to run even if logger fails)
                 setAuth({ loggedIn:false, user:null });
-                setLoginId("admin"); setLoginPass(""); setShowLogout(false);
+                setLoginId(""); setLoginPass(""); setShowLogout(false);
                 setActiveTab("dashboard"); setActiveReport(null); setMenuOpen(false);
                 
                 if (onTenantSignOut) onTenantSignOut();

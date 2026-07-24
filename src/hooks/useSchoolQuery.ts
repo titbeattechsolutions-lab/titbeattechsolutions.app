@@ -83,41 +83,9 @@ async function getStudentsPaged(
   page: number,
   filters: StudentFilters
 ): Promise<{ students: Student[]; total: number }> {
-  const { supabase } = await import("@/integrations/supabase/client");
   if (!schoolId) return { students: [], total: 0 };
-
-  // Resolve tenantId to actual schools.id if necessary
-  let actualSchoolId = schoolId;
-  const { data: sRow } = await (supabase as any)
-    .from("schools")
-    .select("id")
-    .eq("tenant_id", schoolId)
-    .maybeSingle();
-  if (sRow?.id) {
-    actualSchoolId = sRow.id;
-  }
-
-  const from = page * STUDENT_PAGE_SIZE;
-  const to   = from + STUDENT_PAGE_SIZE - 1;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let q = (supabase as any)
-    .from("students")
-    .select("*", { count: "exact" })
-    .eq("school_id", actualSchoolId)
-    .order("last_name")
-    .range(from, to);
-
-  if (filters.class_id) q = q.eq("class_id", filters.class_id);
-  if (filters.status)   q = q.eq("status", filters.status);
-  if (filters.search) {
-    const s = filters.search.trim();
-    q = q.or(`first_name.ilike.%${s}%,last_name.ilike.%${s}%,admission_no.ilike.%${s}%`);
-  }
-
-  const { data, error, count } = await q;
-  if (error) throw new Error(error.message);
-  return { students: (data ?? []) as Student[], total: count ?? 0 };
+  const { getStudentsPaged: serviceGetStudentsPaged } = await import("@/supabase/schoolService");
+  return serviceGetStudentsPaged(schoolId, page, STUDENT_PAGE_SIZE, filters);
 }
 
 export function useCreateStudent() {

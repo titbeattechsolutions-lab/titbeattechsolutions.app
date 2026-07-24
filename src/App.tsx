@@ -27,7 +27,15 @@ import ActivityLogPage from "./pages/superadmin/ActivityLogPage";
 import PlatformStatsPage from "./pages/superadmin/PlatformStatsPage";
 import BillingListPage from "./pages/superadmin/BillingListPage";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 const SCHOOL_ROLES = ["school_admin", "principal", "head_teacher"] as const;
 const TEACHER_ROLES = ["school_admin", "principal", "head_teacher", "teacher"] as const;

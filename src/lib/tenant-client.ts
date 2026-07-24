@@ -36,8 +36,8 @@ export function clearTenantSession() {
 }
 
 /** Verify school PIN. Returns session info (without admin flag) or null. */
-export async function verifySchoolPin(pin: string): Promise<Omit<TenantSession, "isAdmin"> | null> {
-  const { data, error } = await supabase.rpc("verify_school_pin_v2", { _pin: pin });
+export async function verifySchoolPin(tenantCode: string, pin: string): Promise<Omit<TenantSession, "isAdmin"> | null> {
+  const { data, error } = await supabase.rpc("verify_school_pin_v3", { _tenant_code: tenantCode, _pin: pin });
   if (error || !data || data.length === 0) return null;
   const row = data[0];
   const session = {

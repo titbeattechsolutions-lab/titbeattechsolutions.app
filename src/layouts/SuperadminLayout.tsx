@@ -38,7 +38,7 @@ export default function SuperadminLayout() {
     )}>
       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
         <div className="flex items-center gap-2">
-          <ShieldCheck size={18} className="text-violet-400 shrink-0" />
+          <img src="/logo.png" alt="Titbeattechsolutions Logo" className="h-8 w-auto object-contain shrink-0" />
           <div>
             <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">Superadmin</p>
             <p className="text-sm font-semibold text-white">SchoolGradeFlow</p>

@@ -28,7 +28,7 @@ const db = (): any => {
       const key = import.meta.env.VITE_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
       _tenantDb = createClient(url, key, {
         global: { headers: { "x-tenant-session": token } },
-        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "tenant-session-db" }
       });
       _lastToken = token;
     }
@@ -305,6 +305,46 @@ export async function getStudents(
   const { data, error } = await query;
   throwIfError(error, "getStudents");
   return (data ?? []) as Student[];
+}
+
+export async function getStudentsPaged(
+  schoolId: string | null,
+  page: number,
+  pageSize: number,
+  filters?: { class_id?: string; status?: string; search?: string }
+): Promise<{ students: Student[]; total: number }> {
+  const sid = requireSchoolId(schoolId);
+  
+  let actualSchoolId = sid;
+  const { data: sRow } = await db()
+    .from("schools")
+    .select("id")
+    .eq("tenant_id", sid)
+    .maybeSingle();
+  if (sRow?.id) {
+    actualSchoolId = sRow.id;
+  }
+
+  const from = page * pageSize;
+  const to   = from + pageSize - 1;
+
+  let query = db()
+    .from("students")
+    .select("*", { count: "exact" })
+    .eq("school_id", actualSchoolId)
+    .order("last_name")
+    .range(from, to);
+
+  if (filters?.class_id) query = query.eq("class_id", filters.class_id);
+  if (filters?.status) query = query.eq("status", filters.status);
+  if (filters?.search) {
+    const s = filters.search.trim();
+    query = query.or(`first_name.ilike.%${s}%,last_name.ilike.%${s}%,admission_no.ilike.%${s}%`);
+  }
+
+  const { data, error, count } = await query;
+  throwIfError(error, "getStudentsPaged");
+  return { students: (data ?? []) as Student[], total: count ?? 0 };
 }
 
 export async function getStudent(schoolId: string | null, studentId: string): Promise<Student> {

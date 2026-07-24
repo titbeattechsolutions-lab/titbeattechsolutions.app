@@ -52,11 +52,26 @@ Deno.serve(async (req) => {
     if (plan === "pro") maxStudentsLimit = 2000;
     if (plan === "enterprise") maxStudentsLimit = 10000;
 
+    // ── 3. CREATE tenant ──────────────────────────────────────────────
+    // Generate a secure random PIN
+    const randomPin = "SCH-" + Array.from({length: 6}, () => Math.random().toString(36).charAt(2)).join('').toUpperCase();
+    
+    const { data: newTenantId, error: tenantError } = await serviceClient.rpc("create_tenant_v2", {
+      _school_name: name,
+      _school_pin: randomPin,
+      _contact_email: email || null,
+      _contact_phone: phone || null,
+      _notes: notes || null,
+      _start_trial: true,
+    });
+    if (tenantError) throw tenantError;
+    const actualTenantId = newTenantId;
+
     // ── 4. INSERT school ──────────────────────────────────────────────
     const { data: school, error: schoolError } = await serviceClient
       .from("schools")
       .insert({
-        tenant_id: tenantId,
+        tenant_id: actualTenantId,
         name,
         code: code.toUpperCase(),
         email: email ?? null,

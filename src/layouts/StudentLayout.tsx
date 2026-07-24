@@ -14,7 +14,7 @@ const NAV = [
   { to: "/student/profile",   label: "Profile",   icon: UserCircle },
 ];
 
-export default function StudentLayout({ schoolName }: { schoolName?: string }) {
+export default function StudentLayout({ schoolName, schoolLogo }: { schoolName?: string; schoolLogo?: string | null }) {
   const [open, setOpen] = useState(false);
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
@@ -31,9 +31,12 @@ export default function StudentLayout({ schoolName }: { schoolName?: string }) {
       mobile ? "fixed inset-y-0 left-0 z-50 w-60" : "hidden lg:flex w-60 min-h-screen"
     )}>
       <div className="flex items-center justify-between px-5 py-4 border-b border-emerald-700">
-        <div>
-          <p className="text-xs text-emerald-300 font-medium uppercase tracking-wider">Student Portal</p>
-          <p className="text-sm font-semibold text-white truncate max-w-[150px]">{schoolName ?? "—"}</p>
+        <div className="flex items-center gap-3">
+          <img src={schoolLogo || "/logo.png"} alt={schoolLogo ? `${schoolName} Logo` : "Titbeattechsolutions Logo"} className="h-8 w-auto object-contain shrink-0" />
+          <div>
+            <p className="text-xs text-emerald-300 font-medium uppercase tracking-wider">Student Portal</p>
+            <p className="text-sm font-semibold text-white truncate max-w-[150px]">{schoolName ?? "—"}</p>
+          </div>
         </div>
         {mobile && (
           <button onClick={() => setOpen(false)} className="text-emerald-300 hover:text-white">

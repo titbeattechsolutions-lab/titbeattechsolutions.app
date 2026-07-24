@@ -16,17 +16,9 @@ async function main() {
   
   let tenantIds = schools?.map(s => s.tenant_id) || [];
   
-  if (tenantIds.length === 0) {
-    const { data: tenants, error: tenErr } = await supabase.from('tenants').select('id, school_name').ilike('school_name', '%Mighty bright%');
-    tenantIds = tenants?.map(t => t.id) || [];
-  }
-  
-  if (tenantIds.length === 0) {
-    console.log('No tenant found for Mighty bright.');
-    return;
-  }
-  
-  console.log('Tenant IDs found:', tenantIds);
+  const { data: auth, error: authErr } = await supabase.from('tenants').select('id, school_name, tenant_code, created_at').order('created_at', { ascending: false }).limit(3);
+  console.log('Recent tenants:', auth);
+  return;
   
   const { data: tdList, error: tdErr } = await supabase.from('tenant_data').select('tenant_id, data').in('tenant_id', tenantIds);
   

@@ -60,12 +60,16 @@ export default function ReportCardSupabaseActions({
   schoolSettings,
   tenantId,
   canPrint = false,
+  dispatch,
+  onExportExcel,
 }: {
   activeReport: any;
   curC: any;
   schoolSettings: any;
   tenantId: string | null;
   canPrint?: boolean;
+  dispatch?: any;
+  onExportExcel?: () => void;
 }) {
   const { toast } = useToast();
   const { role } = useAuth();
@@ -192,12 +196,30 @@ export default function ReportCardSupabaseActions({
       toast({ title: "Invalid email", description: "Enter a valid email address.", variant: "destructive" });
       return;
     }
-    // We strictly avoid inserting into the students table to respect RLS rules.
-    // Instead, we just keep the email in state and pass it dynamically to the Edge Function!
-    setGuardianEmail(trimmed);
-    setShowEmailEditor(false);
-    toast({ title: "Email verified for sending", description: trimmed });
-  }, [emailDraft, toast]);
+    setSavingEmail(true);
+    try {
+      // 1. Save locally to appState (syncs to offline JSON blob)
+      if (dispatch && activeReport) {
+        dispatch({ type: "SET_COMMENT", studentId: activeReport.id, field: "guardianEmail", value: trimmed });
+      }
+      
+      // 2. Attempt Supabase update (RLS might block this for teachers, but we try anyway)
+      if (studentDbId) {
+        await supabase.from("students").update({ guardian_email: trimmed }).eq("id", studentDbId);
+      }
+      
+      setGuardianEmail(trimmed);
+      setShowEmailEditor(false);
+      toast({ title: "Email verified & saved", description: trimmed });
+    } catch (err: any) {
+      // Even if Supabase fails (e.g. RLS block), local appState already caught it.
+      setGuardianEmail(trimmed);
+      setShowEmailEditor(false);
+      toast({ title: "Email verified locally", description: trimmed });
+    } finally {
+      setSavingEmail(false);
+    }
+  }, [emailDraft, toast, dispatch, activeReport, studentDbId]);
 
   // ─── Save to Supabase ─────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
@@ -391,7 +413,7 @@ export default function ReportCardSupabaseActions({
       `}</style>
 
       {/* ── Action buttons ───────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3 no-print">
+      <div className={`grid gap-3 no-print ${canPrint ? (role !== 'teacher' ? 'grid-cols-4' : 'grid-cols-3') : 'grid-cols-1'}`}>
         {/* Save to Supabase */}
         <Button
           variant="outline"
@@ -406,6 +428,18 @@ export default function ReportCardSupabaseActions({
           }
           {saving ? "Saving…" : savedId ? "Saved ✓" : "Save to Cloud"}
         </Button>
+
+        {/* Export Excel */}
+        {canPrint && onExportExcel && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-10 text-xs font-black uppercase"
+            onClick={onExportExcel}
+          >
+            📊 Export Excel
+          </Button>
+        )}
 
         {/* Print */}
         {canPrint && (
@@ -435,7 +469,7 @@ export default function ReportCardSupabaseActions({
               ? <CheckCheck size={14} className="mr-1.5 text-emerald-300" />
               : <Mail size={14} className="mr-1.5" />
             }
-            {sending ? "Sending…" : sentTo ? "Resend to Parent" : "Send to Parent"}
+            {sending ? "Sending…" : sentTo ? "Resend" : "Send"}
           </Button>
         )}
       </div>

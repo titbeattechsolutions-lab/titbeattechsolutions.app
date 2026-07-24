@@ -31,7 +31,7 @@ async function insertSessionLog(
 ): Promise<void> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any).from("session_logs").insert({
+    const { error } = await (supabase as any).from("session_logs").insert({
       user_id:   profile.userId,
       school_id: profile.schoolId ?? null,
       user_name: [profile.firstName, profile.lastName].filter(Boolean).join(" ") || profile.email || profile.userId,
@@ -39,6 +39,9 @@ async function insertSessionLog(
       action,
       device:    navigator.userAgent.slice(0, 200),
     });
+    if (error && error.code !== '42501') {
+      console.warn('Session log failed:', error);
+    }
   } catch { /* non-critical — never block auth flow */ }
 }
 
