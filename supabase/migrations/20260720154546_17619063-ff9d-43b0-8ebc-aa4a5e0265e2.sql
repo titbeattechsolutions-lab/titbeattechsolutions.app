@@ -86,11 +86,4 @@ CREATE POLICY report_cards_delete ON public.report_cards
 DROP POLICY IF EXISTS profiles_service_role_update ON public.profiles;
 DROP POLICY IF EXISTS profiles_service_role_insert ON public.profiles;
 
-DROP POLICY IF EXISTS "anyone can submit a request" ON public.school_requests;
-CREATE POLICY school_requests_public_insert ON public.school_requests
-  FOR INSERT TO anon, authenticated
-  WITH CHECK (
-    status = 'pending'
-    AND admin_email IS NOT NULL
-    AND length(admin_email) BETWEEN 3 AND 320
-  );
+
