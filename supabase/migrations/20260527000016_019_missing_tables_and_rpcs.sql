@@ -90,6 +90,7 @@ RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_billing_updated ON public.billing;
 CREATE TRIGGER trg_billing_updated
   BEFORE UPDATE ON public.billing
   FOR EACH ROW EXECUTE FUNCTION public.set_billing_updated_at();
