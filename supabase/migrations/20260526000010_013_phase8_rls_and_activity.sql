@@ -5,6 +5,11 @@
 --   3. platform activity_logs table with pagination support
 -- =====================================================================
 
+-- Ensure status column exists before we define functions that depend on it
+ALTER TABLE public.schools
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'
+  CHECK (status IN ('active','suspended','trial'));
+
 -- ─── 1. public.school_is_active() ──────────────────────────────────────
 -- Returns FALSE when the school's status != 'active'.
 -- Adding AND public.school_is_active() to read policies instantly
