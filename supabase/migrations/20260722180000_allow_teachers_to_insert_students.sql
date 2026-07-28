@@ -1,7 +1,7 @@
 -- =====================================================================
 -- Fix students RLS policies
 -- Previously, policies compared students.school_id directly with 
--- auth.school_id() (which returns profiles.school_id / tenant_id).
+-- public.school_id() (which returns profiles.school_id / tenant_id).
 -- Since students.school_id is actually schools.id, this always failed.
 -- We now correctly JOIN public.schools to validate the tenant relationship
 -- and loosen permissions to allow teachers to insert students.

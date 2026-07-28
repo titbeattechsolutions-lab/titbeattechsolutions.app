@@ -35,14 +35,14 @@ ALTER TABLE public.schools ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "schools_read_own"
   ON public.schools FOR SELECT
   USING (
-    id = auth.school_id()
+    id = public.school_id()
     OR public.has_role(auth.uid(), 'super_admin'::app_role)
   );
 
 -- Only school_admin / principal can update their own school settings
 CREATE POLICY "schools_update_own"
   ON public.schools FOR UPDATE
-  USING (id = auth.school_id() AND auth.is_school_admin());
+  USING (id = public.school_id() AND public.is_school_admin());
 
 -- Super admin can insert (provision new school record when creating tenant)
 CREATE POLICY "schools_superadmin_insert"

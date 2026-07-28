@@ -100,19 +100,19 @@ ALTER TABLE public.results ENABLE ROW LEVEL SECURITY;
 -- All teaching staff in the school can read results
 CREATE POLICY "results_read_staff"
   ON public.results FOR SELECT
-  USING (school_id = auth.school_id() AND auth.is_teacher());
+  USING (school_id = public.school_id() AND public.is_teacher());
 
 -- Teaching staff can insert results (score_total computed by trigger)
 CREATE POLICY "results_insert"
   ON public.results FOR INSERT
-  WITH CHECK (school_id = auth.school_id() AND auth.is_teacher());
+  WITH CHECK (school_id = public.school_id() AND public.is_teacher());
 
 -- Teaching staff can update results (score_total still computed by trigger)
 CREATE POLICY "results_update"
   ON public.results FOR UPDATE
-  USING (school_id = auth.school_id() AND auth.is_teacher());
+  USING (school_id = public.school_id() AND public.is_teacher());
 
 -- Only school admins can delete results
 CREATE POLICY "results_delete"
   ON public.results FOR DELETE
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (school_id = public.school_id() AND public.is_school_admin());

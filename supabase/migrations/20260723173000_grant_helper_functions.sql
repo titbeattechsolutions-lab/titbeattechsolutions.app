@@ -1,6 +1,6 @@
 -- =====================================================================
 -- Migration: Grant EXECUTE on Helper Functions
--- Description: The migration that moved auth.is_school_admin and others
+-- Description: The migration that moved public.is_school_admin and others
 -- to the public schema omitted the GRANT statements, causing permission denied
 -- errors for standard users and PIN-auth users.
 -- =====================================================================

@@ -61,7 +61,7 @@ ALTER TABLE public.billing ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "billing_read_own"
   ON public.billing FOR SELECT
   USING (
-    school_id = auth.school_id() AND auth.is_school_admin()
+    school_id = public.school_id() AND public.is_school_admin()
     OR public.has_role(auth.uid(), 'super_admin'::app_role)
   );
 

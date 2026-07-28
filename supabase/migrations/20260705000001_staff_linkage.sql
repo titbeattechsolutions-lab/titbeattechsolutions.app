@@ -6,13 +6,13 @@ ALTER TABLE public.profiles
 -- 2. Allow tenant-wide read (for signature fallback lookups)
 CREATE POLICY "profiles_read_tenant"
   ON public.profiles FOR SELECT
-  USING (school_id = auth.school_id());
+  USING (school_id = public.school_id());
 
 -- 3. Allow admins to write staff_member_id on others' profiles within their school
 CREATE POLICY "profiles_update_staff_linkage_tenant"
   ON public.profiles FOR UPDATE
   USING (
-    school_id = auth.school_id()
+    school_id = public.school_id()
     AND EXISTS (
       SELECT 1 FROM public.profiles p
       WHERE p.id = auth.uid()
@@ -20,5 +20,5 @@ CREATE POLICY "profiles_update_staff_linkage_tenant"
     )
   )
   WITH CHECK (
-    school_id = auth.school_id()
+    school_id = public.school_id()
   );

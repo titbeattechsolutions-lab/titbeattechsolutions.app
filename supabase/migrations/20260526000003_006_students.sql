@@ -37,22 +37,22 @@ ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 -- All teaching staff in the school can read students
 CREATE POLICY "students_read_staff"
   ON public.students FOR SELECT
-  USING (school_id = auth.school_id() AND auth.is_teacher());
+  USING (school_id = public.school_id() AND public.is_teacher());
 
 -- Only school admins can insert students
 CREATE POLICY "students_insert"
   ON public.students FOR INSERT
-  WITH CHECK (school_id = auth.school_id() AND auth.is_school_admin());
+  WITH CHECK (school_id = public.school_id() AND public.is_school_admin());
 
 -- Teaching staff can update student records (class assignment, status, etc.)
 CREATE POLICY "students_update"
   ON public.students FOR UPDATE
-  USING (school_id = auth.school_id() AND auth.is_teacher());
+  USING (school_id = public.school_id() AND public.is_teacher());
 
 -- Only school admins can delete students
 CREATE POLICY "students_delete"
   ON public.students FOR DELETE
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (school_id = public.school_id() AND public.is_school_admin());
 
 CREATE TRIGGER trg_students_updated
   BEFORE UPDATE ON public.students

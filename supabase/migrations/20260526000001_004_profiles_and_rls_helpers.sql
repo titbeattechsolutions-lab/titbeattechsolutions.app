@@ -69,7 +69,7 @@ CREATE TRIGGER on_auth_user_created_profile
 
 -- ─── RLS helper functions ─────────────────────────────────────────────
 -- Returns the current user's school_id (tenant_id) from their profile
-CREATE OR REPLACE FUNCTION auth.school_id()
+CREATE OR REPLACE FUNCTION public.school_id()
 RETURNS UUID
 LANGUAGE sql
 STABLE
@@ -80,7 +80,7 @@ AS $$
 $$;
 
 -- Returns the current user's role from their profile
-CREATE OR REPLACE FUNCTION auth.user_role()
+CREATE OR REPLACE FUNCTION public.user_role()
 RETURNS TEXT
 LANGUAGE sql
 STABLE
@@ -91,7 +91,7 @@ AS $$
 $$;
 
 -- Is current user a teacher or above?
-CREATE OR REPLACE FUNCTION auth.is_teacher()
+CREATE OR REPLACE FUNCTION public.is_teacher()
 RETURNS BOOLEAN
 LANGUAGE sql
 STABLE
@@ -103,7 +103,7 @@ AS $$
 $$;
 
 -- Is current user a school admin, principal, or superadmin?
-CREATE OR REPLACE FUNCTION auth.is_school_admin()
+CREATE OR REPLACE FUNCTION public.is_school_admin()
 RETURNS BOOLEAN
 LANGUAGE sql
 STABLE
@@ -115,7 +115,7 @@ AS $$
 $$;
 
 -- Grant helpers to authenticated (they use auth.uid() internally — safe)
-GRANT EXECUTE ON FUNCTION auth.school_id()      TO authenticated;
-GRANT EXECUTE ON FUNCTION auth.user_role()      TO authenticated;
-GRANT EXECUTE ON FUNCTION auth.is_teacher()     TO authenticated;
-GRANT EXECUTE ON FUNCTION auth.is_school_admin() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.school_id()      TO authenticated;
+GRANT EXECUTE ON FUNCTION public.user_role()      TO authenticated;
+GRANT EXECUTE ON FUNCTION public.is_teacher()     TO authenticated;
+GRANT EXECUTE ON FUNCTION public.is_school_admin() TO authenticated;

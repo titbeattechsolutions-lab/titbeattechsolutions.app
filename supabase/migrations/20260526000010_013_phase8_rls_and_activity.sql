@@ -18,7 +18,7 @@ SET search_path = public
 AS $$
   SELECT status = 'active'
   FROM public.schools
-  WHERE id = auth.school_id()
+  WHERE id = public.school_id()
 $$;
 
 GRANT EXECUTE ON FUNCTION auth.school_is_active() TO authenticated;
@@ -30,8 +30,8 @@ DROP POLICY IF EXISTS "students_read_staff" ON public.students;
 CREATE POLICY "students_read_staff"
   ON public.students FOR SELECT
   USING (
-    school_id = auth.school_id()
-    AND auth.is_teacher()
+    school_id = public.school_id()
+    AND public.is_teacher()
     AND auth.school_is_active()
   );
 
@@ -40,8 +40,8 @@ DROP POLICY IF EXISTS "teachers_read_staff" ON public.teachers;
 CREATE POLICY "teachers_read_staff"
   ON public.teachers FOR SELECT
   USING (
-    school_id = auth.school_id()
-    AND auth.is_teacher()
+    school_id = public.school_id()
+    AND public.is_teacher()
     AND auth.school_is_active()
   );
 
@@ -50,8 +50,8 @@ DROP POLICY IF EXISTS "classes_read_staff" ON public.classes;
 CREATE POLICY "classes_read_staff"
   ON public.classes FOR SELECT
   USING (
-    school_id = auth.school_id()
-    AND auth.is_teacher()
+    school_id = public.school_id()
+    AND public.is_teacher()
     AND auth.school_is_active()
   );
 
@@ -60,8 +60,8 @@ DROP POLICY IF EXISTS "subjects_read_staff" ON public.subjects;
 CREATE POLICY "subjects_read_staff"
   ON public.subjects FOR SELECT
   USING (
-    school_id = auth.school_id()
-    AND auth.is_teacher()
+    school_id = public.school_id()
+    AND public.is_teacher()
     AND auth.school_is_active()
   );
 
@@ -70,8 +70,8 @@ DROP POLICY IF EXISTS "attendance_read" ON public.attendance;
 CREATE POLICY "attendance_read"
   ON public.attendance FOR SELECT
   USING (
-    school_id = auth.school_id()
-    AND auth.is_teacher()
+    school_id = public.school_id()
+    AND public.is_teacher()
     AND auth.school_is_active()
   );
 
@@ -80,8 +80,8 @@ DROP POLICY IF EXISTS "results_read_staff" ON public.results;
 CREATE POLICY "results_read_staff"
   ON public.results FOR SELECT
   USING (
-    school_id = auth.school_id()
-    AND auth.is_teacher()
+    school_id = public.school_id()
+    AND public.is_teacher()
     AND auth.school_is_active()
   );
 
@@ -90,8 +90,8 @@ DROP POLICY IF EXISTS "fees_read_staff" ON public.fees;
 CREATE POLICY "fees_read_staff"
   ON public.fees FOR SELECT
   USING (
-    school_id = auth.school_id()
-    AND auth.is_teacher()
+    school_id = public.school_id()
+    AND public.is_teacher()
     AND auth.school_is_active()
   );
 
@@ -131,8 +131,8 @@ CREATE POLICY "activity_logs_superadmin_read"
 CREATE POLICY "activity_logs_school_admin_read"
   ON public.activity_logs FOR SELECT
   USING (
-    school_id = auth.school_id()
-    AND auth.is_school_admin()
+    school_id = public.school_id()
+    AND public.is_school_admin()
   );
 
 -- School admins and superadmins can insert logs
@@ -140,7 +140,7 @@ CREATE POLICY "activity_logs_insert"
   ON public.activity_logs FOR INSERT
   WITH CHECK (
     public.has_role(auth.uid(), 'super_admin'::app_role)
-    OR (school_id = auth.school_id() AND auth.is_school_admin())
+    OR (school_id = public.school_id() AND public.is_school_admin())
   );
 
 -- No client UPDATE/DELETE — append-only audit trail

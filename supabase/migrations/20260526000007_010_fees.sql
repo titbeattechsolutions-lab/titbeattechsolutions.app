@@ -28,20 +28,20 @@ ALTER TABLE public.fees ENABLE ROW LEVEL SECURITY;
 -- All teaching staff can read fee definitions
 CREATE POLICY "fees_read_staff"
   ON public.fees FOR SELECT
-  USING (school_id = auth.school_id() AND auth.is_teacher());
+  USING (school_id = public.school_id() AND public.is_teacher());
 
 -- Only school admins can create/update/delete fee definitions
 CREATE POLICY "fees_insert"
   ON public.fees FOR INSERT
-  WITH CHECK (school_id = auth.school_id() AND auth.is_school_admin());
+  WITH CHECK (school_id = public.school_id() AND public.is_school_admin());
 
 CREATE POLICY "fees_update"
   ON public.fees FOR UPDATE
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (school_id = public.school_id() AND public.is_school_admin());
 
 CREATE POLICY "fees_delete"
   ON public.fees FOR DELETE
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (school_id = public.school_id() AND public.is_school_admin());
 
 CREATE TRIGGER trg_fees_updated
   BEFORE UPDATE ON public.fees
@@ -79,12 +79,12 @@ ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 -- School admins can read all payments for their school
 CREATE POLICY "payments_read_admin"
   ON public.payments FOR SELECT
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (school_id = public.school_id() AND public.is_school_admin());
 
 -- Teachers (non-admin) can read payments for their school too (read-only dashboard)
 CREATE POLICY "payments_read_teacher"
   ON public.payments FOR SELECT
-  USING (school_id = auth.school_id() AND auth.is_teacher());
+  USING (school_id = public.school_id() AND public.is_teacher());
 
 -- INTENTIONALLY NO INSERT / UPDATE / DELETE policies for authenticated users.
 -- Edge Functions (service role) bypass RLS and write payments.

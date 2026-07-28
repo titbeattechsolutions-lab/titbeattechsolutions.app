@@ -41,8 +41,8 @@ CREATE POLICY "school_assets_upload"
   WITH CHECK (
     bucket_id = 'school-assets'
     AND auth.role() = 'authenticated'
-    AND auth.is_school_admin()
-    AND (storage.foldername(name))[1] = auth.school_id()::text
+    AND public.is_school_admin()
+    AND (storage.foldername(name))[1] = public.school_id()::text
   );
 
 -- School admins can delete their own school's objects
@@ -50,8 +50,8 @@ CREATE POLICY "school_assets_delete"
   ON storage.objects FOR DELETE
   USING (
     bucket_id = 'school-assets'
-    AND auth.is_school_admin()
-    AND (storage.foldername(name))[1] = auth.school_id()::text
+    AND public.is_school_admin()
+    AND (storage.foldername(name))[1] = public.school_id()::text
   );
 
 -- ─── Storage RLS: student-documents ──────────────────────────────────
@@ -61,8 +61,8 @@ CREATE POLICY "student_docs_read"
   USING (
     bucket_id = 'student-documents'
     AND auth.role() = 'authenticated'
-    AND auth.is_teacher()
-    AND (storage.foldername(name))[1] = auth.school_id()::text
+    AND public.is_teacher()
+    AND (storage.foldername(name))[1] = public.school_id()::text
   );
 
 -- Only school admins can upload student documents
@@ -71,8 +71,8 @@ CREATE POLICY "student_docs_upload"
   WITH CHECK (
     bucket_id = 'student-documents'
     AND auth.role() = 'authenticated'
-    AND auth.is_school_admin()
-    AND (storage.foldername(name))[1] = auth.school_id()::text
+    AND public.is_school_admin()
+    AND (storage.foldername(name))[1] = public.school_id()::text
   );
 
 -- ─── Deployment verification queries (run manually) ──────────────────

@@ -30,24 +30,24 @@ ALTER TABLE public.attendance ENABLE ROW LEVEL SECURITY;
 -- All teaching staff in school can read attendance
 CREATE POLICY "attendance_read"
   ON public.attendance FOR SELECT
-  USING (school_id = auth.school_id() AND auth.is_teacher());
+  USING (school_id = public.school_id() AND public.is_teacher());
 
 -- Any teacher can take attendance for their school
 CREATE POLICY "attendance_insert"
   ON public.attendance FOR INSERT
-  WITH CHECK (school_id = auth.school_id() AND auth.is_teacher());
+  WITH CHECK (school_id = public.school_id() AND public.is_teacher());
 
 -- Only the teacher who took it (same day) or an admin can update
 CREATE POLICY "attendance_update"
   ON public.attendance FOR UPDATE
   USING (
-    school_id = auth.school_id()
+    school_id = public.school_id()
     AND (
-      auth.is_school_admin()
+      public.is_school_admin()
       OR (
         taken_by = (
           SELECT id FROM public.teachers
-          WHERE auth_user_id = auth.uid() AND school_id = auth.school_id()
+          WHERE auth_user_id = auth.uid() AND school_id = public.school_id()
           LIMIT 1
         )
         AND date = CURRENT_DATE
@@ -58,4 +58,4 @@ CREATE POLICY "attendance_update"
 -- Only school admins can delete attendance records
 CREATE POLICY "attendance_delete"
   ON public.attendance FOR DELETE
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (school_id = public.school_id() AND public.is_school_admin());

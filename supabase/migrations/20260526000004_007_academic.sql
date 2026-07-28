@@ -34,20 +34,20 @@ ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
 -- All teaching staff in the school can read teachers
 CREATE POLICY "teachers_read_staff"
   ON public.teachers FOR SELECT
-  USING (school_id = auth.school_id() AND auth.is_teacher());
+  USING (school_id = public.school_id() AND public.is_teacher());
 
 -- Only school admins can insert/delete
 CREATE POLICY "teachers_insert"
   ON public.teachers FOR INSERT
-  WITH CHECK (school_id = auth.school_id() AND auth.is_school_admin());
+  WITH CHECK (school_id = public.school_id() AND public.is_school_admin());
 
 CREATE POLICY "teachers_update"
   ON public.teachers FOR UPDATE
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (school_id = public.school_id() AND public.is_school_admin());
 
 CREATE POLICY "teachers_delete"
   ON public.teachers FOR DELETE
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (school_id = public.school_id() AND public.is_school_admin());
 
 CREATE TRIGGER trg_teachers_updated
   BEFORE UPDATE ON public.teachers
@@ -77,19 +77,19 @@ ALTER TABLE public.classes ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "classes_read_staff"
   ON public.classes FOR SELECT
-  USING (school_id = auth.school_id() AND auth.is_teacher());
+  USING (school_id = public.school_id() AND public.is_teacher());
 
 CREATE POLICY "classes_insert"
   ON public.classes FOR INSERT
-  WITH CHECK (school_id = auth.school_id() AND auth.is_school_admin());
+  WITH CHECK (school_id = public.school_id() AND public.is_school_admin());
 
 CREATE POLICY "classes_update"
   ON public.classes FOR UPDATE
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (school_id = public.school_id() AND public.is_school_admin());
 
 CREATE POLICY "classes_delete"
   ON public.classes FOR DELETE
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (school_id = public.school_id() AND public.is_school_admin());
 
 CREATE TRIGGER trg_classes_updated
   BEFORE UPDATE ON public.classes
@@ -113,16 +113,16 @@ ALTER TABLE public.subjects ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "subjects_read_staff"
   ON public.subjects FOR SELECT
-  USING (school_id = auth.school_id() AND auth.is_teacher());
+  USING (school_id = public.school_id() AND public.is_teacher());
 
 CREATE POLICY "subjects_insert"
   ON public.subjects FOR INSERT
-  WITH CHECK (school_id = auth.school_id() AND auth.is_school_admin());
+  WITH CHECK (school_id = public.school_id() AND public.is_school_admin());
 
 CREATE POLICY "subjects_update"
   ON public.subjects FOR UPDATE
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (school_id = public.school_id() AND public.is_school_admin());
 
 CREATE POLICY "subjects_delete"
   ON public.subjects FOR DELETE
-  USING (school_id = auth.school_id() AND auth.is_school_admin());
+  USING (school_id = public.school_id() AND public.is_school_admin());
