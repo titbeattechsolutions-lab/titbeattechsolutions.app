@@ -1,5 +1,47 @@
 import { supabase } from "@/integrations/supabase/client";
 
+// Global cache for IP to location lookups to prevent rate limiting
+const ipLocationCache = new Map<string, string>();
+
+async function enrichWithLocations(records: LoginRecord[]) {
+  const uniqueIps = Array.from(new Set(records.map(r => r.ip_address).filter(Boolean))) as string[];
+  
+  await Promise.all(uniqueIps.map(async (ip) => {
+    if (ipLocationCache.has(ip)) return;
+    
+    // Fast path for local/private IPs
+    if (ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.") || ip === "127.0.0.1" || ip === "::1" || ip === "localhost") {
+      ipLocationCache.set(ip, "Local Network");
+      return;
+    }
+
+    try {
+      const res = await fetch(`https://ipapi.co/${ip}/json/`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.city && data.country_name) {
+          ipLocationCache.set(ip, `${data.city}, ${data.country_name}`);
+        } else {
+          ipLocationCache.set(ip, "Unknown Location");
+        }
+      } else {
+        ipLocationCache.set(ip, "Unknown Location");
+      }
+    } catch (e) {
+      ipLocationCache.set(ip, "Unknown Location");
+    }
+  }));
+
+  for (const record of records) {
+    if (!record.location && record.ip_address && ipLocationCache.has(record.ip_address)) {
+      record.location = ipLocationCache.get(record.ip_address)!;
+    }
+    if (!record.location) {
+      record.location = "Unknown";
+    }
+  }
+}
+
 interface LoginHistoryParams {
   authType: "super_admin" | "tenant" | "staff";
   identifier: string; // user_id, tenant_id, or staff_id
@@ -39,18 +81,21 @@ export async function fetchLoginHistory({
     }
 
     // Map the response to our interface
-    return (
-      data?.map((record: any) => ({
-        id: record.id,
-        event_type: record.event_type,
-        timestamp: record.timestamp,
-        ip_address: record.ip_address,
-        user_agent: record.user_agent,
-        auth_type: authType,
-        location: record.location,
-        is_suspicious: record.is_suspicious || false,
-      })) || []
-    );
+    const mappedRecords: LoginRecord[] = data?.map((record: any) => ({
+      id: record.id,
+      event_type: record.event_type,
+      timestamp: record.timestamp,
+      ip_address: record.ip_address,
+      user_agent: record.user_agent,
+      auth_type: authType,
+      location: record.location || null,
+      is_suspicious: record.is_suspicious || false,
+    })) || [];
+
+    // Dynamically fetch and enrich location data for IPs
+    await enrichWithLocations(mappedRecords);
+
+    return mappedRecords;
   } catch (err) {
     console.error("Exception fetching login history:", err);
     return [];

@@ -1,19 +1,21 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, School, Users, GraduationCap, CreditCard } from "lucide-react";
+import { Loader2, School, Users, GraduationCap, CreditCard, Activity } from "lucide-react";
 import SessionLog from "@/components/SessionLog";
 
 interface Stats {
   totalSchools: number;
   activeSchools: number;
   suspendedSchools: number;
+  liveSchools: number;
   totalStudents: number;
   totalTeachers: number;
   totalPaymentsSuccess: number;
   totalRevenueCollected: number;
+  schoolsOnMicro: number;
   schoolsOnStarter: number;
-  schoolsOnPro: number;
+  schoolsOnGrowth: number;
   schoolsOnEnterprise: number;
 }
 
@@ -27,15 +29,28 @@ export default function PlatformStatsPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
 
-      const [schoolsRes, teachersRes, paymentsRes, subPaymentsRes, billingRes] = await Promise.allSettled([
-        db.from("schools").select("id,status,current_students", { count: "exact" }),
+      const [schoolsRes, tenantsRes, teachersRes, paymentsRes, subPaymentsRes, billingRes, sessionsRes] = await Promise.allSettled([
+        db.from("schools").select("id,tenant_id,current_students", { count: "exact" }),
+        db.from("tenants").select("id,status"),
         db.rpc("get_teacher_counts_by_school"),
         db.from("payments").select("amount,status").eq("status", "success"),
         db.from("subscription_payments").select("amount"),
         db.from("billing").select("plan"),
+        db.from("tenant_sessions").select("tenant_id").gt("expires_at", new Date().toISOString()),
       ]);
 
-      const schools = schoolsRes.status === "fulfilled" ? (schoolsRes.value.data ?? []) as { id: string; status: string, current_students: number }[] : [];
+      const tenantsData = tenantsRes.status === "fulfilled" ? (tenantsRes.value.data ?? []) : [];
+      const tenantsMap = new Map(tenantsData.map((t: any) => [t.id, t.status]));
+      const activeSessions = sessionsRes.status === "fulfilled" ? (sessionsRes.value.data ?? []) : [];
+      const distinctLiveTenants = new Set(activeSessions.map((s: any) => s.tenant_id));
+
+      const schools = schoolsRes.status === "fulfilled" 
+        ? (schoolsRes.value.data ?? []).map((s: any) => ({
+            id: s.id,
+            status: tenantsMap.get(s.tenant_id) || "trial",
+            current_students: s.current_students
+          }))
+        : [];
       const studentsCount = schools.reduce((sum: number, s: any) => sum + Number(s.current_students || 0), 0);
       const teacherCountsData = teachersRes.status === "fulfilled" ? (teachersRes.value.data ?? []) : [];
       const teachersCount = teacherCountsData.reduce((sum: number, c: any) => sum + Number(c.teacher_count), 0);
@@ -47,12 +62,14 @@ export default function PlatformStatsPage() {
         totalSchools: schools.length,
         activeSchools: schools.filter((s) => s.status === "active").length,
         suspendedSchools: schools.filter((s) => s.status === "suspended").length,
+        liveSchools: distinctLiveTenants.size,
         totalStudents: studentsCount,
         totalTeachers: teachersCount,
         totalPaymentsSuccess: payments.length + subPayments.length,
         totalRevenueCollected: payments.reduce((sum, p) => sum + Number(p.amount), 0) + subPayments.reduce((sum, p) => sum + Number(p.amount), 0),
+        schoolsOnMicro: billing.filter((b) => b.plan === "micro").length,
         schoolsOnStarter: billing.filter((b) => b.plan === "starter").length,
-        schoolsOnPro: billing.filter((b) => b.plan === "pro").length,
+        schoolsOnGrowth: billing.filter((b) => b.plan === "growth").length,
         schoolsOnEnterprise: billing.filter((b) => b.plan === "enterprise").length,
       });
       setLoading(false);
@@ -66,6 +83,7 @@ export default function PlatformStatsPage() {
   const cards = [
     { label: "Total Schools",        value: stats.totalSchools,            icon: School,       color: "bg-violet-50 text-violet-600" },
     { label: "Active Schools",        value: stats.activeSchools,           icon: School,       color: "bg-emerald-50 text-emerald-600" },
+    { label: "Live Schools",          value: stats.liveSchools,             icon: Activity,     color: "bg-pink-50 text-pink-600" },
     { label: "Suspended",             value: stats.suspendedSchools,        icon: School,       color: "bg-red-50 text-red-600" },
     { label: "Total Students",        value: stats.totalStudents,           icon: Users,        color: "bg-blue-50 text-blue-600" },
     { label: "Total Teachers",        value: stats.totalTeachers,           icon: GraduationCap,color: "bg-indigo-50 text-indigo-600" },
@@ -98,10 +116,11 @@ export default function PlatformStatsPage() {
       {/* Plan distribution */}
       <div>
         <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Plan Distribution</h2>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-4 gap-4">
           {[
+            { plan: "Micro",   count: stats.schoolsOnMicro,      color: "border-gray-300 bg-gray-50 text-gray-700" },
             { plan: "Starter", count: stats.schoolsOnStarter,    color: "border-amber-300 bg-amber-50 text-amber-700" },
-            { plan: "Pro",     count: stats.schoolsOnPro,        color: "border-blue-300 bg-blue-50 text-blue-700" },
+            { plan: "Growth",  count: stats.schoolsOnGrowth,     color: "border-blue-300 bg-blue-50 text-blue-700" },
             { plan: "Enterprise", count: stats.schoolsOnEnterprise, color: "border-violet-300 bg-violet-50 text-violet-700" },
           ].map((p) => (
             <div key={p.plan} className={`rounded-xl border-2 p-4 text-center ${p.color}`}>

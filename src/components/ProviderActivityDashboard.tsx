@@ -93,44 +93,24 @@ export default function ProviderActivityDashboard() {
 
       let activityRows: ActivityRecord[] = [];
       const { data: directActivityData, error: directActivityError } = await supabase
-        .from("tenant_activity_logs")
-        .select("*")
-        .order("timestamp", { ascending: false })
+        .from("activity_logs")
+        .select("*, schools(name)")
+        .order("created_at", { ascending: false })
         .limit(150);
 
-      if (!directActivityError && directActivityData) {
-        activityRows = ((directActivityData as unknown) as any[]).map((row) => ({ ...row, id: String(row.id) } as ActivityRecord)).map((row) => ({
+      if (directActivityError) {
+        throw directActivityError;
+      }
+
+      if (directActivityData) {
+        activityRows = (directActivityData as any[]).map((row) => ({
           ...row,
-          tenant_name: tenantNameMap[row.tenant_id ?? ""] ?? undefined,
+          id: String(row.id),
+          timestamp: row.created_at,
+          tenant_name: row.schools?.name,
+          details: typeof row.details === 'object' ? JSON.stringify(row.details) : row.details,
+          staff_id: row.details?.actor || row.performed_by || row.details?.performed_by,
         }));
-      } else {
-        console.warn("Direct tenant_activity_logs query failed, falling back to per-tenant RPC", directActivityError);
-        const tenantsWithRecords = await Promise.allSettled(
-          tenants.map(async (tenant) => {
-            const { data: rpcData, error: rpcError } = await (supabase.rpc as any)("get_tenant_activity_logs", {
-              _tenant_id: tenant.id,
-              _limit: 50,
-            });
-            if (rpcError) {
-              throw rpcError;
-            }
-            return (rpcData ?? []).map((row: any) => ({
-              ...row,
-              tenant_id: tenant.id,
-              tenant_name: tenant.school_name,
-            }));
-          })
-        );
-
-        const fallbackRecords = tenantsWithRecords
-          .filter((result): result is PromiseFulfilledResult<ActivityRecord[]> => result.status === "fulfilled")
-          .flatMap((result) => result.value);
-
-        if (fallbackRecords.length === 0) {
-          throw directActivityError || new Error("No tenant activity records could be loaded.");
-        }
-
-        activityRows = fallbackRecords;
       }
 
       if (accessResult.error) {

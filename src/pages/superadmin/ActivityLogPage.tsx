@@ -16,17 +16,18 @@ interface ActivityLog {
   details: Record<string, unknown> | null;
   created_at: string;
   school_name?: string | null;
+  schools?: { name: string } | null;
 }
 
 interface StaffSessionLog {
   id: string;
-  tenant_id: string;
-  staff_member_id: string;
-  staff_name: string;
+  school_id: string;
+  user_id: string;
+  user_name: string;
   role: string;
   action: string;
   created_at: string;
-  tenants?: { school_name: string };
+  schools?: { name: string };
 }
 
 const PAGE_SIZE = 50;
@@ -85,7 +86,7 @@ export default function ActivityLogPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let query = (supabase as any)
         .from("activity_logs")
-        .select("*", { count: "exact" })
+        .select("*, schools(name)", { count: "exact" })
         .order("created_at", { ascending: false })
         .range(from, to);
 
@@ -113,8 +114,8 @@ export default function ActivityLogPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const query = (supabase as any)
         .from("activity_logs")
-        .select("*", { count: "exact" })
-        .eq("details->>performed_by", user.id)
+        .select("*, schools(name)", { count: "exact" })
+        .eq("performed_by", user.id)
         .order("created_at", { ascending: false })
         .range(from, to);
 
@@ -131,13 +132,16 @@ export default function ActivityLogPage() {
       setHasMore((count ?? 0) > to + 1);
     } else {
       let query = supabase
-        .from("staff_session_logs")
-        .select("*, tenants(school_name)", { count: "exact" })
+        .from("session_logs")
+        .select("*, schools(name)", { count: "exact" })
         .order("created_at", { ascending: false })
         .range(from, to);
 
       if (filterAction !== "all") query = query.eq("action", filterAction);
-      if (filterSchoolId !== "all") query = query.eq("tenant_id", filterSchoolId);
+      if (filterSchoolId !== "all") {
+        const sId = schools.find(s => s.tenant_id === filterSchoolId)?.id || filterSchoolId;
+        query = query.eq("school_id", sId);
+      }
 
       const { data, error, count } = await query;
       setLoading(false);
@@ -166,7 +170,7 @@ export default function ActivityLogPage() {
   const displayedStaff = search
     ? staffLogs.filter((l) =>
         l.action.toLowerCase().includes(search.toLowerCase()) ||
-        l.staff_name.toLowerCase().includes(search.toLowerCase()) ||
+        l.user_name.toLowerCase().includes(search.toLowerCase()) ||
         l.role.toLowerCase().includes(search.toLowerCase())
       )
     : staffLogs;
@@ -292,7 +296,7 @@ export default function ActivityLogPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-500">
-                      {log.school_name ?? (log.school_id ? <span className="font-mono">{log.school_id.slice(0, 8)}…</span> : <span className="text-slate-300">platform</span>)}
+                      {log.schools?.name ?? log.school_name ?? (log.school_id ? <span className="font-mono">{log.school_id.slice(0, 8)}…</span> : <span className="text-slate-300">platform</span>)}
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-500 font-mono">
                       {log.details?.actor ? (log.details.actor as string) : (
@@ -328,10 +332,10 @@ export default function ActivityLogPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-500">
-                      {log.tenants?.school_name ?? (log.tenant_id ? <span className="font-mono">{log.tenant_id.slice(0, 8)}…</span> : "—")}
+                      {log.schools?.name ?? (log.school_id ? <span className="font-mono">{log.school_id.slice(0, 8)}…</span> : "—")}
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-800 font-bold">
-                      {log.staff_name}
+                      {log.user_name}
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-500">
                       {log.role}

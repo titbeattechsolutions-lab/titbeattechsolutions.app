@@ -25,8 +25,9 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 const PLAN_STYLE: Record<string, string> = {
+  micro:      "bg-gray-100 text-gray-700",
   starter:    "bg-yellow-100 text-yellow-700",
-  pro:        "bg-blue-100 text-blue-700",
+  growth:     "bg-blue-100 text-blue-700",
   enterprise: "bg-violet-100 text-violet-700",
 };
 
@@ -73,8 +74,9 @@ export default function BillingListPage() {
           <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="Plan" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Plans</SelectItem>
+            <SelectItem value="micro">Micro</SelectItem>
             <SelectItem value="starter">Starter</SelectItem>
-            <SelectItem value="pro">Pro</SelectItem>
+            <SelectItem value="growth">Growth</SelectItem>
             <SelectItem value="enterprise">Enterprise</SelectItem>
           </SelectContent>
         </Select>

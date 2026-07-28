@@ -49,13 +49,14 @@ interface BillingDetail {
 }
 
 const PLAN_FEATURES: Record<string, Record<string, boolean>> = {
-  starter:    { attendance: true, results: true, fees: false, library: false, events: true },
-  pro:        { attendance: true, results: true, fees: true,  library: false, events: true },
+  micro:      { attendance: true, results: true, fees: true,  library: false, events: true },
+  starter:    { attendance: true, results: true, fees: true,  library: false, events: true },
+  growth:     { attendance: true, results: true, fees: true,  library: true,  events: true },
   enterprise: { attendance: true, results: true, fees: true,  library: true,  events: true },
 };
 
 const PLAN_LIMITS: Record<string, number> = {
-  starter: 500, pro: 2000, enterprise: 10000,
+  micro: 200, starter: 500, growth: 1000, enterprise: 10000,
 };
 
 export default function SchoolDetailPage() {
@@ -267,8 +268,9 @@ export default function SchoolDetailPage() {
                 <Select value={selectedPlan} onValueChange={setSelectedPlan}>
                   <SelectTrigger className="h-8 flex-1 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="micro">Micro (200 students)</SelectItem>
                     <SelectItem value="starter">Starter (500 students)</SelectItem>
-                    <SelectItem value="pro">Pro (2,000 students)</SelectItem>
+                    <SelectItem value="growth">Growth (1,000 students)</SelectItem>
                     <SelectItem value="enterprise">Enterprise (10,000 students)</SelectItem>
                   </SelectContent>
                 </Select>

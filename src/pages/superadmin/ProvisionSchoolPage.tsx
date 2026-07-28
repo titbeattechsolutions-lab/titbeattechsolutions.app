@@ -201,8 +201,9 @@ export default function ProvisionSchoolPage() {
                   <Select value={form.plan} onValueChange={(v) => setForm((f) => ({ ...f, plan: v }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="starter">Starter (500 students, 14-day trial)</SelectItem>
-                      <SelectItem value="pro">Pro (2,000 students)</SelectItem>
+                      <SelectItem value="micro">Micro (200 students)</SelectItem>
+                      <SelectItem value="starter">Starter (500 students, 7-day trial)</SelectItem>
+                      <SelectItem value="growth">Growth (1,000 students)</SelectItem>
                       <SelectItem value="enterprise">Enterprise (10,000 students)</SelectItem>
                     </SelectContent>
                   </Select>

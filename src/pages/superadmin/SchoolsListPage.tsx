@@ -43,16 +43,27 @@ export default function SchoolsListPage() {
   const load = useCallback(async () => {
     setLoading(true);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: schoolsData, error } = await (supabase as any)
-      .from("schools")
-      .select("id,tenant_id,name,code,email,current_students,max_students,features,academic_year,current_term,created_at,status")
-      .order("created_at", { ascending: false });
+    const [schoolsRes, tenantsRes] = await Promise.all([
+      (supabase as any)
+        .from("schools")
+        .select("id,tenant_id,name,code,email,current_students,max_students,features,academic_year,current_term,created_at")
+        .order("created_at", { ascending: false }),
+      (supabase as any).from("tenants").select("id,status")
+    ]);
     setLoading(false);
-    if (error) {
-      toast({ title: "Error loading schools", description: error.message, variant: "destructive" }); return;
+
+    if (schoolsRes.error) {
+      toast({ title: "Error loading schools", description: schoolsRes.error.message, variant: "destructive" }); return;
     }
     
-    setSchools((schoolsData as SchoolRow[]) || []);
+    const tenantsMap = new Map((tenantsRes.data || []).map((t: any) => [t.id, t.status]));
+
+    const schoolsData = (schoolsRes.data as any[])?.map((s) => ({
+      ...s,
+      status: tenantsMap.get(s.tenant_id) || "trial",
+    })) || [];
+    
+    setSchools(schoolsData as SchoolRow[]);
   }, [toast]);
 
   useEffect(() => { load(); }, [load]);
