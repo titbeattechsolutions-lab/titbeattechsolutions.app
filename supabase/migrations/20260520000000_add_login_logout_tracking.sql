@@ -81,7 +81,7 @@ CREATE OR REPLACE FUNCTION public.get_login_history(
 RETURNS TABLE(
   id BIGINT,
   event_type TEXT,
-  timestamp TIMESTAMPTZ,
+  "timestamp" TIMESTAMPTZ,
   ip_address TEXT,
   user_agent TEXT
 )

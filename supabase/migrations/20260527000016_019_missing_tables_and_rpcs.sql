@@ -118,6 +118,7 @@ ON CONFLICT (school_id) DO NOTHING;
 -- Satisfies legacy calls from lib/login-history.ts and lib/auth-logger.ts
 -- Returns rows from session_logs table (created in migration 016)
 
+DROP FUNCTION IF EXISTS public.get_login_history(TEXT, TEXT, INT);
 CREATE OR REPLACE FUNCTION public.get_login_history(
   _auth_type  TEXT,
   _identifier TEXT,
