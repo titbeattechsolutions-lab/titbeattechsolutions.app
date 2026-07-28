@@ -12,9 +12,7 @@ CREATE INDEX IF NOT EXISTS idx_students_school_class
 -- idx_students_school_status already exists from 006 migration — skip duplicate.
 
 -- Auth user lookup (used by getMyTeacherProfile pattern for students)
-CREATE INDEX IF NOT EXISTS idx_students_auth_user
-  ON public.students (auth_user_id)
-  WHERE auth_user_id IS NOT NULL;
+-- Removed invalid index: auth_user_id column does not exist on public.students
 
 -- ─── results ─────────────────────────────────────────────────────────
 -- Teacher loads results by class + subject + term on every ResultsPage open
