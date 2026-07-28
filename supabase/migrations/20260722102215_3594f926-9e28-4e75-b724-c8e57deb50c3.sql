@@ -38,8 +38,6 @@ AS $function$
   SELECT CASE
     WHEN public.has_role(auth.uid(), 'super_admin') THEN 'super_admin'
     WHEN public.has_role(auth.uid(), 'school_admin') THEN 'school_admin'
-    WHEN public.has_role(auth.uid(), 'authorised_staff') THEN 'authorised_staff'
-    WHEN public.has_role(auth.uid(), 'student') THEN 'student'
     ELSE (SELECT role FROM public.profiles WHERE id = auth.uid())
   END
 $function$;
