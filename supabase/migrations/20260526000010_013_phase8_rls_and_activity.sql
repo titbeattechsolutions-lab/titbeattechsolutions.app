@@ -1,15 +1,15 @@
 -- =====================================================================
 -- 013: Phase 8 additions
---   1. auth.school_is_active() — enforce suspend at RLS level
+--   1. public.school_is_active() — enforce suspend at RLS level
 --   2. Superadmin UPDATE policy for schools (suspend/reactivate/plan)
 --   3. platform activity_logs table with pagination support
 -- =====================================================================
 
--- ─── 1. auth.school_is_active() ──────────────────────────────────────
+-- ─── 1. public.school_is_active() ──────────────────────────────────────
 -- Returns FALSE when the school's status != 'active'.
--- Adding AND auth.school_is_active() to read policies instantly
+-- Adding AND public.school_is_active() to read policies instantly
 -- zeroes out all queries for a suspended school's users.
-CREATE OR REPLACE FUNCTION auth.school_is_active()
+CREATE OR REPLACE FUNCTION public.school_is_active()
 RETURNS BOOLEAN
 LANGUAGE sql
 STABLE
@@ -21,7 +21,7 @@ AS $$
   WHERE id = public.school_id()
 $$;
 
-GRANT EXECUTE ON FUNCTION auth.school_is_active() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.school_is_active() TO authenticated;
 
 -- ─── Apply school_is_active to all major staff read policies ─────────
 
@@ -32,7 +32,7 @@ CREATE POLICY "students_read_staff"
   USING (
     school_id = public.school_id()
     AND public.is_teacher()
-    AND auth.school_is_active()
+    AND public.school_is_active()
   );
 
 -- teachers
@@ -42,7 +42,7 @@ CREATE POLICY "teachers_read_staff"
   USING (
     school_id = public.school_id()
     AND public.is_teacher()
-    AND auth.school_is_active()
+    AND public.school_is_active()
   );
 
 -- classes
@@ -52,7 +52,7 @@ CREATE POLICY "classes_read_staff"
   USING (
     school_id = public.school_id()
     AND public.is_teacher()
-    AND auth.school_is_active()
+    AND public.school_is_active()
   );
 
 -- subjects
@@ -62,7 +62,7 @@ CREATE POLICY "subjects_read_staff"
   USING (
     school_id = public.school_id()
     AND public.is_teacher()
-    AND auth.school_is_active()
+    AND public.school_is_active()
   );
 
 -- attendance
@@ -72,7 +72,7 @@ CREATE POLICY "attendance_read"
   USING (
     school_id = public.school_id()
     AND public.is_teacher()
-    AND auth.school_is_active()
+    AND public.school_is_active()
   );
 
 -- results
@@ -82,7 +82,7 @@ CREATE POLICY "results_read_staff"
   USING (
     school_id = public.school_id()
     AND public.is_teacher()
-    AND auth.school_is_active()
+    AND public.school_is_active()
   );
 
 -- fees
@@ -92,7 +92,7 @@ CREATE POLICY "fees_read_staff"
   USING (
     school_id = public.school_id()
     AND public.is_teacher()
-    AND auth.school_is_active()
+    AND public.school_is_active()
   );
 
 
