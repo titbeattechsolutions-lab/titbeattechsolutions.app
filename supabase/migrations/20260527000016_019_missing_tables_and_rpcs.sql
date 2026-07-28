@@ -23,12 +23,14 @@ CREATE INDEX IF NOT EXISTS idx_activity_logs_action  ON public.activity_logs(act
 
 ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "activity_logs_superadmin_read" ON public.activity_logs;
 CREATE POLICY "activity_logs_superadmin_read"
   ON public.activity_logs FOR SELECT
   USING (
     (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'superadmin'
   );
 
+DROP POLICY IF EXISTS "activity_logs_school_admin_read" ON public.activity_logs;
 CREATE POLICY "activity_logs_school_admin_read"
   ON public.activity_logs FOR SELECT
   USING (
@@ -37,6 +39,7 @@ CREATE POLICY "activity_logs_school_admin_read"
         IN ('school_admin','principal','superadmin')
   );
 
+DROP POLICY IF EXISTS "activity_logs_insert" ON public.activity_logs;
 CREATE POLICY "activity_logs_insert"
   ON public.activity_logs FOR INSERT
   WITH CHECK (
