@@ -159,8 +159,8 @@ export default function SchoolDetailPage() {
     }
     
     setSchool(schoolData as SchoolDetail);
-    setSelectedPlan(billingRes.data?.plan ?? "starter");
-    setBilling(billingRes.data as BillingDetail | null);
+    setSelectedPlan(bRes.data?.plan ?? "starter");
+    setBilling(bRes.data as BillingDetail | null);
   };
 
   useEffect(() => { load(); }, [schoolId]); // eslint-disable-line
