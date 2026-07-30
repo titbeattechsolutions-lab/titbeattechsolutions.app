@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
     }
 
     // ── 2. Parse request body ─────────────────────────────────────────────────
-    const { reportCardId, schoolId, overrideEmail } = await req.json();
+    const { reportCardId, schoolId, overrideEmail, appUrl } = await req.json();
     if (!reportCardId || !schoolId) {
       return Response.json(
         { error: "reportCardId and schoolId are required" },
@@ -373,7 +373,7 @@ Deno.serve(async (req) => {
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;margin:0 auto;">
           <tr>
             <td style="padding:32px 20px;text-align:center;">
-              <a href="#" style="display:inline-block;background-color:#2563eb;color:#ffffff;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:700;text-decoration:none;box-shadow:0 4px 12px rgba(37,99,235,0.25);">View Interactive Portal</a>
+              <a href="${appUrl || '#'}" style="display:inline-block;background-color:#2563eb;color:#ffffff;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:700;text-decoration:none;box-shadow:0 4px 12px rgba(37,99,235,0.25);">View Interactive Portal</a>
               <p style="margin:20px 0 0;font-size:12px;color:#94a3b8;font-weight:500;">
                 Sent securely by <strong style="color:#64748b;">${schoolName}</strong>
               </p>

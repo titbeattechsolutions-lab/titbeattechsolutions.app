@@ -331,6 +331,46 @@ export default function ReportCardSupabaseActions({
         setSavedId(data?.id ?? null);
       }
       
+      // Save results
+      if (activeReport.records && activeReport.records.length > 0) {
+        const getGrade = (total: number) => {
+          if (total >= 70) return { grade: "A", remark: "Excellent" };
+          if (total >= 60) return { grade: "B", remark: "Very Good" };
+          if (total >= 50) return { grade: "C", remark: "Credit" };
+          if (total >= 40) return { grade: "D", remark: "Pass" };
+          return { grade: "F", remark: "Fail" };
+        };
+
+        const resultsPayload = activeReport.records.map((r: any) => {
+          const { grade, remark } = getGrade(r.total);
+          return {
+            school_id: schoolId,
+            student_id: studentDbId || null,
+            student_name: activeReport.name,
+            class_id: finalClassId,
+            subject_name: r.subject,
+            term: normaliseTerm(schoolSettings.term),
+            academic_year: schoolSettings.session,
+            ca1: r.caScore || null,
+            ca2: null,
+            exam_score: r.examScore || null,
+            total_score: r.total || null,
+            grade,
+            remark
+          };
+        });
+
+        await (supabase as any).from("results")
+          .delete()
+          .eq("school_id", schoolId)
+          .eq("student_name", activeReport.name)
+          .eq("term", normaliseTerm(schoolSettings.term))
+          .eq("academic_year", schoolSettings.session);
+
+        const { error: resErr } = await (supabase as any).from("results").insert(resultsPayload);
+        if (resErr) console.error("Failed to save results:", resErr);
+      }
+      
       // Hook into activity tracking
       syncActivityLog(tenantId ?? null, role || "Staff", "Saved Report Card", `Saved report card to cloud for ${activeReport.name}`).catch(() => {});
 
@@ -376,7 +416,7 @@ export default function ReportCardSupabaseActions({
       if (token) headers["x-tenant-session"] = token;
 
       const { data, error } = await supabase.functions.invoke("send-report-card", {
-        body: { reportCardId: rcId, schoolId, overrideEmail: guardianEmail },
+        body: { reportCardId: rcId, schoolId, overrideEmail: guardianEmail, appUrl: window.location.origin },
         headers
       });
 
