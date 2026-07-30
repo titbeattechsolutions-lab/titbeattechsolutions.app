@@ -11,17 +11,35 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // ── 1. Auth: verify caller using S2S secret ────────────────────────
-    const secretHeader = req.headers.get("x-provisioning-secret");
-    const expectedSecret = Deno.env.get("PROVISIONING_SECRET");
-    
-    if (!secretHeader || !expectedSecret || secretHeader !== expectedSecret) {
-      return Response.json({ error: "Unauthorized" }, { status: 401, headers: corsHeaders });
+    // ── 1. Auth: verify caller using JWT ───────────────────────────────
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      return Response.json({ error: "Missing authorization header" }, { status: 401, headers: corsHeaders });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
+
+    // Verify the JWT by getting the user
+    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
+    
+    if (userError || !user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401, headers: corsHeaders });
+    }
+
+    // Verify user is superadmin
+    const { data: isSuperAdmin } = await serviceClient.rpc("has_role", {
+      _user_id: user.id,
+      _role: "super_admin"
+    });
+
+    if (!isSuperAdmin) {
+      return Response.json({ error: "Forbidden: Superadmin access required" }, { status: 403, headers: corsHeaders });
+    }
 
     // ── 2. Parse + validate body ───────────────────────────────────────
     const body = await req.json();
@@ -60,10 +78,12 @@ Deno.serve(async (req) => {
 
     // ── 4. CREATE tenant ──────────────────────────────────────────────
     const randomPin = "SCH-" + Array.from({length: 6}, () => Math.random().toString(36).charAt(2)).join('').toUpperCase();
+    const schoolPin = randomPin;
     
-    const { data: newTenantId, error: tenantError } = await serviceClient.rpc("create_tenant_v2", {
+    // We MUST use userClient here because create_tenant_v2 explicitly checks auth.uid() for super_admin role!
+    const { data: newTenantId, error: tenantError } = await userClient.rpc("create_tenant_v2", {
       _school_name: school.name,
-      _school_pin: randomPin,
+      _school_pin: schoolPin,
       _contact_email: school.email || null,
       _contact_phone: school.phone || null,
       _notes: null,
@@ -132,17 +152,19 @@ Deno.serve(async (req) => {
       if (profileError) throw profileError;
     }
 
-    // ── 7. INSERT billing record ──────────────────────────────────────
+    // ── 7. UPDATE billing record ──────────────────────────────────────
+    // A database trigger (trg_school_billing) automatically creates a default billing
+    // record when a school is created. We just need to update it with the requested plan.
     const trialEndsAt = subscription?.trialEndsAt || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
     const { error: billingError } = await serviceClient
       .from("billing")
-      .insert({
-        school_id: schoolId,
+      .update({
         plan: subscription?.plan ?? "starter",
         status: "trial",
         trial_ends_at: trialEndsAt,
         payment_method: subscription?.paymentMethod ?? null,
-      });
+      })
+      .eq("school_id", schoolId);
 
     if (billingError) throw billingError;
 
@@ -157,7 +179,110 @@ Deno.serve(async (req) => {
 
     if (idemError) throw idemError;
 
-    // (Note: Email sending is now handled completely by titbeattech-nextjs)
+    // ── 9. Fetch Tenant Code ──────────────────────────────────────────
+    const { data: tenantData, error: tenantCodeError } = await serviceClient
+      .from("tenants")
+      .select("tenant_code")
+      .eq("id", actualTenantId)
+      .single();
+
+    if (tenantCodeError) throw tenantCodeError;
+    const tenantCode = tenantData.tenant_code;
+
+    // ── 10. Send Welcome Email via Resend ─────────────────────────────
+    if (admin?.email && admin?.tempPassword) {
+      const resendApiKey = Deno.env.get("RESEND_API_KEY");
+      if (resendApiKey) {
+        const adminName = admin.name || "Admin";
+        const appUrl = Deno.env.get("APP_URL") || "https://myschoolgradeflow.vercel.app";
+        const emailHtml = `
+          <!DOCTYPE html>
+          <html>
+          <body style="font-family:Inter,sans-serif;background:#F8FAFC;padding:40px 0;">
+            <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;
+                        border:1px solid #D4E5FF;overflow:hidden;">
+              <div style="background:#003366;padding:28px 32px;">
+                <h1 style="color:#fff;margin:0;font-size:22px;font-weight:800;">
+                  Welcome to TitbeatTech! 🎉
+                </h1>
+                <p style="color:#94A3B8;margin:6px 0 0;font-size:14px;">
+                  Your school management platform is ready
+                </p>
+              </div>
+              <div style="padding:32px;">
+                <p style="color:#0F172A;font-size:16px;margin:0 0 16px;">
+                  Hi <strong>${adminName}</strong>,
+                </p>
+                <p style="color:#334155;font-size:15px;line-height:1.7;margin:0 0 20px;">
+                  Your <strong>${school.name}</strong> account has been provisioned.
+                  Here are your login credentials:
+                </p>
+
+                <div style="background:#F0F7FF;border:1px solid #D4E5FF;border-radius:12px;
+                            padding:20px 24px;margin:0 0 24px;">
+                  <p style="margin:0 0 8px;font-size:13px;color:#64748B;font-weight:600;
+                            text-transform:uppercase;letter-spacing:1px;">Tenant Code (School Code)</p>
+                  <p style="margin:0 0 16px;font-size:16px;font-weight:700;color:#0F172A;">${tenantCode}</p>
+
+                  <p style="margin:0 0 8px;font-size:13px;color:#64748B;font-weight:600;
+                            text-transform:uppercase;letter-spacing:1px;">School PIN</p>
+                  <p style="margin:0 0 16px;font-size:16px;font-weight:700;color:#0F172A;">${schoolPin}</p>
+
+                  <p style="margin:0 0 8px;font-size:13px;color:#64748B;font-weight:600;
+                            text-transform:uppercase;letter-spacing:1px;">Login Email</p>
+                  <p style="margin:0 0 16px;font-size:16px;font-weight:700;color:#0F172A;">${admin.email.toLowerCase()}</p>
+
+                  <p style="margin:0 0 8px;font-size:13px;color:#64748B;font-weight:600;
+                            text-transform:uppercase;letter-spacing:1px;">Temporary Password</p>
+                  <p style="margin:0;font-size:18px;font-weight:900;color:#003366;
+                            letter-spacing:2px;font-family:monospace;">${admin.tempPassword}</p>
+                </div>
+
+                <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;
+                            padding:14px 18px;margin:0 0 24px;">
+                  <p style="margin:0;font-size:14px;color:#92400E;font-weight:600;">
+                    ⚠️ Important: You <em>must</em> change this password when you first log in.
+                  </p>
+                </div>
+
+                <a href="${appUrl}/login" target="_blank"
+                   style="display:inline-block;background:#2563EB;color:#fff;
+                          text-decoration:none;padding:14px 28px;border-radius:10px;
+                          font-weight:700;font-size:15px;">
+                  Access App &amp; Set New Password →
+                </a>
+              </div>
+            </div>
+          </body>
+          </html>
+        `;
+
+        try {
+          const res = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${resendApiKey}`,
+            },
+            body: JSON.stringify({
+              from: Deno.env.get("EMAIL_FROM") || "TitbeatTech <onboarding@resend.dev>",
+              to: admin.email.toLowerCase(),
+              subject: `Your TitbeatTech school account is ready — ${school.name}`,
+              html: emailHtml,
+            }),
+          });
+          
+          if (!res.ok) {
+            const errBody = await res.text();
+            console.error("Failed to send Resend email:", errBody);
+          }
+        } catch (e) {
+          console.error("Error sending Resend email:", e);
+        }
+      } else {
+        console.warn("RESEND_API_KEY not set. Skipping welcome email.");
+      }
+    }
 
     return Response.json(
       { 
@@ -165,6 +290,8 @@ Deno.serve(async (req) => {
         data: { 
           schoolId,
           tenantId: actualTenantId,
+          tenantCode,
+          schoolPin,
           message: "School successfully provisioned"
         } 
       },
@@ -172,8 +299,10 @@ Deno.serve(async (req) => {
     );
   } catch (err) {
     console.error("provision-school error:", err);
+    // Expose the raw error object so we can debug it on the frontend
+    const errorMsg = err instanceof Error ? err.message : JSON.stringify(err);
     return Response.json(
-      { error: err instanceof Error ? err.message : "Internal server error" },
+      { error: errorMsg },
       { status: 500, headers: corsHeaders }
     );
   }

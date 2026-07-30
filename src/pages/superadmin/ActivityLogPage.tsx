@@ -86,13 +86,12 @@ export default function ActivityLogPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let query = (supabase as any)
         .from("activity_logs")
-        .select("*, schools(name)", { count: "exact" })
+        .select("*", { count: "exact" })
         .order("created_at", { ascending: false })
         .range(from, to);
 
       if (filterAction !== "all") query = query.eq("action", filterAction);
       if (filterSchoolId !== "all") {
-        // Reverse-map tenant_id back to school_id for activity_logs
         const sId = schools.find(s => s.tenant_id === filterSchoolId)?.id || filterSchoolId;
         query = query.eq("school_id", sId);
       }
@@ -105,7 +104,12 @@ export default function ActivityLogPage() {
         toast({ title: "Error", description: error.message, variant: "destructive" }); return;
       }
 
-      setLogs((data ?? []) as ActivityLog[]);
+      const mappedData = (data ?? []).map((log: any) => {
+        const schoolName = schools.find(s => s.id === log.school_id)?.name;
+        return { ...log, schools: schoolName ? { name: schoolName } : null };
+      });
+
+      setLogs(mappedData as ActivityLog[]);
       setTotal(count ?? 0);
       setHasMore((count ?? 0) > to + 1);
     } else if (activeTab === "my_activity") {
@@ -114,7 +118,7 @@ export default function ActivityLogPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const query = (supabase as any)
         .from("activity_logs")
-        .select("*, schools(name)", { count: "exact" })
+        .select("*", { count: "exact" })
         .eq("performed_by", user.id)
         .order("created_at", { ascending: false })
         .range(from, to);
@@ -127,20 +131,24 @@ export default function ActivityLogPage() {
         toast({ title: "Error", description: error.message, variant: "destructive" }); return;
       }
 
-      setLogs((data ?? []) as ActivityLog[]);
+      const mappedData = (data ?? []).map((log: any) => {
+        const schoolName = schools.find(s => s.id === log.school_id)?.name;
+        return { ...log, schools: schoolName ? { name: schoolName } : null };
+      });
+
+      setLogs(mappedData as ActivityLog[]);
       setTotal(count ?? 0);
       setHasMore((count ?? 0) > to + 1);
     } else {
       let query = supabase
-        .from("session_logs")
-        .select("*, schools(name)", { count: "exact" })
+        .from("staff_session_logs")
+        .select("*, tenants(school_name)", { count: "exact" })
         .order("created_at", { ascending: false })
         .range(from, to);
 
       if (filterAction !== "all") query = query.eq("action", filterAction);
       if (filterSchoolId !== "all") {
-        const sId = schools.find(s => s.tenant_id === filterSchoolId)?.id || filterSchoolId;
-        query = query.eq("school_id", sId);
+        query = query.eq("tenant_id", filterSchoolId);
       }
 
       const { data, error, count } = await query;
@@ -151,7 +159,15 @@ export default function ActivityLogPage() {
         toast({ title: "Error", description: error.message, variant: "destructive" }); return;
       }
 
-      setStaffLogs((data ?? []) as any[]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mappedData = (data ?? []).map((log: any) => ({
+        ...log,
+        user_name: log.staff_name,
+        school_id: log.tenant_id,
+        schools: log.tenants ? { name: log.tenants.school_name } : null
+      }));
+
+      setStaffLogs(mappedData as any[]);
       setTotal(count ?? 0);
       setHasMore((count ?? 0) > to + 1);
     }

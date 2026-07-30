@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-tenant-session",
 };
 
-const ALLOWED_ROLES = ["school_admin", "principal", "head_teacher", "teacher"];
+const ALLOWED_ROLES = ["school_admin", "principal", "head_teacher", "teacher", "super_admin", "superadmin"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -24,6 +24,7 @@ Deno.serve(async (req) => {
     
     let callerUserId: string | null = null;
     let callerSchoolId: string | null = null;
+    let callerRole: string | null = null;
 
     if (tenantSessionToken) {
       // Tenant session calls (PIN-based app)
@@ -38,9 +39,9 @@ Deno.serve(async (req) => {
         console.error("Session lookup error:", sessionErr);
       }
 
-      const role = session?.session_staff_role ?? "school_admin";
+      callerRole = session?.session_staff_role ?? "school_admin";
 
-      if (!session || !ALLOWED_ROLES.includes(role)) {
+      if (!session || !ALLOWED_ROLES.includes(callerRole)) {
          return Response.json(
             { error: "Invalid tenant session or insufficient permissions" },
             { status: 200, headers: corsHeaders }
@@ -61,24 +62,31 @@ Deno.serve(async (req) => {
       const { data: { user }, error: userError } = await callerClient.auth.getUser();
       if (!userError && user) {
         callerUserId = user.id;
-        // Check profile role
+        
+        // Get definitive role using the exact same RPC the frontend uses
+        const { data: myRole } = await callerClient.rpc("get_my_role");
+        
+        // Also fetch profile for school_id
         const adminClient = createClient(supabaseUrl, serviceRoleKey);
         const { data: profile } = await adminClient
           .from("profiles")
-          .select("role, school_id")
+          .select("school_id")
           .eq("id", user.id)
           .maybeSingle();
-        if (!profile || !ALLOWED_ROLES.includes(profile.role)) {
+          
+        callerRole = (myRole as string) ?? null;
+        
+        if (!callerRole || !ALLOWED_ROLES.includes(callerRole)) {
           return Response.json(
             { error: "Insufficient permissions" },
             { status: 200, headers: corsHeaders }
           );
         }
-        callerSchoolId = profile.school_id;
+        callerSchoolId = profile?.school_id ?? null;
       }
     }
 
-    if (!callerSchoolId) {
+    if (!callerSchoolId && !["super_admin", "superadmin"].includes(callerRole || "")) {
       return Response.json(
         { error: "Unauthorized request" },
         { status: 200, headers: corsHeaders }
@@ -95,7 +103,8 @@ Deno.serve(async (req) => {
     }
 
     // Cross-school protection
-    if (callerSchoolId !== schoolId) {
+    const isSuperAdmin = ["super_admin", "superadmin"].includes(callerRole || "");
+    if (!isSuperAdmin && callerSchoolId !== schoolId) {
       return Response.json(
         { error: "Cross-school access is prohibited" },
         { status: 200, headers: corsHeaders }

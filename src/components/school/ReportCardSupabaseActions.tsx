@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { syncActivityLog } from "@/lib/activity-sync";
 import { Printer, Mail, CheckCheck, Loader2, AlertTriangle, UserPen, ArrowRight } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
@@ -276,11 +277,8 @@ export default function ReportCardSupabaseActions({
       const payload = {
         school_id:       schoolId,
         student_id:      studentDbId,
-        admission_no:    studentAdmissionNo || "",
-        class_id:        finalClassId,
         student_name:    activeReport.name,
         student_class:   activeReport.class,
-        class_name:      activeReport.class,
         term:            normaliseTerm(schoolSettings.term),
         academic_year:   schoolSettings.session,
         teacher_remark:  curC.teacher   || null,
@@ -332,6 +330,9 @@ export default function ReportCardSupabaseActions({
       } else {
         setSavedId(data?.id ?? null);
       }
+      
+      // Hook into activity tracking
+      syncActivityLog(tenantId ?? null, role || "Staff", "Saved Report Card", `Saved report card to cloud for ${activeReport.name}`).catch(() => {});
 
       toast({ title: "Report card saved", description: `${activeReport.name} — ${schoolSettings.term}` });
     } catch (e: any) {
@@ -386,6 +387,10 @@ export default function ReportCardSupabaseActions({
       const now = new Date().toLocaleString();
       setSentTo(sentEmail);
       setSentAt(now);
+      
+      // Hook into activity tracking
+      syncActivityLog(tenantId ?? null, role || "Staff", "Emailed Report Card", `Emailed report card for ${activeReport.name} to ${sentEmail}`).catch(() => {});
+      
       toast({ title: `Report card sent to ${sentEmail}` });
     } catch (e: any) {
       toast({ title: "Send failed", description: e.message, variant: "destructive" });

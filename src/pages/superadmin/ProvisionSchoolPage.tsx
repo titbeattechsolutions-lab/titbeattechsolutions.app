@@ -75,6 +75,8 @@ export default function ProvisionSchoolPage() {
 
   const [step, setStep] = useState<Step>("idle");
   const [resultSchoolId, setResultSchoolId] = useState<string | null>(null);
+  const [resultTenantCode, setResultTenantCode] = useState<string | null>(null);
+  const [resultSchoolPin, setResultSchoolPin] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const field = (key: keyof typeof form) => ({
@@ -92,19 +94,29 @@ export default function ProvisionSchoolPage() {
     setErrorMsg(null);
 
     try {
+      // Generate a temporary password for the new admin if an email is provided
+      const tempPassword = form.adminEmail ? Math.random().toString(36).slice(-8) + "Aa1!" : undefined;
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).functions.invoke("provision-school", {
         body: {
-          name: form.name,
-          code: form.code.toUpperCase(),
-          email: form.email || undefined,
-          phone: form.phone || undefined,
-          address: { street: form.street, city: form.city, state: form.state },
-          adminEmail: form.adminEmail || undefined,
-          adminName: form.adminName || undefined,
-          plan: form.plan,
-          tenantId: form.tenantId,
-          paymentMethod: form.paymentMethod,
+          idempotencyKey: form.tenantId, // Using tenantId as idempotency key since it's a random UUID
+          school: {
+            name: form.name,
+            code: form.code.toUpperCase(),
+            email: form.email || undefined,
+            phone: form.phone || undefined,
+            address: { street: form.street, city: form.city, state: form.state },
+          },
+          admin: form.adminEmail ? {
+            email: form.adminEmail,
+            name: form.adminName || undefined,
+            tempPassword: tempPassword,
+          } : undefined,
+          subscription: {
+            plan: form.plan,
+            paymentMethod: form.paymentMethod,
+          },
           notes: form.notes || undefined,
         },
       });
@@ -118,7 +130,9 @@ export default function ProvisionSchoolPage() {
       setStep("email");
       await new Promise((r) => setTimeout(r, 600));
       setStep("done");
-      setResultSchoolId(data.schoolId);
+      setResultSchoolId(data.data.schoolId);
+      setResultTenantCode(data.data.tenantCode);
+      setResultSchoolPin(data.data.schoolPin);
       toast({ title: "School provisioned", description: `${form.name} is now live.` });
     } catch (e) {
       setStep("error");
@@ -256,12 +270,36 @@ export default function ProvisionSchoolPage() {
             {step === "done" && (
               <div className="pt-4 space-y-3">
                 <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm text-emerald-700">
-                  <p className="font-semibold">School provisioned successfully!</p>
+                  <p className="font-semibold text-lg">School provisioned successfully!</p>
+                  
+                  <div className="mt-4 p-4 bg-white border border-emerald-100 rounded-md shadow-sm">
+                    <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-2">Login Credentials</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs text-slate-500">Tenant Code</p>
+                        <p className="font-mono font-bold text-slate-800">{resultTenantCode}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">School PIN</p>
+                        <p className="font-mono font-bold text-slate-800">{resultSchoolPin}</p>
+                      </div>
+                      {form.adminEmail && (
+                        <div className="col-span-2">
+                          <p className="text-xs text-slate-500">Admin Email</p>
+                          <p className="font-medium text-slate-800">{form.adminEmail}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   {form.adminEmail && (
-                    <p className="mt-1">Welcome email sent to <strong>{form.adminEmail}</strong></p>
+                    <p className="mt-4 flex items-center gap-2">
+                      <span className="flex items-center justify-center w-5 h-5 bg-emerald-200 rounded-full text-emerald-800 shrink-0">✓</span>
+                      A welcome email with these credentials has been sent to <strong>{form.adminEmail}</strong>
+                    </p>
                   )}
                   {resultSchoolId && (
-                    <p className="mt-1 font-mono text-xs text-emerald-600">School ID: {resultSchoolId}</p>
+                    <p className="mt-2 font-mono text-xs text-emerald-600">Database ID: {resultSchoolId}</p>
                   )}
                 </div>
                 <div className="flex gap-2">

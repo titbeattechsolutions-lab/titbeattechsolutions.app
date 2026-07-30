@@ -22,11 +22,20 @@ export default function TenantActivityAudit({ schoolId }: TenantActivityAuditPro
       setLoading(true);
       
       try {
+        // Resolve actual school ID from the passed tenant ID
+        const { data: schoolData } = await supabase
+          .from("schools")
+          .select("id")
+          .eq("tenant_id", schoolId)
+          .maybeSingle();
+          
+        const actualSchoolId = schoolData?.id || schoolId;
+
         // Fetch Login/Logout Logs (Modern Architecture)
         const { data: logins } = await supabase
           .from("session_logs")
           .select("*")
-          .eq("school_id", schoolId)
+          .eq("school_id", actualSchoolId)
           .order("created_at", { ascending: false })
           .limit(50);
           
@@ -34,13 +43,13 @@ export default function TenantActivityAudit({ schoolId }: TenantActivityAuditPro
         const { data: activities } = await supabase
           .from("activity_logs")
           .select("*")
-          .eq("school_id", schoolId)
+          .eq("school_id", actualSchoolId)
           .order("created_at", { ascending: false })
           .limit(100);
 
         // Fetch Authoritative Staff Count
         const { data: staffCountData } = await supabase
-          .rpc("get_tenant_staff_count", { _school_id: schoolId });
+          .rpc("get_tenant_staff_count", { _school_id: actualSchoolId });
 
         if (logins) setAccessLogs(logins);
         if (activities) setActivityLogs(activities);

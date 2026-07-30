@@ -1,0 +1,2 @@
+DROP POLICY IF EXISTS "activity_logs_superadmin_read" ON "public"."activity_logs";
+CREATE POLICY "activity_logs_superadmin_read" ON "public"."activity_logs" FOR SELECT USING (has_role(auth.uid(), 'super_admin'::app_role));

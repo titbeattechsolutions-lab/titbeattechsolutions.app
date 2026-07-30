@@ -54,55 +54,46 @@ async function fetchProfile(userId: string, email: string | null): Promise<AuthP
     .eq("id", userId)
     .maybeSingle();
 
-  if (profileRow) {
-    let role = (profileRow.role as AppRole) ?? "unassigned";
-    let schoolId = profileRow.school_id ?? null;
+  // Get the definitive role from the backend RPC which checks user_roles first
+  const { data: myRole, error: roleErr } = await supabase.rpc("get_my_role");
 
-    // If role is unassigned, see if there's a pre-registration invite to claim
-    if (role === "unassigned") {
-      const { data: claimed } = await supabase.rpc("claim_pre_registration");
-      if (claimed) {
-        // Re-fetch profile to get the newly assigned role and schoolId
-        const { data: updatedProfile } = await (supabase as any)
-          .from("profiles")
-          .select("role, school_id, first_name, last_name")
-          .eq("id", userId)
-          .maybeSingle();
-
-        if (updatedProfile) {
-          role = (updatedProfile.role as AppRole) ?? "unassigned";
-          schoolId = updatedProfile.school_id ?? null;
-        }
-      }
-    }
-
-    return {
-      userId,
-      email,
-      role,
-      schoolId,
-      firstName: profileRow.first_name ?? null,
-      lastName: profileRow.last_name ?? null,
-    };
+  if (roleErr) {
+    console.error("AuthContext -> get_my_role failed:", roleErr);
   }
 
-  // Fallback: check user_roles table (super_admin bootstrap path)
-  const { data: isSuperAdmin, error: rpcErr } = await supabase.rpc("has_role", {
-    _user_id: userId,
-    _role: "super_admin",
-  });
-
-  // If both queries fail with an error, it is a network/session failure,
-  // NOT a genuine confirmation that the user has no role.
-  if (profileErr || rpcErr) {
+  if (profileErr && profileErr.code !== 'PGRST116') {
     return { userId, email, role: "error", schoolId: null, firstName: null, lastName: null };
   }
 
-  if (isSuperAdmin) {
-    return { userId, email, role: "super_admin", schoolId: null, firstName: null, lastName: null };
+  let role = (myRole as AppRole) ?? (profileRow?.role as AppRole) ?? "unassigned";
+  let schoolId = profileRow?.school_id ?? null;
+
+  // If role is unassigned, see if there's a pre-registration invite to claim
+  if (role === "unassigned") {
+    const { data: claimed } = await supabase.rpc("claim_pre_registration");
+    if (claimed) {
+      // Re-fetch profile to get the newly assigned role and schoolId
+      const { data: updatedProfile } = await (supabase as any)
+        .from("profiles")
+        .select("role, school_id, first_name, last_name")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (updatedProfile) {
+        role = (updatedProfile.role as AppRole) ?? "unassigned";
+        schoolId = updatedProfile.school_id ?? null;
+      }
+    }
   }
 
-  return { userId, email, role: "unassigned", schoolId: null, firstName: null, lastName: null };
+  return {
+    userId,
+    email,
+    role,
+    schoolId,
+    firstName: profileRow?.first_name ?? null,
+    lastName: profileRow?.last_name ?? null,
+  };
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

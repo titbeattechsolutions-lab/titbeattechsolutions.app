@@ -48,7 +48,7 @@ export default function SchoolsListPage() {
         .from("schools")
         .select("id,tenant_id,name,code,email,current_students,max_students,features,academic_year,current_term,created_at")
         .order("created_at", { ascending: false }),
-      (supabase as any).from("tenants").select("id,status")
+      (supabase as any).from("tenants").select("id,status,tenant_code")
     ]);
     setLoading(false);
 
@@ -56,12 +56,16 @@ export default function SchoolsListPage() {
       toast({ title: "Error loading schools", description: schoolsRes.error.message, variant: "destructive" }); return;
     }
     
-    const tenantsMap = new Map((tenantsRes.data || []).map((t: any) => [t.id, t.status]));
+    const tenantsMap = new Map((tenantsRes.data || []).map((t: any) => [t.id, { status: t.status, tenant_code: t.tenant_code }]));
 
-    const schoolsData = (schoolsRes.data as any[])?.map((s) => ({
-      ...s,
-      status: tenantsMap.get(s.tenant_id) || "trial",
-    })) || [];
+    const schoolsData = (schoolsRes.data as any[])?.map((s) => {
+      const tenantData = tenantsMap.get(s.tenant_id) || { status: "trial", tenant_code: "N/A" };
+      return {
+        ...s,
+        code: tenantData.tenant_code, // Use actual Tenant Code instead of the School PIN stored in schools.code
+        status: tenantData.status,
+      };
+    }) || [];
     
     setSchools(schoolsData as SchoolRow[]);
   }, [toast]);

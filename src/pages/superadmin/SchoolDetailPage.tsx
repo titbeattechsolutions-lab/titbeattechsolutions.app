@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Loader2, ShieldOff, ShieldCheck, RotateCcw, KeyRound, Activity } from "lucide-react";
 import TenantActivityAudit from "@/components/TenantActivityAudit";
-import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogHeader, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogHeader, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 function generatePin(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -71,6 +72,33 @@ export default function SchoolDetailPage() {
   const [savingStatus, setSavingStatus] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState("starter");
   const [payOpen, setPayOpen] = useState<boolean>(false);
+  
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  const deleteSchool = async () => {
+    if (!schoolId || deleteConfirmName !== school?.name) return;
+    setDeleting(true);
+    
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).functions.invoke("delete-school", {
+        body: { schoolId }
+      });
+      
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      
+      toast({ title: "School deleted successfully" });
+      navigate("/superadmin/schools");
+    } catch (e) {
+      toast({ title: "Failed to delete school", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setDeleting(false);
+      setDeleteOpen(false);
+    }
+  };
 
   const resetSchoolPin = async () => {
     if (!school?.tenant_id) return;
@@ -113,17 +141,23 @@ export default function SchoolDetailPage() {
   const load = async () => {
     if (!schoolId) return;
     setLoading(true);
+    
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const [schoolRes, billingRes] = await Promise.all([
-      (supabase as any).from("schools").select("*").eq("id", schoolId).single(),
+    const [sRes, bRes] = await Promise.all([
+      (supabase as any).from("schools").select("*, tenants(tenant_code)").eq("id", schoolId).single(),
       (supabase as any).from("billing").select("plan,status,trial_ends_at,current_period_start,current_period_end").eq("school_id", schoolId).maybeSingle()
     ]);
+    
     setLoading(false);
-    if (schoolRes.error) {
-      toast({ title: "Error", description: schoolRes.error.message, variant: "destructive" }); return;
+    if (sRes.error) {
+      toast({ title: "Error", description: sRes.error.message, variant: "destructive" }); return;
     }
     
-    const schoolData = schoolRes.data;
+    const schoolData = sRes.data;
+    if (schoolData) {
+      schoolData.code = schoolData.tenants?.tenant_code || schoolData.code;
+    }
+    
     setSchool(schoolData as SchoolDetail);
     setSelectedPlan(billingRes.data?.plan ?? "starter");
     setBilling(billingRes.data as BillingDetail | null);
@@ -238,6 +272,48 @@ export default function SchoolDetailPage() {
                   {savingStatus ? <Loader2 size={12} className="animate-spin mr-1" /> : <ShieldCheck size={12} className="mr-1" />} Reactivate
                 </Button>
               )}
+              
+              <Dialog open={deleteOpen} onOpenChange={(open) => {
+                setDeleteOpen(open);
+                if (!open) setDeleteConfirmName("");
+              }}>
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="destructive" className="ml-auto" disabled={savingStatus}>
+                    Delete School
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle className="text-red-600">Delete School</DialogTitle>
+                    <DialogDescription>
+                      This action is <strong>permanent</strong> and cannot be undone. All data, users, classes, and billing records will be erased.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-2">
+                    <div className="space-y-2">
+                      <p className="text-sm text-slate-600">
+                        Please type <strong>{school.name}</strong> to confirm.
+                      </p>
+                      <Input 
+                        value={deleteConfirmName} 
+                        onChange={(e) => setDeleteConfirmName(e.target.value)} 
+                        placeholder={school.name} 
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>Cancel</Button>
+                    <Button 
+                      variant="destructive" 
+                      onClick={deleteSchool} 
+                      disabled={deleting || deleteConfirmName !== school.name}
+                    >
+                      {deleting ? <Loader2 className="animate-spin mr-2" size={16} /> : null}
+                      Permanently Delete
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
           </CardContent>
         </Card>

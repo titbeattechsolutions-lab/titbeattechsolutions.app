@@ -36,8 +36,8 @@ CREATE OR REPLACE FUNCTION public.get_my_role()
  SET search_path TO 'public'
 AS $function$
   SELECT CASE
-    WHEN public.has_role(auth.uid(), 'super_admin') THEN 'super_admin'
-    WHEN public.has_role(auth.uid(), 'school_admin') THEN 'school_admin'
+    WHEN public.has_role(auth.uid(), 'super_admin'::app_role) THEN 'super_admin'
+    WHEN public.has_role(auth.uid(), 'school_admin'::app_role) THEN 'school_admin'
     ELSE (SELECT role FROM public.profiles WHERE id = auth.uid())
   END
 $function$;
