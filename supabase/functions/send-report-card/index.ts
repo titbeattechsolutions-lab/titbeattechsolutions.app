@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
     }
 
     // ── 5. Fetch subject results ──────────────────────────────────────────────
-    let resultsQuery = adminClient
+    let resultsQuery = admin
       .from("results")
       .select("subject_name, score_ca1, score_ca2, score_exam, score_total, grade, remark")
       .eq("school_id", schoolId)
