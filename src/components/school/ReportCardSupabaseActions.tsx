@@ -351,10 +351,10 @@ export default function ReportCardSupabaseActions({
             subject_name: r.subject,
             term: normaliseTerm(schoolSettings.term),
             academic_year: schoolSettings.session,
-            ca1: r.caScore || null,
-            ca2: null,
-            exam_score: r.examScore || null,
-            total_score: r.total || null,
+            score_ca1: r.caScore || null,
+            score_ca2: null,
+            score_exam: r.examScore || null,
+            score_total: r.total || null,
             grade,
             remark
           };

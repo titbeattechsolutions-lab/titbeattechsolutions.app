@@ -157,9 +157,9 @@ Deno.serve(async (req) => {
     }
 
     // ── 5. Fetch subject results ──────────────────────────────────────────────
-    let resultsQuery = admin
+    let resultsQuery = adminClient
       .from("results")
-      .select("subject_name, ca1, ca2, exam_score, total_score, grade, remark")
+      .select("subject_name, score_ca1, score_ca2, score_exam, score_total, grade, remark")
       .eq("school_id", schoolId)
       .eq("term", rc.term)
       .eq("academic_year", rc.academic_year);
@@ -186,7 +186,7 @@ Deno.serve(async (req) => {
     // ── 7. Build email HTML ───────────────────────────────────────────────────
     // ── 7. Build email HTML ───────────────────────────────────────────────────
     const avgTotal = results && results.length > 0
-      ? (results.reduce((s: number, r: any) => s + (r.total_score ?? 0), 0) / results.length).toFixed(1)
+      ? (results.reduce((s: number, r: any) => s + (r.score_total ?? 0), 0) / results.length).toFixed(1)
       : "—";
     const getGradeInfo = (avg: string) => {
       if (avg === "—") return { grade: "—", color: "#64748b", bg: "#f1f5f9" };
@@ -208,15 +208,15 @@ Deno.serve(async (req) => {
     const termLabel = rc.term.charAt(0).toUpperCase() + rc.term.slice(1) + " Term";
 
     const resultsRows = (results ?? []).map((r: any, i: number) => {
-      const g = getGradeInfo(r.total_score ? r.total_score.toString() : "—");
+      const g = getGradeInfo(r.score_total ? r.score_total.toString() : "—");
       const bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";
       return `
       <tr style="background-color: ${bg};">
         <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#334155;">${r.subject_name ?? "—"}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;text-align:center;color:#64748b;">${r.ca1 ?? "—"}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;text-align:center;color:#64748b;">${r.ca2 ?? "—"}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;text-align:center;color:#64748b;">${r.exam_score ?? "—"}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:800;color:#1e293b;">${r.total_score ?? "—"}</td>
+        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;text-align:center;color:#64748b;">${r.score_ca1 ?? "—"}</td>
+        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;text-align:center;color:#64748b;">${r.score_ca2 ?? "—"}</td>
+        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;text-align:center;color:#64748b;">${r.score_exam ?? "—"}</td>
+        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:800;color:#1e293b;">${r.score_total ?? "—"}</td>
         <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;text-align:center;">
           <span style="background-color:${g.bg};color:${g.color};padding:4px 8px;border-radius:6px;font-weight:800;font-size:12px;">${r.grade ?? "—"}</span>
         </td>
