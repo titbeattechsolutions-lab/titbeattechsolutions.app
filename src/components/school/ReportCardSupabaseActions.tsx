@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { syncActivityLog } from "@/lib/activity-sync";
-import { Printer, Mail, CheckCheck, Loader2, AlertTriangle, UserPen, ArrowRight } from "lucide-react";
+import { Printer, Mail, CheckCheck, Loader2, AlertTriangle, UserPen, ArrowRight, CheckCircle2, MessageCircle } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from "@/components/ui/dialog";
@@ -82,6 +82,7 @@ export default function ReportCardSupabaseActions({
   const [sentTo, setSentTo]             = useState<string | null>(null);
   const [sentAt, setSentAt]             = useState<string | null>(null);
   const [showModal, setShowModal]             = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [guardianEmail, setGuardianEmail]       = useState<string | null>(null);
   const [showEmailEditor, setShowEmailEditor]   = useState(false);
   const [emailDraft, setEmailDraft]             = useState("");
@@ -343,6 +344,29 @@ export default function ReportCardSupabaseActions({
 
         const resultsPayload = activeReport.records.map((r: any) => {
           const { grade, remark } = getGrade(r.total);
+          
+          let ca1: number | null = null;
+          let ca2: number | null = null;
+          if (r.caScore != null && r.caScore !== "") {
+            const caNum = Number(r.caScore);
+            if (!isNaN(caNum)) {
+              ca1 = Math.min(caNum, 20);
+              ca2 = Math.max(0, caNum - 20);
+            }
+          }
+
+          let ex: number | null = null;
+          if (r.examScore != null && r.examScore !== "") {
+            const exNum = Number(r.examScore);
+            if (!isNaN(exNum)) ex = exNum;
+          }
+
+          let tot: number | null = null;
+          if (r.total != null && r.total !== "") {
+            const totNum = Number(r.total);
+            if (!isNaN(totNum)) tot = totNum;
+          }
+
           return {
             school_id: schoolId,
             student_id: studentDbId || null,
@@ -353,10 +377,10 @@ export default function ReportCardSupabaseActions({
             subject_name: r.subject,
             term: normaliseTerm(schoolSettings.term),
             academic_year: schoolSettings.session,
-            score_ca1: r.caScore || null,
-            score_ca2: null,
-            score_exam: r.examScore || null,
-            score_total: r.total || null,
+            score_ca1: ca1,
+            score_ca2: ca2,
+            score_exam: ex,
+            score_total: tot,
             grade,
             remark
           };
@@ -376,7 +400,7 @@ export default function ReportCardSupabaseActions({
       // Hook into activity tracking
       syncActivityLog(tenantId ?? null, role || "Staff", "Saved Report Card", `Saved report card to cloud for ${activeReport.name}`).catch(() => {});
 
-      toast({ title: "Report card saved", description: `${activeReport.name} — ${schoolSettings.term}` });
+      setShowReceiptModal(true);
     } catch (e: any) {
       toast({ title: "Save failed", description: e.message, variant: "destructive" });
     } finally {
@@ -386,6 +410,13 @@ export default function ReportCardSupabaseActions({
 
   // ─── Print ────────────────────────────────────────────────────────────────
   const handlePrint = () => window.print();
+
+  // ─── WhatsApp Share ───────────────────────────────────────────────────────
+  const handleWhatsAppShare = () => {
+    const text = `Hello! The End of Term Report Card for ${activeReport?.name} is now available for ${schoolSettings.session} (${schoolSettings.term} term).`;
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, "_blank");
+  };
 
   // ─── Send to Parent ───────────────────────────────────────────────────────
   const handleSendConfirm = useCallback(async () => {
@@ -502,7 +533,7 @@ export default function ReportCardSupabaseActions({
         )}
 
         {/* Send to Parent */}
-        {canPrint && role !== "teacher" && (
+        {canPrint && ["school_admin", "principal", "head_teacher"].includes(role || "") && (
           <Button
             variant="default"
             size="sm"
@@ -641,6 +672,37 @@ export default function ReportCardSupabaseActions({
               Confirm &amp; Send
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Success Celebration / WhatsApp Receipt Modal */}
+      <Dialog open={showReceiptModal} onOpenChange={setShowReceiptModal}>
+        <DialogContent className="sm:max-w-md text-center p-8 border-0 shadow-2xl rounded-2xl bg-white no-print">
+          <div className="mx-auto w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center mb-6">
+            <CheckCircle2 className="w-16 h-16 text-emerald-600" />
+          </div>
+          <h2 className="text-3xl font-black text-slate-800 mb-2">Success!</h2>
+          <p className="text-slate-500 text-lg mb-8">
+            Report card for <span className="font-bold text-slate-800">{activeReport.name}</span> has been securely saved to the cloud.
+          </p>
+          <div className="flex flex-col gap-3">
+            {["school_admin", "principal", "head_teacher"].includes(role || "") && (
+              <Button 
+                className="w-full h-14 text-lg font-bold bg-[#25D366] hover:bg-[#1ebd5a] text-white rounded-xl shadow-lg"
+                onClick={handleWhatsAppShare}
+              >
+                <MessageCircle className="mr-2 h-6 w-6" />
+                Share via WhatsApp
+              </Button>
+            )}
+            <Button 
+              variant="outline"
+              className="w-full h-14 text-lg font-bold text-slate-600 rounded-xl"
+              onClick={() => setShowReceiptModal(false)}
+            >
+              Close
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>

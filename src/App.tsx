@@ -13,6 +13,7 @@ import Auth from "./pages/Auth";
 import SuperAdmin from "./pages/SuperAdmin";
 import NotFound from "./pages/NotFound.tsx";
 import TeacherPortal from "./pages/teacher/TeacherPortal";
+import TeacherDashboardPage from "./pages/teacher/TeacherDashboardPage";
 import MyClassesPage from "./pages/teacher/MyClassesPage";
 import AttendancePage from "./pages/teacher/AttendancePage";
 import ResultsPage from "./pages/teacher/ResultsPage";
@@ -84,7 +85,7 @@ const App = () => (
                 </ProtectedRoute>
               }
             >
-              <Route index element={<Navigate to="classes" replace />} />
+              <Route index element={<TeacherDashboardPage />} />
               <Route path="classes"    element={<MyClassesPage />} />
               <Route path="attendance" element={<AttendancePage />} />
               <Route path="results"    element={<ResultsPage />} />

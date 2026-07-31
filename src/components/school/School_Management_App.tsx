@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useCallback, memo, useReducer, createContext, useContext, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { logAuthEvent } from "@/lib/auth-logger";
 import { syncActivityLog } from "@/lib/activity-sync";
 import ReportCardSupabaseActions from "./ReportCardSupabaseActions";
@@ -2312,6 +2313,10 @@ function getOrAssignAdmNo(
 const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) => void }) => {
   const { state, dispatch, currentActor } = useApp();
   const { entries, classRolls, schoolSettings } = state;
+  const { role } = useAuth();
+  
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [receiptData, setReceiptData] = useState<any>(null);
 
   const session = schoolSettings?.session || "2024/2025";
   const term = schoolSettings?.term || "First Term";
@@ -2479,6 +2484,9 @@ const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) =
       };
     });
     showToast(`₦${amt.toLocaleString()} recorded for ${payingStudent}`, "success");
+    setReceiptData({ student: payingStudent, amount: amt, balance: balance - amt, term: term });
+    setPayingStudent(null);
+    setShowReceiptModal(true);
 
     if (sessionToken) {
       const rollStudent = classRolls[activeClass]?.find(s => s.name === payingStudent);
@@ -2727,6 +2735,42 @@ const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) =
           <div className="px-6 pb-6 grid grid-cols-2 gap-2">
             <Btn variant="ghost" onClick={() => setPayingStudent(null)}>Cancel</Btn>
             <Btn variant="primary" onClick={recordPayment} disabled={!payAmount}><Check size={13}/>Record</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* Success Celebration / WhatsApp Receipt Modal */}
+      {showReceiptModal && receiptData && (
+        <Modal maxW="max-w-md" onBgClick={() => setShowReceiptModal(false)} zIndex={300}>
+          <div className="p-8 text-center bg-white rounded-2xl">
+            <div className="mx-auto w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center mb-6">
+              <CheckCircle className="w-16 h-16 text-emerald-600" />
+            </div>
+            <h2 className="text-3xl font-black text-slate-800 mb-2">Success!</h2>
+            <p className="text-slate-500 text-lg mb-8">
+              Payment of <span className="font-bold text-slate-800">₦{receiptData.amount.toLocaleString()}</span> recorded for <span className="font-bold text-slate-800">{receiptData.student}</span>.
+            </p>
+            <div className="flex flex-col gap-3">
+              {["school_admin", "principal", "bursar", "secretary"].includes(role || "") && (
+                <button 
+                  className="w-full flex items-center justify-center h-14 text-lg font-bold bg-[#25D366] hover:bg-[#1ebd5a] text-white rounded-xl shadow-lg transition-colors"
+                  onClick={() => {
+                    const text = `Hello! We have safely received a school fee payment of NGN ${receiptData.amount.toLocaleString()} for ${receiptData.student} (${receiptData.term}). Outstanding balance is NGN ${receiptData.balance.toLocaleString()}. Thank you!`;
+                    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+                    window.open(url, "_blank");
+                  }}
+                >
+                  <MessageSquare className="mr-2 h-6 w-6" />
+                  Share Receipt via WhatsApp
+                </button>
+              )}
+              <button 
+                className="w-full flex items-center justify-center h-14 text-lg font-bold text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors"
+                onClick={() => setShowReceiptModal(false)}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </Modal>
       )}
@@ -4056,7 +4100,8 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                 <Field error={clearPinErr}>
                   <div className="flex gap-2">
                     <input
-                      type="password"
+                      type="text"
+                      style={{ WebkitTextSecurity: "disc" }}
                       value={clearPin}
                       maxLength={32}
                       placeholder="Admin PIN"
@@ -6456,12 +6501,12 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
         {/* Note: This block is technically unreachable since SchoolLock guarantees admin PIN exists. Maintained for safety. */}
         <div className="space-y-4">
           <Field label="New Admin PIN" error={setupErr}>
-            <input type="password" maxLength={32} value={setupPin.nxt}
+            <input type="text" style={{ WebkitTextSecurity: "disc" }} maxLength={32} value={setupPin.nxt}
               onChange={e => { setSetupPin(p => ({ ...p, nxt: e.target.value })); setSetupErr(""); }}
               placeholder="Min 4 characters" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-blue-500 outline-none" />
           </Field>
           <Field label="Confirm PIN">
-            <input type="password" maxLength={32} value={setupPin.cnf}
+            <input type="text" style={{ WebkitTextSecurity: "disc" }} maxLength={32} value={setupPin.cnf}
               onChange={e => { setSetupPin(p => ({ ...p, cnf: e.target.value })); setSetupErr(""); }}
               placeholder="Re-enter password" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-blue-500 outline-none" />
           </Field>
@@ -6495,7 +6540,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
           <Inp label="Staff ID / Username" value={loginId} onChange={(e: any) => { setLoginId(e.target.value); setLoginErr(""); }} placeholder="" autoComplete="off" />
           <Field label="Password / PIN" error={loginErr}>
             <input
-              type="password"
+              type="text"
+              style={{ WebkitTextSecurity: "disc" }}
               value={loginPass}
               onChange={e => { setLoginPass(e.target.value); setLoginErr(""); }}
               onKeyDown={e => e.key === "Enter" && doLogin()}

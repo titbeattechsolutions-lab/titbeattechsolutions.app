@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, RefreshCw } from "lucide-react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Loader2, Save, RefreshCw, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type ScoreRow = {
@@ -60,6 +61,9 @@ export default function ResultsPage() {
   const saveResultMutation = useSaveResult();
   const bulkSaveMutation = useBulkSaveResults();
   const savingAll = bulkSaveMutation.isPending;
+
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [savedCount, setSavedCount] = useState(0);
 
   // Init: teacher + classes + subjects
   useEffect(() => {
@@ -196,7 +200,8 @@ export default function ResultsPage() {
         if (!s) return r;
         return { ...r, saved: s, ca1: s.score_ca1 != null ? String(s.score_ca1) : "", ca2: s.score_ca2 != null ? String(s.score_ca2) : "", exam: s.score_exam != null ? String(s.score_exam) : "", dirty: false, saving: false };
       }));
-      toast({ title: `${saved.length} result(s) saved` });
+      setSavedCount(saved.length);
+      setShowSuccessModal(true);
     } catch (e) {
       toast({ title: "Bulk save failed", description: (e as Error).message, variant: "destructive" });
     }
@@ -228,9 +233,9 @@ export default function ResultsPage() {
           <Button variant="outline" size="sm" onClick={() => refetchResults()} disabled={loadingRows}>
             <RefreshCw size={14} className={cn("mr-1", loadingRows && "animate-spin")} /> Refresh
           </Button>
-          <Button size="sm" onClick={saveAll} disabled={savingAll || dirtyCount === 0}>
+          <Button size="sm" onClick={saveAll} disabled={savingAll || dirtyCount === 0} className="hidden sm:flex">
             {savingAll ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Save size={14} className="mr-1" />}
-            Save All {dirtyCount > 0 && `(${dirtyCount})`}
+            Save All to Cloud {dirtyCount > 0 && `(${dirtyCount})`}
           </Button>
         </div>
       </div>
@@ -320,7 +325,7 @@ export default function ResultsPage() {
                     >
                       <td className="px-4 py-2 text-xs text-slate-400">{idx + 1}</td>
                       <td className="px-4 py-2">
-                        <div className="font-medium text-slate-800">{row.student.last_name}, {row.student.first_name}</div>
+                        <div className="font-medium text-slate-800 uppercase">{row.student.last_name}, {row.student.first_name}</div>
                         <div className="text-xs text-slate-400 font-mono">{row.student.admission_no}</div>
                       </td>
 
@@ -412,6 +417,33 @@ export default function ResultsPage() {
           )}
         </>
       )}
+
+      {/* Sticky Bottom CTA for Mobile */}
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 p-4 pb-6 bg-white border-t border-slate-200 z-50 flex justify-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <Button size="lg" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg text-lg h-14" onClick={saveAll} disabled={savingAll || dirtyCount === 0}>
+          {savingAll ? <Loader2 size={24} className="mr-2 animate-spin" /> : <Save size={24} className="mr-2" />}
+          Save All to Cloud {dirtyCount > 0 && `(${dirtyCount})`}
+        </Button>
+      </div>
+
+      {/* Success Celebration Modal */}
+      <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
+        <DialogContent className="sm:max-w-md text-center p-8 border-0 shadow-2xl rounded-2xl bg-white">
+          <div className="mx-auto w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center mb-6">
+            <CheckCircle2 className="w-16 h-16 text-emerald-600" />
+          </div>
+          <h2 className="text-3xl font-black text-slate-800 mb-2">Success!</h2>
+          <p className="text-slate-500 text-lg mb-8">
+            You have successfully saved <span className="font-bold text-slate-800">{savedCount}</span> results to the cloud.
+          </p>
+          <Button 
+            className="w-full h-14 text-lg font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl"
+            onClick={() => setShowSuccessModal(false)}
+          >
+            Continue
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
