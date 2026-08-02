@@ -409,21 +409,21 @@ body.auth-mode {
 
 /* ─── Floating ambient cards ─────────────────────────────── */
 .auth-float-card {
-  position: absolute; z-index: 5;
+  position: absolute; z-index: 20;
   background: #fff; border: 1px solid rgba(37,99,235,.1);
   border-radius: 14px; padding: .65rem 1rem;
   display: flex; align-items: center; gap: .625rem;
   color: #475569; font-size: .78rem; font-weight: 500;
   pointer-events: none;
-  box-shadow: 0 2px 16px rgba(37,99,235,.07), 0 1px 3px rgba(0,0,0,.05);
+  box-shadow: 0 4px 20px rgba(37,99,235,.1), 0 2px 6px rgba(0,0,0,.08);
   animation: a-float 7s ease-in-out infinite;
 }
-.badge-1 { top: -20px; left: -30px; animation-delay: 0s; }
-.badge-2 { bottom: -20px; right: -30px; animation-delay: 1.5s; }
+.badge-1 { top: -15px; left: -20px; animation-delay: 0s; }
+.badge-2 { bottom: -15px; right: -20px; animation-delay: 1.5s; }
 
 @media(max-width: 600px) {
-  .badge-1 { top: -15px; left: -10px; }
-  .badge-2 { bottom: -15px; right: -10px; }
+  .badge-1 { top: -15px; left: -5px; }
+  .badge-2 { bottom: -15px; right: -5px; }
   .auth-float-card { padding: 0.5rem 0.75rem; font-size: 0.72rem; }
 }
 
