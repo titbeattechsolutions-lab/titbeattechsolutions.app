@@ -17,11 +17,12 @@ import {
   Menu, BookOpen, MoreVertical, ChevronRight, ChevronLeft,
   CalendarDays, ClipboardList, BookMarked, Edit2, ArrowLeft,
   Bell, CalendarClock, Send, Inbox, MessageSquare, Wallet, CheckCircle,
-  FileSpreadsheet, Lock, Info, DollarSign, Loader2, Trophy, Download, UserCircle
+  FileSpreadsheet, Lock, Info, DollarSign, Loader2, Trophy, Download, UserCircle, HelpCircle
 } from "lucide-react";
 import { verifyAdminPin, setAdminPin, loadTenantSession } from "@/lib/tenant-client";
 import { exportToCSV } from "@/lib/exportUtils";
 import { getOrdinal } from "@/lib/school-helpers";
+import { Joyride, CallBackProps, STATUS, Step, EVENTS, ACTIONS, TooltipRenderProps } from 'react-joyride';
 
 // ─── Upgrade Imports (CDN-based, no bundler needed) ──────────────────────────
 // Firebase, jsPDF and SheetJS are loaded dynamically at runtime to keep this
@@ -1262,8 +1263,8 @@ const Btn = ({ children, variant = "primary", size = "md", className = "", loadi
   );
 };
 
-const Card = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
-  <div className={`bg-white rounded-2xl border border-slate-100 shadow-sm ${className}`}>{children}</div>
+const Card = ({ children, className = "", ...props }: { children: React.ReactNode; className?: string; [key: string]: any }) => (
+  <div className={`bg-white rounded-2xl border border-slate-100 shadow-sm ${className}`} {...props}>{children}</div>
 );
 
 const EmptyState = ({ icon: Icon, title, subtitle, action }: { icon: any; title: string; subtitle?: string; action?: React.ReactNode }) => (
@@ -1991,6 +1992,7 @@ const StaffDialog = memo(({ staff, mode, onSave, onClose, tenantId }: { staff?: 
 
             {/* ── Step progress bar ───────────────────────────────────── */}
             <div className="flex border-t border-white/20">
+
               {STEPS.map((s, i) => (
                 <button key={s.id} type="button" onClick={() => setStep(i)}
                   className={`flex-1 flex flex-col items-center py-2.5 px-1 transition-all relative ${step === i ? "bg-white/20" : "hover:bg-white/10"}`}>
@@ -2541,7 +2543,7 @@ const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) =
     <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 uppercase">Fees</h2>
+          <h2 id="tour-fees-header" className="text-2xl font-black text-slate-900 uppercase">Fees</h2>
           <p className="text-sm text-slate-500 mt-1">Auto-structured tracker · {session} · {term}</p>
         </div>
         <div className="flex gap-2">
@@ -3027,7 +3029,7 @@ const ResourcesTab = memo(({ showToast }: { showToast: (msg: string, type?: stri
     <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-black text-slate-900">Curriculum Resources</h2>
+          <h2 id="tour-resources-header" className="text-2xl font-black text-slate-900">Curriculum Resources</h2>
           <p className="text-sm text-slate-500 mt-1">Sync curriculum, access e-notes & external resources</p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -3614,7 +3616,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-black text-slate-900 uppercase">Settings</h1>
+        <h1 id="tour-settings-header" className="text-2xl font-black text-slate-900 uppercase">Settings</h1>
         <p className="text-sm text-slate-400 mt-0.5">Manage school identity, session info and security</p>
       </div>
       <div className="flex flex-col md:flex-row gap-5">
@@ -4736,7 +4738,7 @@ const AttendanceTab = memo(() => {
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 uppercase">Attendance</h1>
+          <h1 id="tour-attendance-header" className="text-2xl font-black text-slate-900 uppercase">Attendance</h1>
           <p className="text-sm text-slate-400 mt-0.5">
             {attendance.length} record{attendance.length !== 1 ? "s" : ""} · {Object.keys(classRolls).length} class roll{Object.keys(classRolls).length !== 1 ? "s" : ""}
           </p>
@@ -4757,7 +4759,7 @@ const AttendanceTab = memo(() => {
       {/* CLASS ROLLS */}
       {attTab === "roll" && (
         <div className="space-y-5">
-          <Card className="p-5 space-y-4">
+          <Card id="tour-roll-card" className="p-5 space-y-4">
             <p className="text-xs font-black uppercase text-slate-400 tracking-wide">Select Class to Manage Roll</p>
             <Sel value={rollClass} onChange={(e: any) => handleRollClassChange(e.target.value)}>
               <option value="">Choose a class…</option>
@@ -4903,7 +4905,7 @@ const AttendanceTab = memo(() => {
                       onKeyDown={(e: any) => e.key === "Enter" && addStudent()} />
                   </div>
                 </div>
-                <Btn variant="primary" onClick={addStudent} disabled={!newName.trim()}>
+                <Btn id="tour-add-btn" variant="primary" onClick={addStudent} disabled={!newName.trim()}>
                   <PlusCircle size={14} />Add to Roll
                 </Btn>
               </Card>
@@ -5431,7 +5433,7 @@ function TimetableView({
     <div className="space-y-4 print:space-y-0">
       <div className="flex items-center justify-between flex-wrap gap-3 print:hidden">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 uppercase">Timetable</h1>
+          <h1 id="tour-timetable-header" className="text-2xl font-black text-slate-900 uppercase">Timetable</h1>
           <p className="text-xs sm:text-sm text-slate-400">
             Weekly schedule {isAdmin ? "— tap a cell to edit" : "— read-only"}
             {syncLoading && <span className="ml-2 inline-flex items-center gap-1 text-blue-500 text-[10px] font-bold animate-pulse">↻ syncing…</span>}
@@ -5980,6 +5982,40 @@ function RankingsTab({ entries, schoolSettings, can, isAdmin }: { entries: Entry
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+const TourTooltip = ({
+  index,
+  step,
+  backProps,
+  primaryProps,
+  tooltipProps,
+  size,
+  isLastStep,
+}: TooltipRenderProps) => {
+  const isLast = index === size - 1 || isLastStep;
+  const { children: ignored, ...cleanPrimaryProps } = primaryProps || {};
+  return (
+    <div {...tooltipProps} className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-5 max-w-sm w-80 font-sans z-[10000]">
+      {step.title && <h3 className="font-black text-lg text-slate-900 mb-2">{step.title}</h3>}
+      <div className="text-slate-600 text-sm mb-5 leading-relaxed">{step.content}</div>
+      <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs font-bold text-slate-400">Step {index + 1} of {size || 'unknown'}</span>
+        </div>
+        <div className="flex gap-2">
+          {index > 0 && (
+            <button {...backProps} className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-lg transition-colors">
+              Back
+            </button>
+          )}
+          <button {...cleanPrimaryProps} className="px-3 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-md shadow-blue-500/20">
+            {isLast ? 'Finish' : 'Next'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Main App
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polledData, onLocalEdit, onStateChange }: { onTenantSignOut?: () => void; tenantId?: string; tenantSchoolName?: string; polledData?: any; onLocalEdit?: (state: any) => void; onStateChange?: (state: any) => void } = {}) {
@@ -6009,12 +6045,28 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
   const [setupErr, setSetupErr] = useState("");
   const [activeTab, setActiveTab] = useState("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
+
   const [showLogout, setShowLogout] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
   const [dlg, setDlg] = useState<any>(null);
   const [showBin, setShowBin] = useState(false);
   const [staffDetailId, setStaffDetailId] = useState<string | null>(null);
   const [auth, setAuth] = useState<{ loggedIn: boolean; user: StaffMember | null }>({ loggedIn: false, user: null });
+  const [runTour, setRunTour] = useState(false);
+  const [tourIndex, setTourIndex] = useState(0);
+
+  useEffect(() => {
+    if (auth.loggedIn) {
+      const isTourComplete = localStorage.getItem("app_tour_completed");
+      if (!isTourComplete) {
+        setActiveTab("dashboard");
+        setTourIndex(0);
+        setTimeout(() => setRunTour(true), 1000);
+      }
+    }
+  }, [auth.loggedIn]);
+
+
   const [loginId, setLoginId] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [loginErr, setLoginErr] = useState("");
@@ -6070,6 +6122,144 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
   const { entries, bin, logs, attendance, classRolls, staffList, schoolSettings } = appState;
   const isAdmin = !auth.user;
   const can = useCallback((p: string) => isAdmin || (auth.user?.permissions?.[p] ?? false), [isAdmin, auth.user]);
+
+  // ─── Dynamic App Tour Logic ────────────────────────────────────────────────
+  const tourSteps = useMemo(() => {
+    const steps: Step[] = [
+      {
+        target: '#tour-dashboard-hero',
+        title: 'Welcome to School GradeFlow!',
+        content: 'This is your Dashboard. Here you can see a high-level overview of your school\'s performance and quick statistics.',
+        disableBeacon: true,
+        placement: 'bottom',
+      }
+    ];
+
+    if (isAdmin) {
+      steps.push({
+        target: '#tour-staff-header',
+        title: 'Staff Access',
+        content: 'Manage staff profiles, assign classes and subjects, and control detailed feature-level access rights.',
+        placement: 'bottom',
+        disableBeacon: true,
+      });
+    }
+
+    if (can("scoreEntry") || isAdmin) {
+      steps.push({
+        target: '#tour-attendance-header',
+        title: 'Attendance & Enrollment',
+        content: 'This is the Attendance tab. Every workflow starts here! You use this tab to enroll students into your classes.',
+        placement: 'bottom',
+        disableBeacon: true,
+      });
+      steps.push({
+        target: '#tour-roll-card',
+        title: 'Class Rolls',
+        content: 'Select a class here to manage its roll. You can manually type names, import hundreds of students via CSV, or export the roll to Excel.',
+        placement: 'top',
+        disableBeacon: true,
+      });
+      steps.push({
+        target: '#tour-records-header',
+        title: 'Grade Entry',
+        content: 'Once your students are enrolled, head to the Records tab to seamlessly input continuous assessments (CA) and exam scores!',
+        placement: 'bottom',
+        disableBeacon: true,
+      });
+    }
+
+    if (can("printReports") || isAdmin) {
+      steps.push({
+        target: '#tour-reports-header',
+        title: 'Report Cards',
+        content: 'The Reports tab automatically generates and publishes end-of-term student report cards based on the scores you entered.',
+        placement: 'bottom',
+        disableBeacon: true,
+      });
+    }
+
+    if (isAdmin || can("fees")) {
+      steps.push({
+        target: '#tour-fees-header',
+        title: 'Fees Tracker',
+        content: 'Track fee payment records, generate receipts, and manage class structures dynamically.',
+        placement: 'bottom',
+        disableBeacon: true,
+      });
+    }
+
+    steps.push({
+      target: '#tour-timetable-header',
+      title: 'School Timetable',
+      content: 'Define school hours, assign teachers to subject periods, and view schedules.',
+      placement: 'bottom',
+      disableBeacon: true,
+    });
+
+    if (isAdmin) {
+      steps.push({
+        target: '#tour-resources-header',
+        title: 'Curriculum Resources',
+        content: 'Access curriculum e-notes, syllabus documents, and education board standards.',
+        placement: 'bottom',
+        disableBeacon: true,
+      });
+      steps.push({
+        target: '#tour-settings-header',
+        title: 'School Settings',
+        content: 'Finally, the Settings tab lets you control your school\'s identity, grading system (e.g. WAEC standard), and academic term.',
+        placement: 'bottom',
+        disableBeacon: true,
+      });
+    }
+
+    return steps;
+  }, [can, isAdmin]);
+
+  const handleJoyrideCallback = useCallback((data: CallBackProps) => {
+    const { action, index, status, type } = data;
+    const finishedStatuses: string[] = [STATUS.FINISHED, STATUS.SKIPPED];
+    
+    if (finishedStatuses.includes(status)) {
+      setRunTour(false);
+      setTourIndex(0);
+      localStorage.setItem("app_tour_completed", "true");
+      setActiveTab("attendance");
+    } else if (type === EVENTS.STEP_AFTER) {
+      const nextStepIndex = index + (action === ACTIONS.PREV ? -1 : 1);
+      
+      // If we advance past the last step, finish the tour and redirect to Attendance!
+      if (nextStepIndex >= tourSteps.length) {
+        setRunTour(false);
+        setTourIndex(0);
+        localStorage.setItem("app_tour_completed", "true");
+        setActiveTab("attendance");
+        return;
+      }
+
+      if (nextStepIndex < 0) return;
+
+      const targetSelector = tourSteps[nextStepIndex]?.target;
+      let targetTab = "dashboard";
+      
+      if (typeof targetSelector === 'string') {
+        if (targetSelector.includes('attendance') || targetSelector.includes('roll')) targetTab = "attendance";
+        else if (targetSelector.includes('records')) targetTab = "database";
+        else if (targetSelector.includes('reports')) targetTab = "reports";
+        else if (targetSelector.includes('settings')) targetTab = "settings";
+        else if (targetSelector.includes('staff')) targetTab = "staff";
+        else if (targetSelector.includes('fees')) targetTab = "fees";
+        else if (targetSelector.includes('resources')) targetTab = "resources";
+        else if (targetSelector.includes('timetable')) targetTab = "timetable";
+      }
+
+      if (targetTab !== activeTab) {
+        setActiveTab(targetTab);
+      }
+      setTourIndex(nextStepIndex);
+    }
+  }, [activeTab, tourSteps, setActiveTab, setRunTour, setTourIndex]);
 
   // Refresh score entry form whenever the active actor changes (login/logout/switch)
   const prevAuthId = useRef(auth.user?.id);
@@ -6568,7 +6758,23 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
   return (
     <AppCtx.Provider value={ctxValue}>
       <div className="flex h-screen overflow-hidden bg-slate-100">
-
+        <Joyride
+          steps={tourSteps}
+          run={runTour}
+          stepIndex={tourIndex}
+          continuous={true}
+          showProgress={true}
+          showSkipButton={true}
+          callback={handleJoyrideCallback}
+          onEvent={handleJoyrideCallback}
+          tooltipComponent={TourTooltip}
+          styles={{
+            options: {
+              primaryColor: '#2563eb',
+              zIndex: 10000,
+            }
+          }}
+        />
         {/* Sidebar */}
         <aside className="hidden md:flex flex-col w-60 bg-white border-r border-slate-100 flex-shrink-0">
           <div className="p-5 border-b border-slate-100 flex items-center gap-3">
@@ -6596,7 +6802,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
           </div>
           <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
             {TABS.map(t => (
-              <button key={t.id} onClick={() => navigate(t.id)}
+              <button key={t.id} id={`tour-tab-${t.id}`} onClick={() => navigate(t.id)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === t.id ? "bg-blue-50 text-blue-600" : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"}`}>
                 <t.icon size={18} className="flex-shrink-0" />
                 <span className="text-sm font-bold">{t.label}</span>
@@ -6609,7 +6815,11 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
               </button>
             ))}
           </nav>
-          <div className="p-3 border-t border-slate-100">
+          <div className="p-3 border-t border-slate-100 space-y-1">
+            <button onClick={() => { setActiveTab("dashboard"); setTourIndex(0); setTimeout(() => setRunTour(true), 300); }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-sm group">
+              <HelpCircle size={18} className="group-hover:rotate-12 transition-transform" />App Tour
+            </button>
             <button onClick={() => setShowLogout(true)}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all font-bold text-sm group">
               <LogOut size={18} className="group-hover:translate-x-0.5 transition-transform" />Sign Out
@@ -6656,7 +6866,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
               </div>
               <p className="text-xs font-black uppercase text-slate-400 tracking-wide px-2 pb-1">Navigation</p>
               {TABS.map(t => (
-                <button key={t.id} onClick={() => navigate(t.id)}
+                <button key={t.id} id={`tour-tab-${t.id}`} onClick={() => navigate(t.id)}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${activeTab === t.id ? "bg-blue-50 text-blue-600 font-black" : "text-slate-600 font-bold hover:bg-slate-50"}`}>
                   <t.icon size={18} className="flex-shrink-0" />
                   <span className="text-sm">{t.label}</span>
@@ -6668,7 +6878,11 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                   )}
                 </button>
               ))}
-              <div className="pt-2 border-t border-slate-100 mt-1">
+              <div className="pt-2 border-t border-slate-100 mt-1 space-y-1">
+                <button onClick={() => { setActiveTab("dashboard"); setTourIndex(0); setMenuOpen(false); setTimeout(() => setRunTour(true), 300); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-sm">
+                  <HelpCircle size={18} />App Tour
+                </button>
                 <button onClick={() => { setShowLogout(true); setMenuOpen(false); }}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 transition-all font-bold text-sm">
                   <LogOut size={18} />Sign Out
@@ -6692,7 +6906,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                   : logs.filter((l: any) => (l.actor || "") === (auth.user?.name || ""));
                 return (
                 <>
-                  <div className={`rounded-2xl p-5 ${isAdmin ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white" : "bg-gradient-to-r from-emerald-500 to-teal-500 text-white"}`}>
+                  <div id="tour-dashboard-hero" className={`rounded-2xl p-5 ${isAdmin ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white" : "bg-gradient-to-r from-emerald-500 to-teal-500 text-white"}`}>
                     <p className="text-xs font-black uppercase tracking-widest opacity-80">{isAdmin ? "Administrator Console" : "Staff Workspace"}</p>
                     <h1 className="text-2xl md:text-3xl font-black mt-1">{timeGreeting()}, {who}!</h1>
                     <p className="text-xs md:text-sm opacity-90 mt-1">{schoolSettings.term} · {schoolSettings.session}</p>
@@ -6991,7 +7205,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                 <>
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <div>
-                      <h1 className="text-2xl font-black text-slate-900 uppercase">Records</h1>
+                      <h1 id="tour-records-header" className="text-2xl font-black text-slate-900 uppercase">Records</h1>
                       <p className="text-sm text-slate-400">{termEntries.length} in {schoolSettings.term} · {bin.length} in bin</p>
                     </div>
                     <div className="flex gap-2">
@@ -7172,7 +7386,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                   <>
                     <div className="flex items-start justify-between flex-wrap gap-3">
                       <div>
-                        <h1 className="text-2xl font-black text-slate-900 uppercase">Reports</h1>
+                        <h1 id="tour-reports-header" className="text-2xl font-black text-slate-900 uppercase">Reports</h1>
                         <p className="text-sm text-slate-400">{filteredStudents.length} student{filteredStudents.length !== 1 ? "s" : ""} found</p>
                       </div>
                       {rpClass !== "All" && filteredStudents.length > 0 && can("printReports") && (
@@ -7623,7 +7837,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                   <>
                     <div className="flex items-center justify-between flex-wrap gap-3">
                       <div>
-                        <h1 className="text-2xl font-black text-slate-900 uppercase">Staff Access</h1>
+                        <h1 id="tour-staff-header" className="text-2xl font-black text-slate-900 uppercase">Staff Access</h1>
                         <p className="text-sm text-slate-400">
                           {staffList.filter(s => s.status === "active").length} active ·{" "}
                           {staffList.filter(s => s.status === "restricted").length} restricted ·{" "}
@@ -7668,7 +7882,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
           <nav className="md:hidden bg-white border-t border-slate-100 flex-shrink-0 z-40">
             <div className="flex items-stretch">
               {primaryTabs.map(t => (
-                <button key={t.id} onClick={() => navigate(t.id)}
+                <button key={t.id} id={`tour-tab-${t.id}`} onClick={() => navigate(t.id)}
                   className={`flex-1 flex flex-col items-center gap-0.5 py-3 px-1 transition-all ${activeTab === t.id ? "text-blue-600" : "text-slate-400"}`}>
                   <t.icon size={20} />
                   <span className="text-xs font-bold">{t.label.split(" ")[0]}</span>

@@ -46,54 +46,59 @@ async function insertSessionLog(
 }
 
 async function fetchProfile(userId: string, email: string | null): Promise<AuthProfile> {
-  // First try fetching from public.profiles (Phase 2 table)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profileRow, error: profileErr } = await (supabase as any)
-    .from("profiles")
-    .select("role, school_id, first_name, last_name")
-    .eq("id", userId)
-    .maybeSingle();
+  try {
+    // First try fetching from public.profiles (Phase 2 table)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: profileRow, error: profileErr } = await (supabase as any)
+      .from("profiles")
+      .select("role, school_id, first_name, last_name")
+      .eq("id", userId)
+      .maybeSingle();
 
-  // Get the definitive role from the backend RPC which checks user_roles first
-  const { data: myRole, error: roleErr } = await supabase.rpc("get_my_role");
+    // Get the definitive role from the backend RPC which checks user_roles first
+    const { data: myRole, error: roleErr } = await supabase.rpc("get_my_role");
 
-  if (roleErr) {
-    console.error("AuthContext -> get_my_role failed:", roleErr);
-  }
+    if (roleErr) {
+      console.error("AuthContext -> get_my_role failed:", roleErr);
+    }
 
-  if (profileErr && profileErr.code !== 'PGRST116') {
-    return { userId, email, role: "error", schoolId: null, firstName: null, lastName: null };
-  }
+    if (profileErr && profileErr.code !== 'PGRST116') {
+      return { userId, email, role: "error", schoolId: null, firstName: null, lastName: null };
+    }
 
-  let role = (myRole as AppRole) ?? (profileRow?.role as AppRole) ?? "unassigned";
-  let schoolId = profileRow?.school_id ?? null;
+    let role = (myRole as AppRole) ?? (profileRow?.role as AppRole) ?? "unassigned";
+    let schoolId = profileRow?.school_id ?? null;
 
-  // If role is unassigned, see if there's a pre-registration invite to claim
-  if (role === "unassigned") {
-    const { data: claimed } = await supabase.rpc("claim_pre_registration");
-    if (claimed) {
-      // Re-fetch profile to get the newly assigned role and schoolId
-      const { data: updatedProfile } = await (supabase as any)
-        .from("profiles")
-        .select("role, school_id, first_name, last_name")
-        .eq("id", userId)
-        .maybeSingle();
+    // If role is unassigned, see if there's a pre-registration invite to claim
+    if (role === "unassigned") {
+      const { data: claimed } = await supabase.rpc("claim_pre_registration");
+      if (claimed) {
+        // Re-fetch profile to get the newly assigned role and schoolId
+        const { data: updatedProfile } = await (supabase as any)
+          .from("profiles")
+          .select("role, school_id, first_name, last_name")
+          .eq("id", userId)
+          .maybeSingle();
 
-      if (updatedProfile) {
-        role = (updatedProfile.role as AppRole) ?? "unassigned";
-        schoolId = updatedProfile.school_id ?? null;
+        if (updatedProfile) {
+          role = (updatedProfile.role as AppRole) ?? "unassigned";
+          schoolId = updatedProfile.school_id ?? null;
+        }
       }
     }
-  }
 
-  return {
-    userId,
-    email,
-    role,
-    schoolId,
-    firstName: profileRow?.first_name ?? null,
-    lastName: profileRow?.last_name ?? null,
-  };
+    return {
+      userId,
+      email,
+      role,
+      schoolId,
+      firstName: profileRow?.first_name ?? null,
+      lastName: profileRow?.last_name ?? null,
+    };
+  } catch (err) {
+    console.error("fetchProfile critical error:", err);
+    return { userId, email, role: "error", schoolId: null, firstName: null, lastName: null };
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -119,6 +124,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setLoading(false);
       }
+    }).catch(err => {
+      console.error("Auth session error:", err);
+      setLoading(false);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
