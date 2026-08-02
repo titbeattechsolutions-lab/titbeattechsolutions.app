@@ -127,21 +127,7 @@ export default function SchoolLock() {
       <div className="auth-blob auth-blob-3" />
       <div className="auth-dots" />
 
-      {/* Floating ambient cards for extra trust/enterprise feel */}
-      <div className="auth-float-container">
-        <div className="auth-float-card badge-1">
-          <div className="auth-float-card-icon" style={{ color: "#2563eb" }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20v-6M6 20V10M18 20V4"/></svg>
-          </div>
-          <span>Grade Analytics</span>
-        </div>
-        <div className="auth-float-card badge-2">
-          <div className="auth-float-card-icon" style={{ color: "#059669" }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          </div>
-          <span>End-to-End Secure</span>
-        </div>
-      </div>
+
 
       <div className="auth-layout">
         <div className="auth-side">
@@ -170,8 +156,21 @@ export default function SchoolLock() {
           </div>
         </div>
 
-        <div className="auth-card">
-          <div className="auth-logo-ring">
+        <div className="auth-card-wrapper">
+          <div className="auth-float-card badge-1">
+            <div className="auth-float-card-icon" style={{ color: "#2563eb" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20v-6M6 20V10M18 20V4"/></svg>
+            </div>
+            <span>Grade Analytics</span>
+          </div>
+          <div className="auth-float-card badge-2">
+            <div className="auth-float-card-icon" style={{ color: "#059669" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <span>End-to-End Secure</span>
+          </div>
+          <div className="auth-card" style={{ width: "100%" }}>
+            <div className="auth-logo-ring">
             <GraduationCap size={28} color="#fff" strokeWidth={2} />
           </div>
 
@@ -310,6 +309,7 @@ export default function SchoolLock() {
               <strong style={{ color: "#64748b", fontSize: "0.75rem" }}>Titbeattechsolutions LTD</strong>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>

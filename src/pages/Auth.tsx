@@ -105,24 +105,22 @@ export default function Auth() {
       <div className="auth-blob auth-blob-3" style={{ background: "radial-gradient(circle,rgba(99,102,241,.06) 0%,transparent 70%)" }} />
       <div className="auth-dots" />
 
-      {/* Ambient floating cards for Admin page */}
-      <div className="auth-float-container">
-        <div className="auth-float-card badge-1">
-          <div className="auth-float-card-icon" style={{ color: "#7c3aed" }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-          </div>
-          <span>Manage Schools</span>
-        </div>
-        <div className="auth-float-card badge-2">
-          <div className="auth-float-card-icon" style={{ color: "#db2777" }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
-          </div>
-          <span>Record Payments</span>
-        </div>
-      </div>
-
       <div className="auth-layout" style={{ justifyContent: "center" }}>
-        <div className="auth-card" style={{ maxWidth: 440 }}>
+        <div className="auth-card-wrapper">
+          <div className="auth-float-card badge-1">
+            <div className="auth-float-card-icon" style={{ color: "#7c3aed" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+            </div>
+            <span>Manage Schools</span>
+          </div>
+          <div className="auth-float-card badge-2">
+            <div className="auth-float-card-icon" style={{ color: "#db2777" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+            </div>
+            <span>Record Payments</span>
+          </div>
+          
+          <div className="auth-card" style={{ maxWidth: 440, width: "100%" }}>
           <button className="auth-back-link" onClick={() => navigate("/")}>
             &larr; Back to school login
           </button>
@@ -188,6 +186,7 @@ export default function Auth() {
               <strong style={{ color: "#64748b", fontSize: "0.75rem" }}>Titbeattechsolutions LTD</strong>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>
