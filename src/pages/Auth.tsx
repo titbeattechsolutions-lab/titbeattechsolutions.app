@@ -106,17 +106,19 @@ export default function Auth() {
       <div className="auth-dots" />
 
       {/* Ambient floating cards for Admin page */}
-      <div className="auth-float-card" style={{ top: "15%", left: "6%", animationDelay: "0s" }}>
-        <div className="auth-float-card-icon" style={{ color: "#7c3aed" }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+      <div className="auth-float-container">
+        <div className="auth-float-card badge-1">
+          <div className="auth-float-card-icon" style={{ color: "#7c3aed" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          </div>
+          <span>Manage Schools</span>
         </div>
-        <span>Manage Schools</span>
-      </div>
-      <div className="auth-float-card" style={{ bottom: "20%", right: "5%", animationDelay: "2s" }}>
-        <div className="auth-float-card-icon" style={{ color: "#db2777" }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+        <div className="auth-float-card badge-2">
+          <div className="auth-float-card-icon" style={{ color: "#db2777" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+          </div>
+          <span>Record Payments</span>
         </div>
-        <span>Record Payments</span>
       </div>
 
       <div className="auth-layout" style={{ justifyContent: "center" }}>

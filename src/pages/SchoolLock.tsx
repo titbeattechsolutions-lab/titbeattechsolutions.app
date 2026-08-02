@@ -128,17 +128,19 @@ export default function SchoolLock() {
       <div className="auth-dots" />
 
       {/* Floating ambient cards for extra trust/enterprise feel */}
-      <div className="auth-float-card" style={{ top: "12%", left: "5%", animationDelay: "0s" }}>
-        <div className="auth-float-card-icon" style={{ color: "#2563eb" }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20v-6M6 20V10M18 20V4"/></svg>
+      <div className="auth-float-container">
+        <div className="auth-float-card badge-1">
+          <div className="auth-float-card-icon" style={{ color: "#2563eb" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20v-6M6 20V10M18 20V4"/></svg>
+          </div>
+          <span>Grade Analytics</span>
         </div>
-        <span>Grade Analytics</span>
-      </div>
-      <div className="auth-float-card" style={{ bottom: "15%", right: "4%", animationDelay: "1.5s" }}>
-        <div className="auth-float-card-icon" style={{ color: "#059669" }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <div className="auth-float-card badge-2">
+          <div className="auth-float-card-icon" style={{ color: "#059669" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <span>End-to-End Secure</span>
         </div>
-        <span>End-to-End Secure</span>
       </div>
 
       <div className="auth-layout">
