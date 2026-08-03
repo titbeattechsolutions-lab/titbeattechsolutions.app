@@ -17,7 +17,7 @@ import {
   Menu, BookOpen, MoreVertical, ChevronRight, ChevronLeft,
   CalendarDays, ClipboardList, BookMarked, Edit2, ArrowLeft,
   Bell, CalendarClock, Send, Inbox, MessageSquare, Wallet, CheckCircle,
-  FileSpreadsheet, Lock, Info, DollarSign, Loader2, Trophy, Download, UserCircle, HelpCircle
+  FileSpreadsheet, Lock, Info, DollarSign, Loader2, Trophy, Download, UserCircle, HelpCircle, Calculator
 } from "lucide-react";
 import { verifyAdminPin, setAdminPin, loadTenantSession } from "@/lib/tenant-client";
 import { exportToCSV } from "@/lib/exportUtils";
@@ -48,6 +48,7 @@ const PERMS_META = [
   { key:"printReports",  label:"Print Reports",  desc:"Print or export reports" },
   { key:"manageRecords", label:"Manage Records", desc:"Delete or edit grades" },
   { key:"fees",          label:"Fees Access",    desc:"View and manage school fees and payments" },
+  { key:"payroll",       label:"Payroll Access", desc:"Manage staff salaries and payroll processing" },
   { key:"rankings",      label:"Class Rankings", desc:"View student position/ranking within their class" },
 ];
 const ATT_STATUSES = [
@@ -101,6 +102,7 @@ interface StaffMember {
   assignedSubjects?: string[]; // empty/undefined = all subjects of assigned classes
   permissions: Record<string, boolean>;
   signature?: string;
+  email?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -150,6 +152,8 @@ interface SchoolSettings {
   reportTemplate?: ReportTemplateConfig;
   staffCodeMigrationDone?: boolean;
   adminUsername?: string;
+  salaryDay?: number;
+  salaryReminderEnabled?: boolean;
 }
 interface TimetableCell { subject: string; teacherName: string }
 interface TimetableState {
@@ -168,6 +172,24 @@ interface AppNotification {
   body: string;
   priority: "normal" | "high";
   readBy: string[];
+  type?: "system_salary" | "system_schedule" | "manual";
+  referenceId?: string;
+}
+interface SalaryStructure {
+  baseSalary: number;
+  allowances: { label: string; amount: number }[];
+  deductions: { label: string; amount: number }[];
+}
+interface PayrollRecord {
+  id: string;
+  staffId: string;
+  staffName: string;
+  role: string;
+  month: string;
+  grossPay: number;
+  netPay: number;
+  status: "paid";
+  paidAt: string;
 }
 interface AppState {
   entries: Entry[];
@@ -181,6 +203,8 @@ interface AppState {
   timetable: TimetableState;
   notifications: AppNotification[];
   staffSignIns: StaffSignIn[];
+  salaryStructures: Record<string, SalaryStructure>;
+  payrollRecords: Record<string, PayrollRecord>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -912,6 +936,8 @@ const initialState: AppState = {
   timetable:      _saved.timetable      ?? _defaultTimetable,
   notifications:  _saved.notifications  ?? [],
   staffSignIns:   _saved.staffSignIns   ?? [],
+  salaryStructures: _saved.salaryStructures ?? {},
+  payrollRecords: _saved.payrollRecords ?? {},
 };
 
 function mkLog(action: string, student: string, subject: string, detail = "", actor = "") {
@@ -1039,6 +1065,10 @@ function appReducer(state: AppState, action: any): AppState {
       };
     case "SET_SCHOOL_SETTINGS":
       return { ...state, schoolSettings: { ...state.schoolSettings, ...action.payload } };
+    case "SET_SALARY_STRUCTURE":
+      return { ...state, salaryStructures: { ...state.salaryStructures, [action.role]: action.structure } };
+    case "SAVE_PAYROLL_RECORD":
+      return { ...state, payrollRecords: { ...state.payrollRecords, [`${action.payload.staffId}|${action.payload.month}`]: action.payload } };
     case "SET_TIMETABLE_CELL": {
       const next = { ...state.timetable.cells };
       if (!action.cell || (!action.cell.subject && !action.cell.teacherName)) delete next[action.key];
@@ -1717,6 +1747,7 @@ const StaffDialog = memo(({ staff, mode, onSave, onClose, tenantId }: { staff?: 
             </div>
           )}
           <Inp label="Full Name" value={form.name} onChange={(e: any) => setF("name", e.target.value)} placeholder="e.g. Mrs. Amaka Obi" error={errors.name} />
+          <Inp label="Email Address (Optional)" value={form.email || ""} onChange={(e: any) => setF("email", e.target.value)} placeholder="e.g. staff@school.com" />
           <Sel label="Role" value={form.role} onChange={(e: any) => setF("role", e.target.value)}>
             {ROLES.map(r => <option key={r}>{r}</option>)}
           </Sel>
@@ -2263,6 +2294,7 @@ const SETTINGS_SECTIONS = [
   { id:"logo",     label:"School Logo",    icon:"🖼️" },
   { id:"info",     label:"School Info",    icon:"🏫" },
   { id:"session",  label:"Session & Term", icon:"📅" },
+  { id:"payroll",  label:"Payroll",        icon:"💰" },
   { id:"template", label:"Report Template",icon:"📋" },
   { id:"signatures",label:"Signatures",    icon:"✍️" },
   { id:"security", label:"Security & PIN", icon:"🔒" },
@@ -2311,6 +2343,131 @@ function getOrAssignAdmNo(
   }
   return newAdmNo;
 }
+
+const PayrollTab = memo(({ isAdmin, currentActor }: { isAdmin: boolean, currentActor: string }) => {
+  const { state, dispatch, showToast } = useApp();
+  const [subTab, setSubTab] = useState<"structures" | "processing">("processing");
+  const [selectedRole, setSelectedRole] = useState<string>("Teacher");
+  const [month, setMonth] = useState<string>(today().slice(0, 7)); // YYYY-MM
+  
+  const currentStructure = state.salaryStructures[selectedRole] || { baseSalary: 0, allowances: [], deductions: [] };
+  
+  const handleSaveStructure = (e: React.FormEvent) => {
+    e.preventDefault();
+    const fd = new FormData(e.target as HTMLFormElement);
+    const base = Number(fd.get("baseSalary"));
+    dispatch({ type: "SET_SALARY_STRUCTURE", role: selectedRole, structure: { baseSalary: base, allowances: [], deductions: [] } });
+    showToast(`${selectedRole} salary structure saved!`);
+  };
+
+  const processPayment = (staff: StaffMember, netPay: number, grossPay: number) => {
+    if (!window.confirm(`Confirm payment of ₦${netPay.toLocaleString()} to ${staff.name} for ${month}?`)) return;
+    const record: PayrollRecord = {
+      id: uid(), staffId: staff.id, staffName: staff.name, role: staff.role, month,
+      grossPay, netPay, status: "paid", paidAt: new Date().toISOString()
+    };
+    dispatch({ type: "SAVE_PAYROLL_RECORD", payload: record });
+    showToast(`Paid ${staff.name} for ${month}`);
+  };
+
+  if (!isAdmin) return <div className="p-8 text-center text-red-500 font-bold">Access Denied</div>;
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+            <Calculator className="w-7 h-7 text-green-600" />
+            Payroll Management
+          </h2>
+          <p className="text-sm font-medium text-slate-500">Manage salary structures and process monthly payroll.</p>
+        </div>
+        <div className="flex bg-slate-100 p-1 rounded-xl">
+          <button onClick={() => setSubTab("processing")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${subTab === "processing" ? "bg-white text-green-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>Process Payroll</button>
+          <button onClick={() => setSubTab("structures")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${subTab === "structures" ? "bg-white text-green-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>Structures</button>
+        </div>
+      </div>
+
+      {subTab === "structures" && (
+        <Card className="p-6 border-slate-200 shadow-sm">
+          <h3 className="font-bold text-slate-800 mb-4">Role-Based Salary Configuration</h3>
+          <div className="flex gap-4 mb-6">
+            <select value={selectedRole} onChange={e => setSelectedRole(e.target.value)} className="w-full sm:w-64 p-3 rounded-xl border-2 border-slate-200 focus:border-green-500 focus:ring-4 focus:ring-green-500/20 font-bold text-slate-700 outline-none transition-all">
+              {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <form onSubmit={handleSaveStructure} className="space-y-4 max-w-md">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Base Salary (₦)</label>
+              <input name="baseSalary" type="number" defaultValue={currentStructure.baseSalary} required min="0" className="w-full p-3 rounded-xl border-2 border-slate-200 focus:border-green-500 focus:ring-4 focus:ring-green-500/20 font-bold text-slate-700 outline-none transition-all" />
+            </div>
+            <button type="submit" className="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-md transition-all active:scale-95">Save {selectedRole} Structure</button>
+          </form>
+        </Card>
+      )}
+
+      {subTab === "processing" && (
+        <Card className="p-6 border-slate-200 shadow-sm overflow-x-auto">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="font-bold text-slate-800">Monthly Payroll Processing</h3>
+            <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="p-2 rounded-lg border-2 border-slate-200 font-bold text-slate-700" />
+          </div>
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs text-slate-500 font-bold uppercase tracking-wider border-b-2 border-slate-100">
+              <tr>
+                <th className="pb-3 px-2">Staff Member</th>
+                <th className="pb-3 px-2">Role</th>
+                <th className="pb-3 px-2 text-right">Base Salary</th>
+                <th className="pb-3 px-2 text-right">Net Pay</th>
+                <th className="pb-3 px-2 text-center">Status</th>
+                <th className="pb-3 px-2 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {state.staffList.filter(s => s.status === "active").map(staff => {
+                const struct = state.salaryStructures[staff.role];
+                const base = struct?.baseSalary || 0;
+                // Currently no deductions/allowances, so net = base
+                const net = base;
+                const payKey = `${staff.id}|${month}`;
+                const paidRecord = state.payrollRecords[payKey];
+                
+                return (
+                  <tr key={staff.id} className="group hover:bg-slate-50 transition-colors">
+                    <td className="py-4 px-2 font-bold text-slate-800">{staff.name}</td>
+                    <td className="py-4 px-2 font-medium text-slate-500">
+                      <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-xs">{staff.role}</span>
+                    </td>
+                    <td className="py-4 px-2 font-bold text-slate-700 text-right">₦{base.toLocaleString()}</td>
+                    <td className="py-4 px-2 font-black text-green-600 text-right">₦{net.toLocaleString()}</td>
+                    <td className="py-4 px-2 text-center">
+                      {paidRecord ? (
+                        <span className="inline-flex items-center justify-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200">
+                          <CheckCircle className="w-3 h-3" /> Paid
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center justify-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-200">
+                          Pending
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-4 px-2 text-center">
+                      {!paidRecord && base > 0 && (
+                        <button onClick={() => processPayment(staff, net, base)} className="text-xs font-bold bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700 active:scale-95 transition-all">
+                          Mark Paid
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+});
 
 const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) => void }) => {
   const { state, dispatch, currentActor } = useApp();
@@ -3708,6 +3865,37 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
               <div className="pt-2 border-t border-slate-100">
                 <Btn variant="primary" size="lg" className="w-full" onClick={saveInfo}>
                   {saved ? <><Check size={15} />Saved!</> : <><Save size={15} />Save Session</>}
+                </Btn>
+              </div>
+            </Card>
+          )}
+          {sec === "payroll" && (
+            <Card className="p-6 space-y-5">
+              <div>
+                <p className="text-sm font-black uppercase text-slate-700">Payroll Settings</p>
+                <p className="text-xs text-slate-400 mt-0.5">Configure when salaries are paid and background reminders.</p>
+              </div>
+              
+              <Inp 
+                label="Salary Pay Day (1-31)" 
+                value={draft.salaryDay?.toString() || ""} 
+                onChange={(e: any) => setDraft(d => ({ ...d, salaryDay: parseInt(e.target.value) || undefined }))} 
+                placeholder="e.g. 25" 
+              />
+              
+              <div className="flex items-center justify-between py-2.5 cursor-pointer group" onClick={(e) => { e.preventDefault(); setDraft(d => ({ ...d, salaryReminderEnabled: !d.salaryReminderEnabled })); }}>
+                <div>
+                  <span className="text-sm font-bold text-slate-700 group-hover:text-slate-900 block">Enable Reminders</span>
+                  <span className="text-xs text-slate-400">Receive an inbox notification 24 hours before pay day</span>
+                </div>
+                <div className={`relative w-10 h-5 rounded-full transition-colors ${draft.salaryReminderEnabled ? "bg-blue-600" : "bg-slate-200"}`}>
+                  <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${draft.salaryReminderEnabled ? "translate-x-5" : ""}`} />
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100">
+                <Btn variant="primary" size="lg" className="w-full" onClick={saveInfo}>
+                  {saved ? <><Check size={15} />Saved!</> : <><Save size={15} />Save Payroll Settings</>}
                 </Btn>
               </div>
             </Card>
@@ -5397,6 +5585,7 @@ function TimetableView({
       .finally(() => setSyncLoading(false));
   }, [tenantId, schoolSettings.term, schoolSettings.session]); // eslint-disable-line
   const [myOnly, setMyOnly] = useState(false);
+  const [filterTeacher, setFilterTeacher] = useState<string>("");
   const [showAutoSet, setShowAutoSet] = useState(false);
 
   useEffect(() => {
@@ -5440,6 +5629,12 @@ function TimetableView({
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {isAdmin && (
+            <select value={filterTeacher} onChange={e => setFilterTeacher(e.target.value)} className="text-xs font-bold text-slate-600 p-1.5 rounded-lg border-2 border-slate-200 outline-none">
+              <option value="">All Staff</option>
+              {staffList.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+            </select>
+          )}
           {!isAdmin && (
             <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
               <input type="checkbox" checked={myOnly} onChange={e => setMyOnly(e.target.checked)} />
@@ -5585,7 +5780,7 @@ function TimetableView({
                   ) : timetable.days.map(d => {
                     const c = cellOf(d, p.id);
                     const mine = c?.teacherName && c.teacherName === currentActor;
-                    const dim = !isAdmin && myOnly && !mine;
+                    const dim = (!isAdmin && myOnly && !mine) || (isAdmin && filterTeacher !== "" && c?.teacherName !== filterTeacher);
                     return (
                       <td key={d} className="align-top">
                         <button
@@ -6016,6 +6211,93 @@ const TourTooltip = ({
   );
 };
 
+function useReminderChecker(appState: AppState, dispatch: any, isAdmin: boolean, currentActor: string) {
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      const todayStr = now.toISOString().slice(0, 10);
+      const currentMonth = todayStr.slice(0, 7);
+
+      if (isAdmin && appState.schoolSettings.salaryReminderEnabled && appState.schoolSettings.salaryDay) {
+        const payDay = appState.schoolSettings.salaryDay;
+        const currentDay = now.getDate();
+        
+        // Simple 24h check: if today is payDay or payDay - 1
+        if (currentDay === payDay || currentDay === payDay - 1) {
+          const reminderId = `salary-${currentMonth}`;
+          const alreadySent = appState.notifications.some(n => n.type === "system_salary" && n.referenceId === reminderId);
+          if (!alreadySent) {
+            dispatch({
+              type: "ADD_NOTIFICATION",
+              payload: {
+                id: uid(),
+                createdAt: now.toISOString(),
+                fromActor: "System",
+                fromRole: "system",
+                toScope: "admin",
+                title: "Salary Deadline Approaching",
+                body: `The scheduled salary payment day (${payDay}) is approaching. Please process payroll soon.`,
+                priority: "high",
+                readBy: [],
+                type: "system_salary",
+                referenceId: reminderId
+              }
+            });
+          }
+        }
+      }
+
+      if (!isAdmin && currentActor) {
+        // Teacher schedule check
+        const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const currentDayName = dayNames[now.getDay()];
+        
+        appState.timetable.periods.forEach(period => {
+          const cellKey = Object.keys(appState.timetable.cells).find(key => 
+            key.includes(`|${currentDayName}|${period.id}`) && 
+            appState.timetable.cells[key].teacherName === currentActor
+          );
+          
+          if (cellKey) {
+            const cell = appState.timetable.cells[cellKey];
+            const [hours, minutes] = period.start.split(":").map(Number);
+            const periodTime = new Date();
+            periodTime.setHours(hours, minutes, 0, 0);
+            
+            const diffMinutes = (periodTime.getTime() - now.getTime()) / (1000 * 60);
+            
+            if (diffMinutes > 0 && diffMinutes <= 35) {
+              const reminderId = `schedule-${currentDayName}-${period.id}-${todayStr}`;
+              const alreadySent = appState.notifications.some(n => n.type === "system_schedule" && n.referenceId === reminderId);
+              
+              if (!alreadySent) {
+                dispatch({
+                  type: "ADD_NOTIFICATION",
+                  payload: {
+                    id: uid(),
+                    createdAt: now.toISOString(),
+                    fromActor: "System",
+                    fromRole: "system",
+                    toScope: `staff:${currentActor}`,
+                    title: "Upcoming Class Reminder",
+                    body: `You have ${cell.subject} starting in ${Math.round(diffMinutes)} minutes (${period.start}).`,
+                    priority: "normal",
+                    readBy: [],
+                    type: "system_schedule",
+                    referenceId: reminderId
+                  }
+                });
+              }
+            }
+          }
+        });
+      }
+    }, 60000); // Check every minute
+
+    return () => clearInterval(interval);
+  }, [appState.schoolSettings, appState.timetable, appState.notifications, isAdmin, currentActor, dispatch]);
+}
+
 // Main App
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polledData, onLocalEdit, onStateChange }: { onTenantSignOut?: () => void; tenantId?: string; tenantSchoolName?: string; polledData?: any; onLocalEdit?: (state: any) => void; onStateChange?: (state: any) => void } = {}) {
@@ -6356,6 +6638,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     { id:"dashboard",  label:"Dashboard",  icon:LayoutDashboard, show:true,                                   primary:true },
     { id:"my_profile", label:"My Profile", icon:UserCircle,       show:!isAdmin,                              primary:true },
     { id:"staff",      label:"Staff",      icon:Users,            show:isAdmin,                               primary:false },
+    { id:"payroll",    label:"Payroll",    icon:Calculator,       show:isAdmin||can("payroll"),               primary:false },
     { id:"fees",       label:"Fees",       icon:DollarSign,       show:isAdmin||can("fees"),                  primary:false },
     { id:"inbox",      label:"Inbox",      icon:Inbox,            show:true,                                  primary:false },
     { id:"timetable",  label:"Timetable",  icon:CalendarClock,    show:true,                                  primary:false },
@@ -6584,6 +6867,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
   }, [appState.staffList, showToast]);
 
   const currentActor = isAdmin ? "Admin" : (auth.user?.name || "Staff");
+  
+  useReminderChecker(appState, dispatch, isAdmin, currentActor);
   const unreadInbox = useMemo(
     () => appState.notifications.filter(n => notificationVisible(n, isAdmin, currentActor) && !n.readBy.includes(currentActor)).length,
     [appState.notifications, isAdmin, currentActor]
@@ -7705,6 +7990,11 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                   dispatch={dispatch}
                   showToast={showToast}
                 />
+              )}
+
+              {/* PAYROLL */}
+              {activeTab === "payroll" && (isAdmin || can("payroll")) && (
+                <PayrollTab isAdmin={isAdmin} currentActor={currentActor} />
               )}
 
               {/* FEES */}
