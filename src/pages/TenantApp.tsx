@@ -15,10 +15,17 @@ import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LogOut, CloudOff, Loader2, Cloud, CloudUpload } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  DB_KEY,
+  getAppState,
+  setAppState,
+  clearAppState,
+} from "@/lib/app-storage";
 
-const DB_KEY = "greatmind_school_db_v2";
 const SAVE_DEBOUNCE_MS = 1200;
-const PULL_INTERVAL_MS = 3000;
+// Heartbeat fallback interval — fires pull() if a Realtime broadcast is missed
+const HEARTBEAT_INTERVAL_MS = 90_000;
 
 type SyncPhase = "idle" | "pulling" | "pushing" | "synced" | "error";
 
@@ -43,6 +50,7 @@ export default function TenantApp() {
 
   const saveTimer = useRef<NodeJS.Timeout>();
   const pullTimer = useRef<NodeJS.Timeout>();
+  const realtimeChannel = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const lastSerialized = useRef<string>("");
   const localRev = useRef<number>(0);
   const isSyncing = useRef<boolean>(false);
@@ -73,13 +81,23 @@ export default function TenantApp() {
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
+    const handleStorageFull = () => {
+      toast({
+        title: "⚠️ Device storage full",
+        description: "Your device has no space left to save school data locally. Please free up storage or data may be lost.",
+        variant: "destructive",
+      });
+    };
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
+    window.addEventListener("app_storage_full", handleStorageFull);
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("app_storage_full", handleStorageFull);
     };
   }, []);
+
 
   useEffect(() => {
     const s = loadTenantSession();
@@ -115,7 +133,7 @@ export default function TenantApp() {
 
         // Prefer newer local data (offline edits)
         try {
-          const localRaw = localStorage.getItem(DB_KEY);
+          const localRaw = await getAppState();
           if (localRaw) {
             const local = JSON.parse(localRaw) as Record<string, unknown>;
             const localRevNum = (local._rev as number) ?? 0;
@@ -134,7 +152,7 @@ export default function TenantApp() {
 
         const json = JSON.stringify(data);
 
-        localStorage.setItem(DB_KEY, json);
+        await setAppState(json);
         lastSerialized.current = json;
         localRev.current = (data._rev as number) ?? 0;
 
@@ -163,9 +181,9 @@ export default function TenantApp() {
         return;
       }
 
-      const currentState = retryCount === 0 && explicitState 
-        ? explicitState 
-        : (latestAppRef.current ?? JSON.parse(localStorage.getItem(DB_KEY) ?? "{}"));
+      const currentState = retryCount === 0 && explicitState
+        ? explicitState
+        : (latestAppRef.current ?? JSON.parse((await getAppState()) ?? "{}"));
 
       const { _rev: _lastRev, ...lastForCompare } = JSON.parse(lastSerialized.current || "{}");
       const jsonString = JSON.stringify(currentState);
@@ -188,8 +206,22 @@ export default function TenantApp() {
       if (result.success) {
         localRev.current = result.rev as number;
         const json = JSON.stringify({ ...cleanData, _rev: result.rev });
-        localStorage.setItem(DB_KEY, json);
+        const { usedIdb } = await setAppState(json);
+        if (usedIdb) {
+          toast({
+            title: "Storage notice",
+            description: "Your school data is large — saved to device storage (IndexedDB). Performance is unaffected.",
+          });
+        }
         lastSerialized.current = json;
+        // Broadcast sync-ping to other tabs/devices on this tenant
+        if (session && realtimeChannel.current) {
+          realtimeChannel.current.send({
+            type: "broadcast",
+            event: "sync_ping",
+            payload: { rev: result.rev, tenantId: session.tenantId },
+          });
+        }
         setSyncPhase("synced");
         setLastSyncAt(Date.now());
         isSyncing.current = false;
@@ -223,7 +255,7 @@ export default function TenantApp() {
 
         if (remoteRev > localRev.current) {
           const json = JSON.stringify(r);
-          localStorage.setItem(DB_KEY, json);
+          await setAppState(json);
           lastSerialized.current = json;
           localRev.current = remoteRev;
 
@@ -247,8 +279,26 @@ export default function TenantApp() {
       saveTimer.current = setTimeout(() => pushIfChanged(0, state), SAVE_DEBOUNCE_MS);
     };
 
-    // Periodic pull + focus/online triggers
-    pullTimer.current = setInterval(pull, PULL_INTERVAL_MS);
+    // ── Realtime Broadcast sync-ping ────────────────────────────────────────
+    // Subscribe to a tenant-scoped ephemeral channel. When another device
+    // successfully saves (and broadcasts a sync_ping), we call pull() immediately
+    // instead of waiting for the heartbeat. This replaces the 3s polling loop.
+    // NOTE: We do NOT subscribe to table changes (unsafe with custom session tokens).
+    const channelName = `tenant_sync:${session.tenantId}`;
+    const channel = supabase.channel(channelName);
+    channel
+      .on("broadcast", { event: "sync_ping" }, (msg) => {
+        const incomingRev = msg?.payload?.rev as number | undefined;
+        // Only pull if the remote revision is newer than ours
+        if (incomingRev === undefined || incomingRev > localRev.current) {
+          pull();
+        }
+      })
+      .subscribe();
+    realtimeChannel.current = channel;
+
+    // 90-second heartbeat — safety net for missed broadcasts (e.g. offline recovery)
+    pullTimer.current = setInterval(pull, HEARTBEAT_INTERVAL_MS);
     const handleFocus = () => pull();
     const handleOnline = () => pull();
 
@@ -256,7 +306,7 @@ export default function TenantApp() {
     window.addEventListener("online", handleOnline);
     window.addEventListener("tenant_local_edit", schedulePush);
 
-    // Final push on unload
+    // Final push on unload (best-effort synchronous read from localStorage)
     const handleBeforeUnload = () => {
       const current = localStorage.getItem(DB_KEY);
       if (current && current !== lastSerialized.current) {
@@ -272,14 +322,15 @@ export default function TenantApp() {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
       if (pullTimer.current) clearInterval(pullTimer.current);
-      
+      // Unsubscribe Realtime channel on unmount
+      if (realtimeChannel.current) {
+        supabase.removeChannel(realtimeChannel.current);
+        realtimeChannel.current = null;
+      }
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("tenant_local_edit", schedulePush);
-      
-
-      
       // Final flush
       pushIfChanged();
     };
@@ -301,7 +352,7 @@ export default function TenantApp() {
       if (liveStatus === null || liveStatus === "suspended") {
         // Session was purged or tenant was suspended — force logout immediately.
         clearTenantSession();
-        localStorage.removeItem(DB_KEY);
+        clearAppState();
         toast({
           title: liveStatus === "suspended"
             ? "Account suspended"
@@ -317,7 +368,7 @@ export default function TenantApp() {
 
       if (liveStatus === "expired") {
         clearTenantSession();
-        localStorage.removeItem(DB_KEY);
+        clearAppState();
         toast({
           title: "Subscription expired",
           description: "Your subscription has ended. Please contact your provider to renew.",
@@ -348,7 +399,7 @@ export default function TenantApp() {
     }
     clearTenantSession();
     navigate("/", { replace: true });
-    localStorage.removeItem(DB_KEY);
+    clearAppState();
   };
 
   // Loading / Error / Expired States

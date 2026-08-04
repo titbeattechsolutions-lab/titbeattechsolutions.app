@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useCallback, memo, useReducer, createContext, useContext, useEffect } from "react";
+import { setAppState, DB_KEY } from "@/lib/app-storage";
 import { useAuth } from "@/contexts/AuthContext";
 import { logAuthEvent } from "@/lib/auth-logger";
 import { syncActivityLog } from "@/lib/activity-sync";
@@ -375,7 +376,6 @@ function getDeviceId(): string {
 }
 
 // ─── Persistent Database (localStorage) ──────────────────────────────────────
-const DB_KEY = "greatmind_school_db_v2";
 
 // Bump this when you change the default timetable structure so existing
 // browsers auto-upgrade instead of staying on the old cached version.
@@ -383,7 +383,8 @@ const TIMETABLE_SCHEMA_VERSION = "tt_v4_napps_break";
 
 function loadDB(): Partial<AppState> {
   try {
-    const raw = localStorage.getItem(DB_KEY);
+    // Use synchronous read for initial render (fast, no loading state needed)
+    const raw = localStorage.getItem("greatmind_school_db_v2");
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Partial<AppState> & { _timetableVersion?: string };
     // Drop the stored timetable if its schema version is missing/outdated
@@ -399,16 +400,21 @@ function saveDB(state: AppState) {
   try {
     let preserved: { _rev?: number; _updatedAt?: string } = {};
     try {
-      const existing = JSON.parse(localStorage.getItem(DB_KEY) || "{}");
+      const existing = JSON.parse(localStorage.getItem("greatmind_school_db_v2") || "{}");
       if (typeof existing._rev === "number") preserved._rev = existing._rev;
       if (existing._updatedAt) preserved._updatedAt = existing._updatedAt;
     } catch {}
-    localStorage.setItem(DB_KEY, JSON.stringify({
+    const payload = JSON.stringify({
       ...state,
       ...preserved,
       _timetableVersion: TIMETABLE_SCHEMA_VERSION,
-    }));
-  } catch { /* storage full */ }
+    });
+    // Attempt localStorage first; fall back to IndexedDB via app-storage (static import)
+    setAppState(payload).catch(() => {
+      // Both stores failed — warn the user visibly
+      window.dispatchEvent(new CustomEvent("app_storage_full"));
+    });
+  } catch { /* non-critical */ }
 }
 
 let _saveTimer: ReturnType<typeof setTimeout> | null = null;
