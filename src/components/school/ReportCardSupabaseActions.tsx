@@ -10,6 +10,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/supabase/schoolService";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -45,6 +46,7 @@ interface ReportCardActionsProps {
   };
   /** Optional tenant UUID — used to look up the Supabase school_id */
   tenantId?: string | null;
+  classTeacher?: any;
 }
 
 // ─── Normalise term value ─────────────────────────────────────────────────
@@ -60,7 +62,8 @@ export default function ReportCardSupabaseActions({
   curC,
   schoolSettings,
   tenantId,
-  canPrint = false,
+  classTeacher,
+  canPrint = true,
   dispatch,
   onExportExcel,
 }: {
@@ -98,7 +101,7 @@ export default function ReportCardSupabaseActions({
     if (!tenantId) return;
     (async () => {
       try {
-        const { data } = await (supabase as any)
+        const { data } = await db()
           .from("schools")
           .select("id")
           .eq("tenant_id", tenantId)
@@ -123,11 +126,34 @@ export default function ReportCardSupabaseActions({
     if (!activeReport || !schoolId) return;
     (async () => {
       try {
-        const { data } = await (supabase as any)
+        // Resolve Student
+        let studentDbId = activeReport.studentId || "";
+        let studentAdmissionNo = activeReport.admissionNo || "";
+
+        if (!studentDbId) {
+          // Fallback: try to find the student by name and class in the database
+          const { data: foundStudents } = await db()
+            .from("students")
+            .select("id, admission_no")
+            .eq("school_id", schoolId)
+            .ilike("first_name", `%${activeReport.name.split(" ")[0]}%`);
+          
+          // simple heuristic: if we find exactly one match, use it.
+          if (foundStudents && foundStudents.length === 1) {
+            studentDbId = foundStudents[0].id;
+            studentAdmissionNo = foundStudents[0].admission_no;
+          }
+        }
+
+        if (!studentDbId) {
+          console.warn(`Could not link report to a student database record for "${activeReport.name}".`);
+        }
+
+        const { data } = await db()
           .from("students")
           .select("id, guardian_email, first_name, last_name, other_names, admission_no, class_id")
           .eq("school_id", schoolId)
-          .ilike("class_name", activeReport.class);
+          .eq("id", studentDbId);
           
         let foundClassId: string | null = null;
 
@@ -152,7 +178,7 @@ export default function ReportCardSupabaseActions({
         }
 
         if (!foundClassId) {
-          const { data: classData } = await (supabase as any)
+          const { data: classData } = await db()
             .from("classes")
             .select("id")
             .eq("school_id", schoolId)
@@ -162,7 +188,7 @@ export default function ReportCardSupabaseActions({
 
           if (!foundClassId) {
             // Auto-create class if it does not exist
-            const { data: newClass, error: classErr } = await (supabase as any)
+            const { data: newClass, error: classErr } = await db()
               .from("classes")
               .insert({
                 school_id: schoolId,
@@ -207,7 +233,7 @@ export default function ReportCardSupabaseActions({
       
       // 2. Attempt Supabase update (RLS might block this for teachers, but we try anyway)
       if (studentDbId) {
-        await supabase.from("students").update({ guardian_email: trimmed }).eq("id", studentDbId);
+        await db().from("students").update({ guardian_email: trimmed }).eq("id", studentDbId);
       }
       
       setGuardianEmail(trimmed);
@@ -236,7 +262,7 @@ export default function ReportCardSupabaseActions({
       let finalClassId = studentClassId;
       if (!finalClassId) {
          // Attempt to find it
-         const { data: classData } = await (supabase as any)
+         const { data: classData } = await db()
            .from("classes")
            .select("id")
            .eq("school_id", schoolId)
@@ -247,7 +273,7 @@ export default function ReportCardSupabaseActions({
            finalClassId = classData.id;
          } else {
            // Auto-create
-           const { data: newClass, error: classErr } = await (supabase as any)
+           const { data: newClass, error: classErr } = await db()
              .from("classes")
              .insert({
                school_id: schoolId,
@@ -275,6 +301,18 @@ export default function ReportCardSupabaseActions({
       // Pick the principal signature (prefer principalSig, fallback teacherSig)
       const signature = curC.principalSig || curC.teacherSig || null;
 
+      // Extract behavioural traits from curC (everything that isn't a standard field)
+      const standardKeys = new Set(["teacher", "principal", "teacherSig", "principalSig", "daysOpen", "daysPresent", "daysAbsent"]);
+      const traits = Object.keys(curC || {}).reduce((acc: any, key) => {
+        if (!standardKeys.has(key) && curC[key]) acc[key] = curC[key];
+        return acc;
+      }, {
+        teacherName: classTeacher?.name || null,
+        principalName: schoolSettings.name ? (schoolSettings as any).principalName : null,
+        teacherSig: curC.teacherSig || null,
+        principalSig: curC.principalSig || null,
+      });
+
       const payload = {
         school_id:       schoolId,
         student_id:      studentDbId,
@@ -288,10 +326,11 @@ export default function ReportCardSupabaseActions({
         days_present:    curC.daysPresent ? parseInt(curC.daysPresent) : null,
         days_absent:     curC.daysAbsent  ? parseInt(curC.daysAbsent)  : null,
         signature,
+        traits,
       };
 
       // Upsert by school_id + student_id + term + year
-      const { data, error } = await (supabase as any)
+      const { data, error } = await db()
         .from("report_cards")
         .upsert(payload, {
           onConflict: "school_id,student_id,term,academic_year",
@@ -303,7 +342,7 @@ export default function ReportCardSupabaseActions({
       if (error) {
         // Conflict key uses student_id which is null — fall back to insert+update
         // by selecting first then updating
-        const { data: existing } = await (supabase as any)
+        const { data: existing } = await db()
           .from("report_cards")
           .select("id")
           .eq("school_id", schoolId)
@@ -314,13 +353,13 @@ export default function ReportCardSupabaseActions({
           .maybeSingle();
 
         if (existing?.id) {
-          await (supabase as any)
+          await db()
             .from("report_cards")
             .update({ ...payload, updated_at: new Date().toISOString() })
             .eq("id", existing.id);
           setSavedId(existing.id);
         } else {
-          const { data: inserted, error: insertErr } = await (supabase as any)
+          const { data: inserted, error: insertErr } = await db()
             .from("report_cards")
             .insert(payload)
             .select("id")
@@ -334,16 +373,41 @@ export default function ReportCardSupabaseActions({
       
       // Save results
       if (activeReport.records && activeReport.records.length > 0) {
-        const getGrade = (total: number) => {
-          if (total >= 70) return { grade: "A", remark: "Excellent" };
-          if (total >= 60) return { grade: "B", remark: "Very Good" };
-          if (total >= 50) return { grade: "C", remark: "Credit" };
-          if (total >= 40) return { grade: "D", remark: "Pass" };
-          return { grade: "F", remark: "Fail" };
-        };
+        // Resolve subjects first
+        const existingSubjectMap: Record<string, string> = {};
+        const { data: dbSubjects } = await db().from("subjects").select("id, name").eq("school_id", schoolId);
+        dbSubjects?.forEach((s: any) => {
+          existingSubjectMap[s.name.toLowerCase().trim()] = s.id;
+        });
 
-        const resultsPayload = activeReport.records.map((r: any) => {
-          const { grade, remark } = getGrade(r.total);
+        const resultsPayload = [];
+        for (const r of activeReport.records) {
+          if (!r.subject) continue;
+          const subjKey = r.subject.toLowerCase().trim();
+          let subjId = existingSubjectMap[subjKey];
+
+          if (!subjId) {
+            // Auto-create subject
+            const { data: newSubj, error: subjErr } = await db()
+              .from("subjects")
+              .insert({ school_id: schoolId, name: r.subject })
+              .select("id")
+              .single();
+            if (!subjErr && newSubj?.id) {
+              subjId = newSubj.id;
+              existingSubjectMap[subjKey] = subjId;
+            }
+          }
+
+          const getGrade = (total: number) => {
+            if (total >= 70) return { grade: "A", remark: "Excellent" };
+            if (total >= 60) return { grade: "B", remark: "Very Good" };
+            if (total >= 50) return { grade: "C", remark: "Credit" };
+            if (total >= 40) return { grade: "D", remark: "Pass" };
+            return { grade: "F", remark: "Fail" };
+          };
+
+          const { grade, remark } = r.grade && r.remark ? { grade: r.grade, remark: r.remark } : getGrade(r.total);
           
           let ca1: number | null = null;
           let ca2: number | null = null;
@@ -367,9 +431,10 @@ export default function ReportCardSupabaseActions({
             if (!isNaN(totNum)) tot = totNum;
           }
 
-          return {
+          resultsPayload.push({
             school_id: schoolId,
             student_id: studentDbId || null,
+            subject_id: subjId || null,
             student_name: activeReport.name,
             admission_no: studentAdmissionNo || "N/A",
             class_id: finalClassId,
@@ -383,18 +448,23 @@ export default function ReportCardSupabaseActions({
             score_total: tot,
             grade,
             remark
-          };
-        });
+          });
+        }
 
-        await (supabase as any).from("results")
+        await db().from("results")
           .delete()
           .eq("school_id", schoolId)
           .eq("student_name", activeReport.name)
           .eq("term", normaliseTerm(schoolSettings.term))
           .eq("academic_year", schoolSettings.session);
 
-        const { error: resErr } = await (supabase as any).from("results").insert(resultsPayload);
-        if (resErr) console.error("Failed to save results:", resErr);
+        if (resultsPayload.length > 0) {
+          const { error: resErr } = await db().from("results").insert(resultsPayload);
+          if (resErr) {
+            console.error("Failed to save results:", resErr);
+            throw new Error("Failed to save subject scores to database: " + (resErr.message || JSON.stringify(resErr)));
+          }
+        }
       }
       
       // Hook into activity tracking
@@ -429,7 +499,7 @@ export default function ReportCardSupabaseActions({
       if (!rcId) {
         await handleSave();
         // Re-fetch id
-        const { data: rc } = await (supabase as any)
+        const { data: rc } = await db()
           .from("report_cards")
           .select("id")
           .eq("school_id", schoolId)
@@ -708,3 +778,4 @@ export default function ReportCardSupabaseActions({
     </>
   );
 }
+

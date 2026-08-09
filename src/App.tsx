@@ -1,6 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
-import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { queryPersister } from "./lib/query-persister";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -12,8 +10,8 @@ import TenantApp from "./pages/TenantApp";
 import Auth from "./pages/Auth";
 import SuperAdmin from "./pages/SuperAdmin";
 import NotFound from "./pages/NotFound.tsx";
+import ResultChecker from "./pages/ResultChecker";
 import TeacherPortal from "./pages/teacher/TeacherPortal";
-import TeacherDashboardPage from "./pages/teacher/TeacherDashboardPage";
 import MyClassesPage from "./pages/teacher/MyClassesPage";
 import AttendancePage from "./pages/teacher/AttendancePage";
 import ResultsPage from "./pages/teacher/ResultsPage";
@@ -34,7 +32,6 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes
-      gcTime: 1000 * 60 * 60 * 24, // 24 hours for offline persistence
       refetchOnWindowFocus: false,
       retry: 1,
     },
@@ -55,10 +52,7 @@ function Unauthorized() {
 }
 
 const App = () => (
-  <PersistQueryClientProvider
-    client={queryClient}
-    persistOptions={{ persister: queryPersister, maxAge: 1000 * 60 * 60 * 24 }}
-  >
+  <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
@@ -85,7 +79,7 @@ const App = () => (
                 </ProtectedRoute>
               }
             >
-              <Route index element={<TeacherDashboardPage />} />
+              <Route index element={<Navigate to="classes" replace />} />
               <Route path="classes"    element={<MyClassesPage />} />
               <Route path="attendance" element={<AttendancePage />} />
               <Route path="results"    element={<ResultsPage />} />
@@ -122,13 +116,15 @@ const App = () => (
               <Route path="activity"         element={<ActivityLogPage />} />
               <Route path="stats"            element={<PlatformStatsPage />} />
             </Route>
+            {/* Public result checker — no auth required */}
+            <Route path="/check/:schoolCode" element={<ResultChecker />} />
             <Route path="/unauthorized" element={<Unauthorized />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
-  </PersistQueryClientProvider>
+  </QueryClientProvider>
 );
 
 export default App;

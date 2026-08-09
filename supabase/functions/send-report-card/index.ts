@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-tenant-session",
 };
 
-const ALLOWED_ROLES = ["school_admin", "principal", "head_teacher", "teacher", "super_admin", "superadmin", "Administrator"];
+const ALLOWED_ROLES = ["school_admin", "principal", "head_teacher", "teacher"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -24,7 +24,6 @@ Deno.serve(async (req) => {
     
     let callerUserId: string | null = null;
     let callerSchoolId: string | null = null;
-    let callerRole: string | null = null;
 
     if (tenantSessionToken) {
       // Tenant session calls (PIN-based app)
@@ -39,9 +38,9 @@ Deno.serve(async (req) => {
         console.error("Session lookup error:", sessionErr);
       }
 
-      callerRole = session?.session_staff_role ?? "school_admin";
+      const role = session?.session_staff_role ?? "school_admin";
 
-      if (!session || !ALLOWED_ROLES.includes(callerRole)) {
+      if (!session || !ALLOWED_ROLES.includes(role)) {
          return Response.json(
             { error: "Invalid tenant session or insufficient permissions" },
             { status: 200, headers: corsHeaders }
@@ -62,31 +61,24 @@ Deno.serve(async (req) => {
       const { data: { user }, error: userError } = await callerClient.auth.getUser();
       if (!userError && user) {
         callerUserId = user.id;
-        
-        // Get definitive role using the exact same RPC the frontend uses
-        const { data: myRole } = await callerClient.rpc("get_my_role");
-        
-        // Also fetch profile for school_id
+        // Check profile role
         const adminClient = createClient(supabaseUrl, serviceRoleKey);
         const { data: profile } = await adminClient
           .from("profiles")
-          .select("school_id")
+          .select("role, school_id")
           .eq("id", user.id)
           .maybeSingle();
-          
-        callerRole = (myRole as string) ?? null;
-        
-        if (!callerRole || !ALLOWED_ROLES.includes(callerRole)) {
+        if (!profile || !ALLOWED_ROLES.includes(profile.role)) {
           return Response.json(
             { error: "Insufficient permissions" },
             { status: 200, headers: corsHeaders }
           );
         }
-        callerSchoolId = profile?.school_id ?? null;
+        callerSchoolId = profile.school_id;
       }
     }
 
-    if (!callerSchoolId && !["super_admin", "superadmin"].includes(callerRole || "")) {
+    if (!callerSchoolId) {
       return Response.json(
         { error: "Unauthorized request" },
         { status: 200, headers: corsHeaders }
@@ -94,7 +86,7 @@ Deno.serve(async (req) => {
     }
 
     // ── 2. Parse request body ─────────────────────────────────────────────────
-    const { reportCardId, schoolId, overrideEmail, appUrl } = await req.json();
+    const { reportCardId, schoolId, overrideEmail } = await req.json();
     if (!reportCardId || !schoolId) {
       return Response.json(
         { error: "reportCardId and schoolId are required" },
@@ -103,8 +95,7 @@ Deno.serve(async (req) => {
     }
 
     // Cross-school protection
-    const isSuperAdmin = ["super_admin", "superadmin"].includes(callerRole || "");
-    if (!isSuperAdmin && callerSchoolId !== schoolId) {
+    if (callerSchoolId !== schoolId) {
       return Response.json(
         { error: "Cross-school access is prohibited" },
         { status: 200, headers: corsHeaders }
@@ -129,10 +120,11 @@ Deno.serve(async (req) => {
     if (!guardianEmail && rc.student_id) {
       const { data: student } = await admin
         .from("students")
-        .select("guardian_email")
+        .select("guardian_email, admission_no")
         .eq("id", rc.student_id)
         .maybeSingle();
       guardianEmail = student?.guardian_email ?? null;
+      if (student?.admission_no) studentAdmissionNo = student.admission_no;
     }
     // Fallback: search by name
     if (!guardianEmail && rc.student_name) {
@@ -159,7 +151,7 @@ Deno.serve(async (req) => {
     // ── 5. Fetch subject results ──────────────────────────────────────────────
     let resultsQuery = admin
       .from("results")
-      .select("subject_name, score_ca1, score_ca2, score_exam, score_total, grade, remark")
+      .select("subject_name, ca1, ca2, exam_score, total_score, grade, remark")
       .eq("school_id", schoolId)
       .eq("term", rc.term)
       .eq("academic_year", rc.academic_year);
@@ -175,27 +167,51 @@ Deno.serve(async (req) => {
     // ── 6. Fetch school profile ───────────────────────────────────────────────
     const { data: school } = await admin
       .from("schools")
-      .select("name, logo, email")
+      .select("name, logo, email, code")
       .eq("id", schoolId)
       .maybeSingle();
 
     const schoolName  = school?.name  ?? "Your School";
     const schoolEmail = school?.email ?? "";
     const schoolLogo  = school?.logo  ?? null;
+    const schoolCode  = school?.code  ?? "";
+
+    // ── 6b. Capture student admission_no (fallback to report_card field)
+    let studentAdmissionNo: string = (rc as any).admission_no ?? "";
+
+    // ── 6c. Generate result checker token & store it ──────────────────────────
+    const appUrl = Deno.env.get("APP_URL") ?? "https://myschoolgradeflow.netlify.app";
+    let checkerUrl = "";
+    try {
+      if (studentAdmissionNo && schoolCode) {
+        const rand = () => Math.random().toString(36).slice(2, 6).toUpperCase();
+        const checkerToken = `RC-${rand()}-${rand()}-${rand()}`;
+        await admin.from("result_checker_tokens").upsert({
+          school_id:    schoolId,
+          student_id:   rc.student_id ?? null,
+          admission_no: studentAdmissionNo,
+          academic_year: rc.academic_year,
+          term:          rc.term,
+          token:         checkerToken,
+          expires_at:    new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        }, { onConflict: "token", ignoreDuplicates: true });
+        checkerUrl = `${appUrl}/check/${schoolCode}?token=${checkerToken}&exam=${encodeURIComponent(studentAdmissionNo)}`;
+      }
+    } catch (tokenErr) {
+      console.warn("Token generation failed (non-fatal):", tokenErr);
+    }
 
     // ── 7. Build email HTML ───────────────────────────────────────────────────
-    // ── 7. Build email HTML ───────────────────────────────────────────────────
     const avgTotal = results && results.length > 0
-      ? (results.reduce((s: number, r: any) => s + (r.score_total ?? 0), 0) / results.length).toFixed(1)
+      ? (results.reduce((s: number, r: any) => s + (r.total_score ?? 0), 0) / results.length).toFixed(1)
       : "—";
-    const getGradeInfo = (avg: string) => {
-      if (avg === "—") return { grade: "—", color: "#64748b", bg: "#f1f5f9" };
+    const grade = (avg: string) => {
       const n = parseFloat(avg);
-      if (n >= 70) return { grade: "A", color: "#16a34a", bg: "#dcfce7" };
-      if (n >= 60) return { grade: "B", color: "#2563eb", bg: "#dbeafe" };
-      if (n >= 50) return { grade: "C", color: "#ca8a04", bg: "#fef9c3" };
-      if (n >= 40) return { grade: "D", color: "#ea580c", bg: "#ffedd5" };
-      return { grade: "F", color: "#dc2626", bg: "#fee2e2" };
+      if (n >= 70) return "A";
+      if (n >= 60) return "B";
+      if (n >= 50) return "C";
+      if (n >= 40) return "D";
+      return "F";
     };
 
     const daysOpen    = rc.days_open    ?? "—";
@@ -207,180 +223,157 @@ Deno.serve(async (req) => {
 
     const termLabel = rc.term.charAt(0).toUpperCase() + rc.term.slice(1) + " Term";
 
-    const resultsRows = (results ?? []).map((r: any, i: number) => {
-      const g = getGradeInfo(r.score_total ? r.score_total.toString() : "—");
-      const bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";
-      return `
-      <tr style="background-color: ${bg};">
-        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#334155;">${r.subject_name ?? "—"}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;text-align:center;color:#64748b;">${r.score_ca1 ?? "—"}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;text-align:center;color:#64748b;">${r.score_ca2 ?? "—"}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;text-align:center;color:#64748b;">${r.score_exam ?? "—"}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:800;color:#1e293b;">${r.score_total ?? "—"}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;text-align:center;">
-          <span style="background-color:${g.bg};color:${g.color};padding:4px 8px;border-radius:6px;font-weight:800;font-size:12px;">${r.grade ?? "—"}</span>
-        </td>
-        <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b;">${r.remark ?? "—"}</td>
-      </tr>`;
-    }).join("");
+    const resultsRows = (results ?? []).map((r: any) => `
+      <tr>
+        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;">${r.subject_name ?? "—"}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;text-align:center;">${r.ca1 ?? "—"}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;text-align:center;">${r.ca2 ?? "—"}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;text-align:center;">${r.exam_score ?? "—"}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:700;">${r.total_score ?? "—"}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;text-align:center;">${r.grade ?? "—"}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;">${r.remark ?? "—"}</td>
+      </tr>`).join("");
 
     const signatureBlock = rc.signature
-      ? `<p style="margin:0 0 8px 0;font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Authorised Signature</p>
-         <img src="${rc.signature}" width="160" style="max-height:80px;object-fit:contain;" alt="Signature" />`
+      ? `<p style="margin:0 0 4px 0;font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;">Authorised Signature</p>
+         <img src="${rc.signature}" width="200" style="max-height:80px;object-fit:contain;" alt="Signature" />`
       : "";
-
-    const overallGrade = getGradeInfo(avgTotal);
 
     const html = `<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${schoolName} — Report Card</title>
-</head>
-<body style="margin:0;padding:0;font-family:system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;background-color:#f1f5f9;color:#334155;-webkit-font-smoothing:antialiased;">
-  
-  <!-- Wrapper for background -->
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9;padding:24px 10px;">
+<head><meta charset="UTF-8"><title>${schoolName} — Report Card</title></head>
+<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f8fafc;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+    <!-- Header -->
     <tr>
-      <td align="center">
-        
-        <!-- Main Card -->
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.05);border:1px solid #e2e8f0;margin:0 auto;text-align:left;">
-          
-          <!-- Header -->
+      <td style="background:#1e3a5f;padding:28px 32px;">
+        <table width="100%" cellpadding="0" cellspacing="0">
           <tr>
-            <td style="background:linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);padding:40px 32px;text-align:center;">
-              ${schoolLogo ? `<img src="${schoolLogo}" width="80" height="80" style="border-radius:12px;margin-bottom:16px;border:3px solid rgba(255,255,255,0.2);object-fit:cover;" alt="School Logo" />` : ""}
-              <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:900;letter-spacing:-0.5px;">${schoolName}</h1>
-              <p style="margin:8px 0 0;color:#bfdbfe;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:2px;">Academic Report Card</p>
-            </td>
-          </tr>
-
-          <!-- Student Profile Grid -->
-          <tr>
-            <td style="padding:32px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;">
-                <tr>
-                  <td style="padding:20px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;width:50%;">
-                    <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Student Name</div>
-                    <div style="font-size:18px;font-weight:800;color:#0f172a;">${rc.student_name}</div>
-                  </td>
-                  <td style="padding:20px;border-bottom:1px solid #e2e8f0;width:50%;">
-                    <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Class</div>
-                    <div style="font-size:16px;font-weight:700;color:#0f172a;">${rc.student_class}</div>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:20px;border-right:1px solid #e2e8f0;width:50%;">
-                    <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Term</div>
-                    <div style="font-size:15px;font-weight:700;color:#0f172a;">${termLabel}</div>
-                  </td>
-                  <td style="padding:20px;width:50%;">
-                    <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Academic Year</div>
-                    <div style="font-size:15px;font-weight:700;color:#0f172a;">${rc.academic_year}</div>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Results Table -->
-          ${results && results.length > 0 ? `
-          <tr>
-            <td style="padding:0 32px 32px;">
-              <h2 style="margin:0 0 16px;font-size:16px;color:#0f172a;font-weight:800;">Academic Performance</h2>
-              <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
-                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;background-color:#ffffff;">
-                  <thead>
-                    <tr style="background-color:#f1f5f9;">
-                      <th style="padding:12px 16px;text-align:left;font-weight:700;font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #e2e8f0;">Subject</th>
-                      <th style="padding:12px 16px;text-align:center;font-weight:700;font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #e2e8f0;">CA1</th>
-                      <th style="padding:12px 16px;text-align:center;font-weight:700;font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #e2e8f0;">CA2</th>
-                      <th style="padding:12px 16px;text-align:center;font-weight:700;font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #e2e8f0;">Exam</th>
-                      <th style="padding:12px 16px;text-align:center;font-weight:800;font-size:11px;color:#0f172a;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #e2e8f0;">Total</th>
-                      <th style="padding:12px 16px;text-align:center;font-weight:700;font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #e2e8f0;">Grade</th>
-                      <th style="padding:12px 16px;text-align:left;font-weight:700;font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #e2e8f0;">Remark</th>
-                    </tr>
-                  </thead>
-                  <tbody>${resultsRows}</tbody>
-                  <tfoot>
-                    <tr style="background-color:#f8fafc;">
-                      <td colspan="4" style="padding:16px;font-weight:800;font-size:14px;color:#0f172a;border-top:2px solid #e2e8f0;">Overall Performance</td>
-                      <td style="padding:16px;text-align:center;font-weight:900;font-size:16px;color:#0f172a;border-top:2px solid #e2e8f0;">${avgTotal}</td>
-                      <td style="padding:16px;text-align:center;border-top:2px solid #e2e8f0;">
-                        <span style="background-color:${overallGrade.bg};color:${overallGrade.color};padding:6px 10px;border-radius:8px;font-weight:900;font-size:14px;">${overallGrade.grade}</span>
-                      </td>
-                      <td style="padding:16px;border-top:2px solid #e2e8f0;"></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </td>
-          </tr>` : ""}
-
-          <!-- Attendance Section -->
-          <tr>
-            <td style="padding:0 32px 32px;">
-              <h2 style="margin:0 0 16px;font-size:16px;color:#0f172a;font-weight:800;">Attendance Record</h2>
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  ${[["Present", daysPresent, "#ecfdf5", "#059669", "#d1fae5"],
-                     ["Absent", daysAbsent, "#fef2f2", "#dc2626", "#fee2e2"],
-                     ["Rate", attRate, "#f0f9ff", "#0284c7", "#e0f2fe"]].map(([l, v, bg, fg, border]) =>
-                    `<td width="33%" style="padding-right:10px;">
-                      <div style="background-color:${bg};border:1px solid ${border};border-radius:12px;padding:16px;text-align:center;">
-                        <div style="font-size:24px;font-weight:900;color:${fg};line-height:1;">${v}</div>
-                        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:${fg};opacity:0.8;margin-top:8px;letter-spacing:1px;">${l}</div>
-                      </div>
-                    </td>`).join("")}
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Remarks -->
-          ${rc.teacher_remark || rc.principal_remark ? `
-          <tr>
-            <td style="padding:0 32px 32px;">
-              <h2 style="margin:0 0 16px;font-size:16px;color:#0f172a;font-weight:800;">Staff Remarks</h2>
-              
-              ${rc.teacher_remark ? `
-              <div style="background-color:#f8fafc;border-left:4px solid #3b82f6;padding:16px 20px;border-radius:0 12px 12px 0;margin-bottom:16px;">
-                <p style="margin:0 0 6px;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Class Teacher</p>
-                <p style="margin:0;font-size:15px;color:#1e293b;font-style:italic;line-height:1.5;">"${rc.teacher_remark}"</p>
-              </div>` : ""}
-              
-              ${rc.principal_remark ? `
-              <div style="background-color:#f8fafc;border-left:4px solid #6366f1;padding:16px 20px;border-radius:0 12px 12px 0;">
-                <p style="margin:0 0 6px;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Principal</p>
-                <p style="margin:0;font-size:15px;color:#1e293b;font-style:italic;line-height:1.5;">"${rc.principal_remark}"</p>
-              </div>` : ""}
-            </td>
-          </tr>` : ""}
-
-          <!-- Signature -->
-          ${signatureBlock ? `
-          <tr>
-            <td style="padding:0 32px 32px;text-align:right;">
-              ${signatureBlock}
-            </td>
-          </tr>` : ""}
-
-        </table>
-        
-        <!-- Footer & CTA -->
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;margin:0 auto;">
-          <tr>
-            <td style="padding:32px 20px;text-align:center;">
-              <a href="${appUrl || '#'}" style="display:inline-block;background-color:#2563eb;color:#ffffff;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:700;text-decoration:none;box-shadow:0 4px 12px rgba(37,99,235,0.25);">View Interactive Portal</a>
-              <p style="margin:20px 0 0;font-size:12px;color:#94a3b8;font-weight:500;">
-                Sent securely by <strong style="color:#64748b;">${schoolName}</strong>
-              </p>
+            <td>
+              ${schoolLogo ? `<img src="${schoolLogo}" width="60" style="border-radius:8px;margin-bottom:10px;" alt="Logo" />` : ""}
+              <h1 style="margin:0;color:#fff;font-size:22px;font-weight:900;text-transform:uppercase;letter-spacing:1px;">${schoolName}</h1>
+              <p style="margin:6px 0 0;color:#94a3b8;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:2px;">Academic Report Card</p>
             </td>
           </tr>
         </table>
-
+      </td>
+    </tr>
+    <!-- Student Info -->
+    <tr>
+      <td style="padding:24px 32px;border-bottom:1px solid #e2e8f0;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="width:50%;padding:4px 0;">
+              <span style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Student Name</span><br/>
+              <span style="font-size:16px;font-weight:900;color:#1e293b;">${rc.student_name}</span>
+            </td>
+            <td style="width:50%;padding:4px 0;">
+              <span style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Class</span><br/>
+              <span style="font-size:15px;font-weight:700;color:#1e293b;">${rc.student_class}</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0 0;">
+              <span style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Term</span><br/>
+              <span style="font-size:14px;font-weight:700;color:#1e293b;">${termLabel}</span>
+            </td>
+            <td style="padding:8px 0 0;">
+              <span style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Academic Year</span><br/>
+              <span style="font-size:14px;font-weight:700;color:#1e293b;">${rc.academic_year}</span>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <!-- Results Table -->
+    ${results && results.length > 0 ? `
+    <tr>
+      <td style="padding:24px 32px;">
+        <p style="margin:0 0 12px;font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Subject Results</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#1e3a5f;color:#fff;">
+              <th style="padding:8px 10px;text-align:left;font-weight:700;font-size:11px;text-transform:uppercase;">Subject</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:700;font-size:11px;text-transform:uppercase;">CA1</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:700;font-size:11px;text-transform:uppercase;">CA2</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:700;font-size:11px;text-transform:uppercase;">Exam</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:700;font-size:11px;text-transform:uppercase;">Total</th>
+              <th style="padding:8px 10px;text-align:center;font-weight:700;font-size:11px;text-transform:uppercase;">Grade</th>
+              <th style="padding:8px 10px;text-align:left;font-weight:700;font-size:11px;text-transform:uppercase;">Remark</th>
+            </tr>
+          </thead>
+          <tbody>${resultsRows}</tbody>
+          <tfoot>
+            <tr style="background:#f1f5f9;">
+              <td colspan="4" style="padding:8px 10px;font-weight:700;font-size:12px;">Overall Average</td>
+              <td style="padding:8px 10px;text-align:center;font-weight:900;font-size:14px;">${avgTotal}</td>
+              <td style="padding:8px 10px;text-align:center;font-weight:900;font-size:14px;">${grade(avgTotal)}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </td>
+    </tr>` : ""}
+    <!-- Attendance -->
+    <tr>
+      <td style="padding:0 32px 24px;">
+        <p style="margin:0 0 12px;font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Attendance</p>
+        <table cellpadding="0" cellspacing="0">
+          <tr>
+            ${[["Present", daysPresent, "#dcfce7", "#166534"],["Absent", daysAbsent, "#fee2e2", "#991b1b"],["Rate", attRate, "#dbeafe", "#1e3a5f"]].map(([l, v, bg, fg]) =>
+              `<td style="padding-right:12px;">
+                <div style="background:${bg};border-radius:8px;padding:12px 16px;text-align:center;min-width:72px;">
+                  <div style="font-size:18px;font-weight:900;color:${fg};">${v}</div>
+                  <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:${fg};opacity:0.7;margin-top:2px;">${l}</div>
+                </div>
+              </td>`).join("")}
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <!-- Remarks -->
+    ${rc.teacher_remark ? `
+    <tr>
+      <td style="padding:0 32px 20px;">
+        <p style="margin:0 0 6px;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Class Teacher's Remark</p>
+        <p style="margin:0;font-size:14px;color:#334155;font-style:italic;">"${rc.teacher_remark}"</p>
+      </td>
+    </tr>` : ""}
+    ${rc.principal_remark ? `
+    <tr>
+      <td style="padding:0 32px 20px;">
+        <p style="margin:0 0 6px;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Principal's Remark</p>
+        <p style="margin:0;font-size:14px;color:#334155;font-style:italic;">"${rc.principal_remark}"</p>
+      </td>
+    </tr>` : ""}
+    <!-- Signature -->
+    ${signatureBlock ? `
+    <tr>
+      <td style="padding:0 32px 24px;">${signatureBlock}</td>
+    </tr>` : ""}
+    <!-- CTA Button -->
+    ${checkerUrl ? `
+    <tr>
+      <td style="padding:28px 32px;text-align:center;background:#f8fafc;border-top:2px solid #e2e8f0;">
+        <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;">Online Result Portal</p>
+        <p style="margin:0 0 18px;font-size:14px;color:#475569;">
+          View <strong style="color:#1e293b;">${rc.student_name}</strong>\'s full result online — no login required.
+        </p>
+        <a href="${checkerUrl}"
+           style="display:inline-block;background:#1e3a5f;color:#ffffff;padding:15px 36px;
+                  border-radius:10px;font-weight:800;font-size:15px;text-decoration:none;
+                  letter-spacing:0.5px;box-shadow:0 4px 14px rgba(30,58,95,0.3);">
+          &#128203; View Result Online →
+        </a>
+        <p style="margin:16px 0 0;font-size:11px;color:#94a3b8;">
+          This link is unique to your child and expires in 30 days. Do not share it.
+        </p>
+      </td>
+    </tr>` : ""}
+    <!-- Footer -->
+    <tr>
+      <td style="background:#f1f5f9;padding:16px 32px;border-top:1px solid #e2e8f0;">
+        <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">${schoolName}</p>
       </td>
     </tr>
   </table>

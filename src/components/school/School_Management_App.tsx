@@ -1637,7 +1637,7 @@ const StaffDialog = memo(({ staff, mode, onSave, onClose, tenantId }: { staff?: 
   useEffect(() => {
     if (!tenantId) return;
     (async () => {
-      const { supabase } = await import("@/integrations/supabase/client");
+      const { db: schoolDb } = await import("@/supabase/schoolService");
       const { data } = await supabase
         .from("profiles")
         .select("id, email, first_name, last_name, staff_member_id")
@@ -1797,17 +1797,17 @@ const StaffDialog = memo(({ staff, mode, onSave, onClose, tenantId }: { staff?: 
                   const currentId = staff?.id;
                   if (!currentId) return; // Cannot link before saving for the first time
                   
-                  const { supabase } = await import("@/integrations/supabase/client");
+                  const { db: schoolDb } = await import("@/supabase/schoolService");
 
                   // Clear previous link for this staff member if any
                   const previousLinked = schoolProfiles.find(p => p.staff_member_id === currentId);
                   if (previousLinked) {
-                    await (supabase.from("profiles") as any).update({ staff_member_id: null }).eq("id", previousLinked.id);
+                    await (schoolDb().from("profiles") as any).update({ staff_member_id: null }).eq("id", previousLinked.id);
                   }
 
                   // Set new link
                   if (selectedProfileId) {
-                    await (supabase.from("profiles") as any).update({ staff_member_id: currentId }).eq("id", selectedProfileId);
+                    await (schoolDb().from("profiles") as any).update({ staff_member_id: currentId }).eq("id", selectedProfileId);
                   }
 
                   // Update local state to reflect change immediately
@@ -2300,6 +2300,7 @@ const SETTINGS_SECTIONS = [
   { id:"logo",     label:"School Logo",    icon:"🖼️" },
   { id:"info",     label:"School Info",    icon:"🏫" },
   { id:"session",  label:"Session & Term", icon:"📅" },
+  { id:"result_checker", label:"Result Checker", icon:"🔑" },
   { id:"payroll",  label:"Payroll",        icon:"💰" },
   { id:"template", label:"Report Template",icon:"📋" },
   { id:"signatures",label:"Signatures",    icon:"✍️" },
@@ -3604,6 +3605,212 @@ const ResourcesTab = memo(({ showToast }: { showToast: (msg: string, type?: stri
   );
 });
 
+// ─── Result Checker Panel ──────────────────────────────────────────────────
+const ResultCheckerPanel = memo(({ tenantId, schoolSettings, dispatch, appState, showToast }: any) => {
+  const [tokens, setTokens] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [genClass, setGenClass] = useState("");
+  const [genTerm, setGenTerm] = useState("first");
+  const [genLoading, setGenLoading] = useState(false);
+
+  const isEnabled = schoolSettings?.features?.result_checker === true;
+  const classes = Object.keys(appState.classRolls || {});
+  
+  const fetchTokens = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { fetchResultCheckerTokens } = await import("@/supabase/schoolService");
+      const data = await fetchResultCheckerTokens(tenantId);
+      setTokens(data);
+    } catch (e: any) {
+      showToast(e.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [tenantId, showToast]);
+
+  useEffect(() => {
+    if (isEnabled) fetchTokens();
+  }, [isEnabled, fetchTokens]);
+
+  const toggleFeature = async () => {
+    try {
+      const { updateSchoolProfile } = await import("@/supabase/schoolService");
+      await updateSchoolProfile(tenantId, { features: { ...schoolSettings.features, result_checker: !isEnabled } });
+      dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { ...schoolSettings, features: { ...schoolSettings.features, result_checker: !isEnabled } } });
+      showToast(`Result Checker ${!isEnabled ? "Enabled" : "Disabled"}!`);
+    } catch (e: any) {
+      showToast(e.message, "error");
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!genClass) return showToast("Select a class first", "error");
+    const roll = appState.classRolls[genClass] || [];
+    if (!roll.length) return showToast("No students in this class", "error");
+    
+    try {
+      setGenLoading(true);
+      const { generateTokensForClass } = await import("@/supabase/schoolService");
+      const studentsToTokenize = roll.map((s: any) => ({
+        id: s.id,
+        admission_no: s.admNo || "",
+        name: s.name || "",
+        class_name: genClass,
+      }));
+      await generateTokensForClass(tenantId, schoolSettings.session || "2026/2027", genTerm, studentsToTokenize);
+      showToast(`Generated tokens for ${genClass}!`);
+      fetchTokens();
+    } catch (e: any) {
+      showToast(e.message, "error");
+    } finally {
+      setGenLoading(false);
+    }
+  };
+
+  const handleRevoke = async (id: string) => {
+    try {
+      const { revokeToken } = await import("@/supabase/schoolService");
+      await revokeToken(id);
+      showToast("Token revoked");
+      fetchTokens();
+    } catch (e: any) {
+      showToast(e.message, "error");
+    }
+  };
+  
+  const handleExportCSV = () => {
+    const header = "Student,Admission No,Class,Academic Year,Term,Token,Status\n";
+    const csv = tokens.map(t => {
+      const tLabel = t.term === "first" ? "1st Term" : t.term === "second" ? "2nd Term" : "3rd Term";
+      const studentName = t.students ? `${t.students.first_name} ${t.students.last_name}` : "Unknown";
+      return `${studentName},${t.admission_no},${t.students?.class_name || "Unknown"},${t.academic_year},${tLabel},${t.token},${t.is_used ? "Used" : "Active"}`;
+    }).join("\n");
+    const blob = new Blob([header + csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Result_Checker_Tokens_${new Date().getTime()}.csv`;
+    a.click();
+  };
+
+  return (
+    <Card className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-black uppercase text-slate-700">Result Checker Hub</p>
+          <p className="text-xs text-slate-400 mt-0.5">Manage the public portal for parents to check results online.</p>
+        </div>
+        <label className="flex items-center gap-3 py-2.5 px-1 cursor-pointer group">
+          <span className="text-sm font-bold text-slate-700 group-hover:text-slate-900">{isEnabled ? "Portal Online" : "Portal Offline"}</span>
+          <div className={`relative w-10 h-5 rounded-full transition-colors ${isEnabled ? "bg-blue-600" : "bg-slate-200"}`}
+            onClick={(e) => { e.preventDefault(); toggleFeature(); }}>
+            <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${isEnabled ? "translate-x-5" : ""}`} />
+          </div>
+        </label>
+      </div>
+
+      {isEnabled && (
+        <>
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold text-slate-800">Public Portal Link</p>
+                <p className="text-xs text-slate-500">Share this link with parents</p>
+              </div>
+              <Btn onClick={() => { navigator.clipboard.writeText(window.location.origin + "/check/" + (tenantId || "DEMO")); showToast("Link copied!"); }}>Copy Link</Btn>
+            </div>
+            <div className="p-3 bg-white border border-slate-200 rounded-lg text-sm font-mono text-slate-600 break-all">
+              {window.location.origin}/check/{tenantId || "DEMO"}
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-100">
+            <p className="text-sm font-bold text-slate-800 mb-4">Batch Generate Access Tokens</p>
+            <div className="flex items-end gap-3">
+              <div className="flex-1 space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">Class</label>
+                <select className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium" value={genClass} onChange={e => setGenClass(e.target.value)}>
+                  <option value="">-- Select Class --</option>
+                  {classes.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="flex-1 space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">Term</label>
+                <select className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium" value={genTerm} onChange={e => setGenTerm(e.target.value)}>
+                  <option value="first">1st Term</option>
+                  <option value="second">2nd Term</option>
+                  <option value="third">3rd Term</option>
+                </select>
+              </div>
+              <Btn onClick={handleGenerate} disabled={genLoading}>
+                {genLoading ? "Generating..." : "Generate PINs"}
+              </Btn>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold text-slate-800">Token Manager</p>
+              <Btn onClick={handleExportCSV} disabled={tokens.length === 0} className="bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100 text-xs py-1.5">
+                Export to CSV
+              </Btn>
+            </div>
+            
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3">Student</th>
+                    <th className="px-4 py-3">Class</th>
+                    <th className="px-4 py-3 font-mono">PIN / Token</th>
+                    <th className="px-4 py-3">Term</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {loading ? (
+                    <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Loading tokens...</td></tr>
+                  ) : tokens.length === 0 ? (
+                    <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No tokens generated yet.</td></tr>
+                  ) : (
+                    tokens.map(t => (
+                      <tr key={t.id} className="hover:bg-slate-50/50">
+                        <td className="px-4 py-3">
+                          <p className="font-bold text-slate-700">{t.students ? `${t.students.first_name} ${t.students.last_name}` : "Unknown"}</p>
+                          <p className="text-[10px] text-slate-400 uppercase">{t.admission_no}</p>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">{t.students?.class_name || "Unknown"}</td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-1 bg-slate-100 rounded text-slate-700 font-mono text-xs font-bold tracking-wider">{t.token}</span>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-800">
+                          {t.term === "first" ? "1st Term" : t.term === "second" ? "2nd Term" : "3rd Term"} {t.academic_year}
+                        </td>
+                        <td className="px-4 py-3">
+                          {t.is_used ? (
+                            <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-[10px] font-bold uppercase">Used</span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase">Active</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button onClick={() => handleRevoke(t.id)} className="text-red-500 hover:text-red-700 text-xs font-bold uppercase px-2 py-1 rounded hover:bg-red-50">Revoke</button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </Card>
+  );
+});
+
 const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
   isAdmin: boolean;
   showToast: (msg: string, type?: string) => void;
@@ -4320,10 +4527,10 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                 dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { defaultTeacherSignature: t, defaultPrincipalSignature: p } as any });
                 if (tenantId) {
                   try {
-                    const { supabase } = await import("@/integrations/supabase/client");
-                    const { data: school } = await supabase.from("schools").select("id").eq("tenant_id", tenantId).single();
+                    const { db: schoolDb } = await import("@/supabase/schoolService");
+                    const { data: school } = await schoolDb().from("schools").select("id").eq("tenant_id", tenantId).single();
                     if (school) {
-                      await (supabase.from("schools") as any).update({ default_teacher_signature: t, default_principal_signature: p }).eq("id", school.id);
+                      await (schoolDb().from("schools") as any).update({ default_teacher_signature: t, default_principal_signature: p }).eq("id", school.id);
                     }
                   } catch (e) {
                     console.error("Failed to save signatures to Supabase", e);
@@ -4418,7 +4625,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                   try {
                     const localStructs = JSON.parse(localStorage.getItem("sf_fee_structure_v2") || "{}");
                     const localPayments = JSON.parse(localStorage.getItem("sf_fees_v2") || "{}");
-                    const { supabase } = await import("@/integrations/supabase/client");
+                    const { db: schoolDb } = await import("@/supabase/schoolService");
                     
                     let migratedStructs = 0;
                     let migratedPayments = 0;
@@ -4466,11 +4673,47 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
               </div>
             </Card>
           )}
+
+          {sec === "result_checker" && (
+            <ResultCheckerPanel tenantId={tenantId} schoolSettings={schoolSettings} dispatch={dispatch} appState={state} showToast={showToast} />
+          )}
         </div>
       </div>
     </div>
   );
 });
+
+// ─── AutoStamp Component ───────────────────────────────────────────────────────
+const AutoStamp = ({ schoolName, date, color = "#1e40af" }: { schoolName: string; date: string; color?: string }) => {
+  const sn = (schoolName || "SCHOOL NAME").toUpperCase();
+  const fs = sn.length > 28 ? 5.2 : sn.length > 20 ? 6.5 : 7.8;
+  return (
+    <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', transform: 'rotate(-6deg)', opacity: 0.85, mixBlendMode: 'multiply' }}>
+      <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+        <defs>
+          <path id="top-arc-rc-sm" d="M 11,50 A 39,39 0 1,1 89,50" fill="transparent" />
+          <path id="bottom-arc-rc-sm" d="M 11,50 A 39,39 0 0,0 89,50" fill="transparent" />
+        </defs>
+        <circle cx="50" cy="50" r="48.5" stroke={color} strokeWidth="1.6" fill="none" />
+        <circle cx="50" cy="50" r="46" stroke={color} strokeWidth="0.6" fill="none" />
+        <circle cx="50" cy="50" r="30" stroke={color} strokeWidth="1" fill="none" />
+        <text fill={color} fontSize={fs} fontWeight="bold" letterSpacing="1" textAnchor="middle">
+          <textPath href="#top-arc-rc-sm" startOffset="50%">&#9733; {sn} &#9733;</textPath>
+        </text>
+        <text fill={color} fontSize="6" fontWeight="bold" letterSpacing="1.2" textAnchor="middle">
+          <textPath href="#bottom-arc-rc-sm" startOffset="50%">OFFICIAL ACADEMIC REPORT</textPath>
+        </text>
+        <text x="50" y="44" fill={color} fontSize="4.5" fontWeight="bold" letterSpacing="1.5" textAnchor="middle" opacity="0.8">
+          APPROVED &amp; ISSUED
+        </text>
+        <line x1="34" y1="47.5" x2="66" y2="47.5" stroke={color} strokeWidth="0.5" opacity="0.6" />
+        <text x="50" y="56" fill={color} fontSize={fs === 7.8 ? 8.5 : fs === 6.5 ? 7 : 6} fontWeight="900" letterSpacing="0.8" textAnchor="middle">
+          {date}
+        </text>
+      </svg>
+    </div>
+  );
+};
 
 // ─── Report Sheet ─────────────────────────────────────────────────────────────
 const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, classTeacher, linkedSignatures }: any) => {
@@ -4750,14 +4993,15 @@ const AttendanceTab = memo(() => {
     const existing = classRolls[rollClass] || [];
     if (existing.find(s => s.name.toLowerCase() === newName.trim().toLowerCase()))
       return showToast("Student already exists", "error");
+    const localId = uid();
     dispatch({
       type: "SAVE_CLASS_ROLL",
       className: rollClass,
-      students: [...existing, { id: uid(), name: newName.trim(), admNo: newAdmNo.trim(), gender: newGender || undefined }],
+      students: [...existing, { id: localId, name: newName.trim(), admNo: newAdmNo.trim(), gender: newGender || undefined }],
       actor: currentActor,
     });
 
-    // Phase 4 Roster Cutover Dual-Write
+    // Phase 4 Roster Cutover Dual-Write — also patch local roll with real DB UUID
     if (tenantId) {
       import("@/supabase/schoolService").then(({ bulkCreateStudents }) => {
         bulkCreateStudents(tenantId, [{
@@ -4766,7 +5010,17 @@ const AttendanceTab = memo(() => {
           admission_no: newAdmNo.trim(),
           class_name: rollClass,
           gender: newGender || undefined,
-        }]).catch(console.error);
+        }]).then((result) => {
+          if (result?.ids?.[0]) {
+            // Patch the local roll entry with the real DB UUID so token gen works
+            dispatch((state: any) => {
+              const roll = (state.classRolls[rollClass] || []).map((s: any) =>
+                s.id === localId ? { ...s, id: result.ids[0] } : s
+              );
+              return { type: "SAVE_CLASS_ROLL", className: rollClass, students: roll, actor: "System" };
+            });
+          }
+        }).catch(console.error);
       });
     }
 
@@ -4783,9 +5037,10 @@ const AttendanceTab = memo(() => {
       .filter(l => !existingNames.has(l.toLowerCase()))
       .map(l => ({ id: uid(), name: l, admNo: "" }));
     if (!newStudents.length) return showToast("All students already in roll", "warning");
+    const localIds = newStudents.map(s => s.id);
     dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: [...existing, ...newStudents], actor: currentActor });
 
-    // Phase 4 Roster Cutover Dual-Write
+    // Phase 4 Roster Cutover Dual-Write — patch local IDs with real DB UUIDs
     if (tenantId) {
       import("@/supabase/schoolService").then(({ bulkCreateStudents }) => {
         bulkCreateStudents(tenantId, newStudents.map(s => ({
@@ -4793,7 +5048,17 @@ const AttendanceTab = memo(() => {
           last_name: s.name.split(" ").slice(1).join(" ") || "",
           admission_no: "",
           class_name: rollClass,
-        }))).catch(console.error);
+        }))).then((result) => {
+          if (result?.ids?.length) {
+            dispatch((state: any) => {
+              const roll = (state.classRolls[rollClass] || []).map((s: any) => {
+                const idx = localIds.indexOf(s.id);
+                return idx !== -1 && result.ids[idx] ? { ...s, id: result.ids[idx] } : s;
+              });
+              return { type: "SAVE_CLASS_ROLL", className: rollClass, students: roll, actor: "System" };
+            });
+          }
+        }).catch(console.error);
       });
     }
 
@@ -6381,8 +6646,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     if (linkedSignatures[classTeacher.id] !== undefined) return; // already fetched or attempted
     
     (async () => {
-      const { supabase } = await import("@/integrations/supabase/client");
-      const { data } = await (supabase
+      const { db: schoolDb } = await import("@/supabase/schoolService");
+      const { data } = await (schoolDb()
         .from("profiles") as any)
         .select("signature")
         .eq("staff_member_id", classTeacher.id)
@@ -8331,3 +8596,6 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     </AppCtx.Provider>
   );
 }
+
+
+

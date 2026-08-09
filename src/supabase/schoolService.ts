@@ -17,7 +17,7 @@ let _tenantDb: any = null;
 let _lastToken: string | null = null;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db = (): any => {
+export const db = (): any => {
   try {
     const raw = sessionStorage.getItem("schoolapp_tenant_session_v2");
     const token = raw ? JSON.parse(raw).sessionToken : null;
@@ -215,10 +215,13 @@ function throwIfError(error: unknown, context: string): void {
 
 export async function getSchoolProfile(schoolId: string | null): Promise<School> {
   const sid = requireSchoolId(schoolId);
+  const { data: sRow } = await db().from("schools").select("id").eq("tenant_id", sid).maybeSingle();
+  const actualId = sRow?.id || sid;
+
   const { data, error } = await db()
     .from("schools")
     .select("*")
-    .eq("id", sid)
+    .eq("id", actualId)
     .single();
   throwIfError(error, "getSchoolProfile");
   return data as School;
@@ -229,10 +232,13 @@ export async function updateSchoolProfile(
   updates: Partial<School>
 ): Promise<School> {
   const sid = requireSchoolId(schoolId);
+  const { data: sRow } = await db().from("schools").select("id").eq("tenant_id", sid).maybeSingle();
+  const actualId = sRow?.id || sid;
+
   const { data, error } = await db()
     .from("schools")
     .update(updates)
-    .eq("id", sid)
+    .eq("id", actualId)
     .select()
     .single();
   throwIfError(error, "updateSchoolProfile");
@@ -419,7 +425,7 @@ export async function changeStudentStatus(
 export async function bulkCreateStudents(
   schoolId: string | null,
   rows: Omit<Student, "id" | "school_id" | "created_at" | "updated_at" | "enrolled_at">[]
-): Promise<{ inserted: number; errors: { row: number; reason: string }[] }> {
+): Promise<{ inserted: number; ids: string[]; errors: { row: number; reason: string }[] }> {
   const sid = requireSchoolId(schoolId);
   
   // Resolve tenantId to actual schools.id to prevent FK violation
@@ -432,6 +438,7 @@ export async function bulkCreateStudents(
 
   const CHUNK = 500;
   let inserted = 0;
+  const ids: string[] = [];
   const errors: { row: number; reason: string }[] = [];
 
   for (let i = 0; i < rows.length; i += CHUNK) {
@@ -445,9 +452,10 @@ export async function bulkCreateStudents(
       errors.push({ row: i, reason: error.message });
     } else {
       inserted += (data ?? []).length;
+      (data ?? []).forEach((row: any) => ids.push(row.id));
     }
   }
-  return { inserted, errors };
+  return { inserted, ids, errors };
 }
 
 // ─── Teachers ─────────────────────────────────────────────────────────
@@ -1011,4 +1019,127 @@ export async function getRecentActivity(
   throwIfError(error, "getRecentActivity");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []) as any as { id: number; staff_id: string; action: string; details: string | null; timestamp: string }[];
+}
+
+// ─── Result Checker Tokens ──────────────────────────────────────────────────
+
+export type ResultCheckerToken = {
+  id: string;
+  student_id: string;
+  admission_no: string;
+  academic_year: string;
+  term: string;
+  token: string;
+  is_used: boolean;
+  expires_at: string;
+  students?: { first_name: string; last_name: string; class_name: string };
+};
+
+export async function fetchResultCheckerTokens(schoolId: string | null): Promise<ResultCheckerToken[]> {
+  const sid = requireSchoolId(schoolId);
+  const { data: sRow } = await db().from("schools").select("id").eq("tenant_id", sid).maybeSingle();
+  const actualId = sRow?.id || sid;
+
+  const { data, error } = await db()
+    .from("result_checker_tokens")
+    .select("*, students(first_name,last_name,class_name)")
+    .eq("school_id", actualId)
+    .order("created_at", { ascending: false });
+
+  throwIfError(error, "fetchResultCheckerTokens");
+  return data as any;
+}
+
+export async function generateTokensForClass(
+  schoolId: string | null,
+  academicYear: string,
+  term: string,
+  studentsToTokenize: { id: string; admission_no: string; name?: string; class_name?: string }[]
+): Promise<void> {
+  const sid = requireSchoolId(schoolId);
+  if (!studentsToTokenize.length) return;
+
+  const { data: sRow } = await db().from("schools").select("id").eq("tenant_id", sid).maybeSingle();
+  const actualId = sRow?.id || sid;
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  // ── Step 1: Separate students into those with real UUIDs and those with local IDs ──
+  const withRealId = studentsToTokenize.filter(s => UUID_RE.test(s.id));
+  const needsLookup = studentsToTokenize.filter(s => !UUID_RE.test(s.id) && s.name);
+
+  // ── Step 2: For students with local IDs, look them up or create them in the DB ──
+  const resolved: { id: string; admission_no: string }[] = [...withRealId];
+
+  for (const student of needsLookup) {
+    const nameParts = (student.name || "").trim().split(" ");
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ") || "";
+
+    // Try to find existing student by name and class
+    const { data: existing } = await db()
+      .from("students")
+      .select("id")
+      .eq("school_id", actualId)
+      .ilike("first_name", firstName)
+      .ilike("class_name", student.class_name || "")
+      .maybeSingle();
+
+    if (existing?.id) {
+      resolved.push({ id: existing.id, admission_no: student.admission_no });
+    } else if (firstName) {
+      // Auto-create the student in the DB so they can get a token
+      const { data: created } = await db()
+        .from("students")
+        .insert({
+          school_id: actualId,
+          first_name: firstName,
+          last_name: lastName,
+          class_name: student.class_name || "",
+          admission_no: student.admission_no || "",
+        })
+        .select("id")
+        .single();
+      if (created?.id) {
+        resolved.push({ id: created.id, admission_no: student.admission_no });
+      }
+    }
+  }
+
+  if (resolved.length === 0) {
+    throw new Error(
+      "Cannot generate tokens: no students could be matched or created in the database. " +
+      "Please ensure students have names in their class roll."
+    );
+  }
+
+  const generatePin = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let pin = 'RC-';
+    for (let i = 0; i < 8; i++) {
+      if (i === 4) pin += '-';
+      pin += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return pin;
+  };
+
+  const payload = resolved.map((s) => ({
+    school_id: actualId,
+    student_id: s.id,
+    admission_no: s.admission_no || s.id.substring(0, 8),
+    academic_year: academicYear,
+    term: term,
+    token: generatePin(),
+  }));
+
+  const { error } = await db().from("result_checker_tokens").insert(payload);
+  throwIfError(error, "generateTokensForClass");
+}
+
+export async function revokeToken(tokenId: string): Promise<void> {
+  const { error } = await db()
+    .from("result_checker_tokens")
+    .delete()
+    .eq("id", tokenId);
+  throwIfError(error, "revokeToken");
 }
