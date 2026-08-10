@@ -342,6 +342,17 @@ export default function ResultChecker() {
           </div>
         )}
 
+        {/* Powered By Footer for Landing Page */}
+        {!result && (
+          <div style={{ marginTop: 32, display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: 0.8 }}>
+            <p style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8, fontWeight: 600 }}>Powered by</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <img src="/logo.png" alt="Titbeattechsolutions Logo" style={{ width: 24, height: 24, objectFit: 'contain' }} />
+              <p style={{ fontSize: 14, fontWeight: 700, color: '#fff', letterSpacing: '0.2px', textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>Titbeattechsolutions LTD</p>
+            </div>
+          </div>
+        )}
+
         {/* Top actions bar when result shows */}
         {result && (
           <div id="top-bar" style={{ display: 'flex', width: '100%', maxWidth: '800px', justifyContent: 'space-between', marginBottom: 16 }}>
