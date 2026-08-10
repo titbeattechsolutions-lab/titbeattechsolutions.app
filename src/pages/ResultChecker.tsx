@@ -134,6 +134,26 @@ export default function ResultChecker() {
   const [result, setResult]           = useState<ResultData | null>(null);
   const [alreadyUsed, setAlreadyUsed] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  // School branding for the landing page header
+  const [branding, setBranding]       = useState<{ name: string | null; logo: string | null }>({ name: null, logo: null });
+
+  // Fetch school branding (name + logo) as soon as the page loads
+  useEffect(() => {
+    if (!schoolCode) return;
+    fetch(`${SUPABASE_URL}/functions/v1/get-school-branding`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ school_code: schoolCode }),
+    })
+      .then(r => r.json())
+      .then(d => { if (d.name) setBranding({ name: d.name, logo: d.logo ?? null }); })
+      .catch(() => {}); // Silently fail — generic header shown as fallback
+  }, [schoolCode]);
+
 
   const checkResult = useCallback(async (adm: string, tok: string) => {
     if (!adm.trim() || !tok.trim() || !schoolCode) return;
@@ -285,9 +305,29 @@ export default function ResultChecker() {
         {/* Header */}
         {!result && (
           <div className="rc-header">
-            <div className="rc-logo-ring">📋</div>
-            <h1 className="rc-title">Result Checker</h1>
-            <p className="rc-subtitle">Enter your access token to view your child's result</p>
+            {/* School logo or animated fallback ring */}
+            {branding.logo ? (
+              <div style={{
+                width: 80, height: 80, borderRadius: '50%', margin: '0 auto 16px',
+                background: 'rgba(255,255,255,0.08)', border: '2px solid rgba(255,255,255,0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 0 32px rgba(99,102,241,0.3)',
+                overflow: 'hidden',
+              }}>
+                <img src={branding.logo} alt={`${branding.name} Logo`}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 6 }} />
+              </div>
+            ) : (
+              <div className="rc-logo-ring">🎓</div>
+            )}
+            <h1 className="rc-title">
+              {branding.name ? branding.name : "Result Checker"}
+            </h1>
+            <p className="rc-subtitle">
+              {branding.name
+                ? `Enter your access token to view your result from ${branding.name}`
+                : "Enter your access token to view your child's result"}
+            </p>
           </div>
         )}
 
