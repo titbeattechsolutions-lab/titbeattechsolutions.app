@@ -133,6 +133,7 @@ export default function ResultChecker() {
   const [error, setError]             = useState<string | null>(null);
   const [result, setResult]           = useState<ResultData | null>(null);
   const [alreadyUsed, setAlreadyUsed] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const checkResult = useCallback(async (adm: string, tok: string) => {
     if (!adm.trim() || !tok.trim() || !schoolCode) return;
@@ -182,6 +183,36 @@ export default function ResultChecker() {
   };
 
   const handlePrint = () => window.print();
+
+  const handleDownloadPdf = async () => {
+    const element = document.getElementById('report-print-area');
+    if (!element || !result) return;
+    
+    try {
+      setDownloading(true);
+      const html2canvas = (await import('html2canvas')).default;
+      const { jsPDF } = await import('jspdf');
+      
+      const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+      const imgData = canvas.toDataURL('image/png');
+      
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`Result_${result.student.name.replace(/\s+/g, '_')}.pdf`);
+    } catch (e) {
+      console.error("Failed to generate PDF", e);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   // Extract settings if available
   let tpl: ReportTemplateConfig = DEFAULT_REPORT_TEMPLATE;
@@ -321,7 +352,12 @@ export default function ResultChecker() {
             >
               ← Back
             </button>
-            <button className="print-btn" onClick={handlePrint}>🖨️ Print Result</button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="print-btn" onClick={handlePrint}>🖨️ Print Result</button>
+              <button className="print-btn" style={{ background: '#2563eb' }} onClick={handleDownloadPdf} disabled={downloading}>
+                {downloading ? "⏳ Generating..." : "📥 Download PDF"}
+              </button>
+            </div>
           </div>
         )}
 
