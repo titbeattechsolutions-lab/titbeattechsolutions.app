@@ -902,11 +902,8 @@ const fmtDate = (iso: string) =>
 // ─── State / Reducer ──────────────────────────────────────────────────────────
 const _saved = loadDB();
 
-// Default staff — plain PINs, automatically migrated to hashed on first login
-const _defaultStaff: StaffMember[] = [
-  { id:"s1", name:"Mrs. Amaka Obi",  role:"Class Teacher",   pin:"5678", status:"active", assignedClasses:["Primary 3","Primary 4"], assignedSubjects:[], permissions:{scoreEntry:true,viewReports:true,printReports:true,manageRecords:false},  createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() },
-  { id:"s2", name:"Mr. Chidi Eze",   role:"Subject Teacher", pin:"9012", status:"active", assignedClasses:["JSS 1","JSS 2","JSS 3"],  assignedSubjects:["Mathematics"], permissions:{scoreEntry:true,viewReports:true,printReports:false,manageRecords:false}, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() },
-];
+// Default staff - Empty for new tenants
+const _defaultStaff: StaffMember[] = [];
 
 // NAPPS-Standard Timetable: Assembly → 4 lessons → Break (10:40-11:10) →
 // 2 lessons → Lunch → 3 lessons → Closing at 3:00PM (NAPPS).
@@ -938,7 +935,7 @@ const initialState: AppState = {
   attendance:     _saved.attendance     ?? [],
   classRolls:     _saved.classRolls     ?? {},
   staffList:      _saved.staffList      ?? _defaultStaff,
-  schoolSettings: _saved.schoolSettings ?? { name:"Greatmind Academy", motto:"Excellence in every child", session:"2024/2025", term:"First Term", resumptionDate:"January 8th, 2025" },
+  schoolSettings: _saved.schoolSettings ?? { name:"", motto:"", session:"", term:"", resumptionDate:"" },
   timetable:      _saved.timetable      ?? _defaultTimetable,
   notifications:  _saved.notifications  ?? [],
   staffSignIns:   _saved.staffSignIns   ?? [],
