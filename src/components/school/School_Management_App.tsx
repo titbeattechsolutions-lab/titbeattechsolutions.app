@@ -7112,6 +7112,23 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     const pos = standings.find(s => s.name === student.name.toLowerCase().trim())?.rank || 0;
     
     const total = records.reduce((a, c) => a + c.total, 0);
+
+    // Auto-fill attendance if empty
+    const curComments = appState.comments[student.id] || {};
+    if (!curComments.daysOpen && !curComments.daysPresent && !curComments.daysAbsent) {
+      const classAttendance = appState.attendance.filter(a => a.studentClass === student.class);
+      if (classAttendance.length > 0) {
+        const uniqueDates = new Set(classAttendance.map(a => a.date));
+        const studentAttendance = classAttendance.filter(a => a.studentName.toLowerCase() === student.name.toLowerCase());
+        const presentCount = studentAttendance.filter(a => a.status === "Present" || a.status === "Late").length;
+        const absentCount = studentAttendance.filter(a => a.status === "Absent").length;
+        
+        dispatch({ type: "SET_COMMENT", studentId: student.id, field: "daysOpen", value: String(uniqueDates.size) });
+        dispatch({ type: "SET_COMMENT", studentId: student.id, field: "daysPresent", value: String(presentCount) });
+        dispatch({ type: "SET_COMMENT", studentId: student.id, field: "daysAbsent", value: String(absentCount) });
+      }
+    }
+
     setActiveReport({
       id: student.id,
       name: student.name,
@@ -7122,7 +7139,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
       summary: { total, obtainable: records.length * 100, avg: records.length ? (total / records.length).toFixed(1) : "0.0" },
     });
     setActiveTab("reports");
-  }, [entries, showToast, schoolSettings.term, schoolSettings.session]);
+  }, [entries, showToast, schoolSettings.term, schoolSettings.session, appState.comments, appState.attendance, dispatch]);
 
   const saveStaff = useCallback(async (sd: StaffMember) => {
     const isEdit = appState.staffList.some(s => s.id === sd.id);
