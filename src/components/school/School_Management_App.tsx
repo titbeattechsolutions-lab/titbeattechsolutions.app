@@ -8219,6 +8219,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                           tenantId={tenantId}
                           canPrint={can("printReports") || isAdmin}
                           dispatch={dispatch}
+                           classTeacher={classTeacher}
                           onExportExcel={async () => {
                             if (can("printReports") || isAdmin) {
                               await exportSingleStudentExcel(activeReport, curC, attRate, schoolSettings);

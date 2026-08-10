@@ -3,7 +3,7 @@
  *
  * Adds three capabilities on top of the existing School_Management_App report editor
  * without modifying that component's internal logic:
- *   1. Save to Supabase report_cards table (incl. e-signature)
+ *   1. Save to Supabase report_cards table (incl. e-signature, traits, position)
  *   2. Print Report button → window.print()
  *   3. Send to Parent button → confirmation modal → send-report-card Edge Function
  */
@@ -19,35 +19,6 @@ import { Printer, Mail, CheckCheck, Loader2, AlertTriangle, UserPen, ArrowRight,
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from "@/components/ui/dialog";
-
-interface ReportCardActionsProps {
-  /** activeReport from School_Management_App state */
-  activeReport: {
-    id: string;
-    name: string;
-    class: string;
-    records: any[];
-    summary: { total: number; obtainable: number; avg: string };
-  } | null;
-  /** curC from School_Management_App (comments + attendance + sigs) */
-  curC: {
-    teacher?: string;
-    principal?: string;
-    teacherSig?: string;
-    principalSig?: string;
-    daysOpen?: string;
-    daysPresent?: string;
-    daysAbsent?: string;
-  };
-  schoolSettings: {
-    term: string;
-    session: string;
-    name?: string;
-  };
-  /** Optional tenant UUID — used to look up the Supabase school_id */
-  tenantId?: string | null;
-  classTeacher?: any;
-}
 
 // ─── Normalise term value ─────────────────────────────────────────────────
 const normaliseTerm = (t: string): "first" | "second" | "third" => {
@@ -71,6 +42,7 @@ export default function ReportCardSupabaseActions({
   curC: any;
   schoolSettings: any;
   tenantId: string | null;
+  classTeacher?: any;
   canPrint?: boolean;
   dispatch?: any;
   onExportExcel?: () => void;
@@ -298,33 +270,51 @@ export default function ReportCardSupabaseActions({
         throw new Error("Could not resolve a valid Class ID for '" + activeReport.class + "'. Ensure it exists or check permissions.");
       }
 
+      // ── Build traits: ALL curC keys except the standard attendance/remark text fields.
+      // This captures bh_* (behavioural), ps_* (psychomotor), and any other custom fields.
+      const standardTextKeys = new Set(["teacher", "principal", "daysOpen", "daysPresent", "daysAbsent"]);
+      const traits: Record<string, any> = {};
+      for (const key of Object.keys(curC || {})) {
+        // Include everything except the standard text-only fields (retain signature fields too)
+        if (!standardTextKeys.has(key) && curC[key] !== undefined && curC[key] !== "") {
+          traits[key] = curC[key];
+        }
+      }
+      // Always ensure these critical fields are present (even if empty string was falsy)
+      traits.teacherSig    = curC.teacherSig    || null;
+      traits.principalSig  = curC.principalSig  || null;
+      traits.teacherName   = classTeacher?.name  || null;
+      traits.principalName = (schoolSettings as any).principalName || null;
+
       // Pick the principal signature (prefer principalSig, fallback teacherSig)
       const signature = curC.principalSig || curC.teacherSig || null;
 
-      // Extract behavioural traits from curC (everything that isn't a standard field)
-      const standardKeys = new Set(["teacher", "principal", "teacherSig", "principalSig", "daysOpen", "daysPresent", "daysAbsent"]);
-      const traits = Object.keys(curC || {}).reduce((acc: any, key) => {
-        if (!standardKeys.has(key) && curC[key]) acc[key] = curC[key];
-        return acc;
-      }, {
-        teacherName: classTeacher?.name || null,
-        principalName: schoolSettings.name ? (schoolSettings as any).principalName : null,
-        teacherSig: curC.teacherSig || null,
-        principalSig: curC.principalSig || null,
-      });
+      // ── Compute summary fields from activeReport ──
+      const totalScore    = activeReport.summary?.total ?? null;
+      const totalSubjects = activeReport.records?.length ?? null;
+      const averageScore  = activeReport.summary?.avg ? parseFloat(activeReport.summary.avg) : null;
+      // Position: strip ordinal suffix ("3rd" → 3)
+      const positionRaw   = activeReport.position;
+      const positionNum   = positionRaw
+        ? (parseInt(String(positionRaw).replace(/\D/g, ""), 10) || null)
+        : null;
 
       const payload = {
-        school_id:       schoolId,
-        student_id:      studentDbId,
-        student_name:    activeReport.name,
-        student_class:   activeReport.class,
-        term:            normaliseTerm(schoolSettings.term),
-        academic_year:   schoolSettings.session,
-        teacher_remark:  curC.teacher   || null,
-        principal_remark:curC.principal || null,
-        days_open:       curC.daysOpen    ? parseInt(curC.daysOpen)    : null,
-        days_present:    curC.daysPresent ? parseInt(curC.daysPresent) : null,
-        days_absent:     curC.daysAbsent  ? parseInt(curC.daysAbsent)  : null,
+        school_id:         schoolId,
+        student_id:        studentDbId,
+        student_name:      activeReport.name,
+        student_class:     activeReport.class,
+        term:              normaliseTerm(schoolSettings.term),
+        academic_year:     schoolSettings.session,
+        teacher_remark:    curC.teacher    || null,
+        principal_remark:  curC.principal  || null,
+        days_open:         curC.daysOpen    ? parseInt(curC.daysOpen)    : null,
+        days_present:      curC.daysPresent ? parseInt(curC.daysPresent) : null,
+        days_absent:       curC.daysAbsent  ? parseInt(curC.daysAbsent)  : null,
+        total_score:       totalScore,
+        total_subjects:    totalSubjects,
+        average_score:     averageScore,
+        position_in_class: positionNum,
         signature,
         traits,
       };
@@ -476,7 +466,7 @@ export default function ReportCardSupabaseActions({
     } finally {
       setSaving(false);
     }
-  }, [activeReport, curC, schoolId, schoolSettings, studentDbId, toast]);
+  }, [activeReport, curC, schoolId, schoolSettings, studentDbId, classTeacher, toast]);
 
   // ─── Print ────────────────────────────────────────────────────────────────
   const handlePrint = () => window.print();
@@ -778,4 +768,3 @@ export default function ReportCardSupabaseActions({
     </>
   );
 }
-
