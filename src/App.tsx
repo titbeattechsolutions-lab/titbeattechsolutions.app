@@ -27,6 +27,7 @@ import ProvisionSchoolPage from "./pages/superadmin/ProvisionSchoolPage";
 import ActivityLogPage from "./pages/superadmin/ActivityLogPage";
 import PlatformStatsPage from "./pages/superadmin/PlatformStatsPage";
 import BillingListPage from "./pages/superadmin/BillingListPage";
+import { PWAReloadPrompt } from "./components/PWAReloadPrompt";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,6 +57,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <PWAReloadPrompt />
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthProvider>
           <Routes>
