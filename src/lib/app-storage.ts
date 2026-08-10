@@ -1,4 +1,4 @@
-﻿/**
+/**
  * app-storage.ts
  * Unified storage utility for the school app state blob.
  *
@@ -82,6 +82,19 @@ export function setAppStateSync(value: string): void {
 
 /** Clear the app state from BOTH stores (used on logout/suspension). */
 export async function clearAppState(): Promise<void> {
-  try { localStorage.removeItem(DB_KEY); } catch {}
+  // Wipe ALL tenant-specific keys so no data bleeds across tenants.
+  const TENANT_KEYS = [
+    DB_KEY,
+    "sf_fees_v2",
+    "sf_fee_structure_v2",
+    "saved_resources",
+    "gm_score_drafts_v1",
+    "app_tour_completed",
+    "gm_last_tenant_id",
+  ];
+  for (const key of TENANT_KEYS) {
+    try { localStorage.removeItem(key); } catch {}
+  }
   try { await del(IDB_KEY); } catch {}
 }
+

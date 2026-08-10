@@ -119,8 +119,32 @@ export default function TenantApp() {
       return;
     }
 
+    // ── Pre-clear tenant cache ─────────────────────────────────────────────────
+    // If a different tenant's data is still in localStorage (e.g. the browser was
+    // used by another school previously), wipe it NOW — synchronously — before the
+    // App component mounts. This ensures the module-level `_saved = loadDB()` in
+    // School_Management_App reads an empty store and initialState stays clean.
+    const lastTenantId = localStorage.getItem("gm_last_tenant_id");
+    if (lastTenantId && lastTenantId !== s.tenantId) {
+      const TENANT_KEYS = [
+        DB_KEY,
+        "sf_fees_v2",
+        "sf_fee_structure_v2",
+        "saved_resources",
+        "gm_score_drafts_v1",
+        "app_tour_completed",
+        "gm_device_id",
+        "gm_last_tenant_id",
+      ];
+      for (const key of TENANT_KEYS) {
+        try { localStorage.removeItem(key); } catch {}
+      }
+    }
+    // ── End pre-clear ──────────────────────────────────────────────────────────
+
     (async () => {
       try {
+
         const remote = await fetchTenantData(s);
         console.log("FRESH LOAD: remote data received:", remote);
         if (remote === null) {

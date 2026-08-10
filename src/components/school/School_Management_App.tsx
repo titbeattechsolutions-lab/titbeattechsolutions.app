@@ -1174,6 +1174,19 @@ function appReducer(state: AppState, action: any): AppState {
         attendance: mergedAttendance, entries: mergedEntries, bin: mergedBin 
       };
     }
+    case "HARD_RESET": {
+      // Unconditional clean-slate reset. Used exclusively for tenant switching.
+      // Unlike REPLACE_ALL (which merges for cross-device sync), this wipes ALL
+      // existing state and replaces it with the payload. Never use for normal sync.
+      return {
+        ...initialState,
+        ...(action.payload || {}),
+        schoolSettings: {
+          name: "", motto: "", session: "", term: "", resumptionDate: "",
+          ...(action.payload?.schoolSettings || {}),
+        },
+      };
+    }
     case "__HYDRATE__":
       return { ...state, [action.key]: action.value };
     default:
@@ -6586,6 +6599,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     if (tenantId) {
       const lastTenantId = localStorage.getItem("gm_last_tenant_id");
       if (lastTenantId !== tenantId) {
+        // Different (or first) tenant — nuke ALL tenant-scoped localStorage keys
+        // so `_saved = loadDB()` on any subsequent module-level load returns empty.
         try {
           localStorage.removeItem("greatmind_school_db_v2");
           localStorage.removeItem("sf_fee_structure_v2");
@@ -6593,7 +6608,9 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
           localStorage.removeItem("saved_resources");
           localStorage.removeItem("gm_score_drafts_v1");
           localStorage.removeItem("app_tour_completed");
-          dispatchRaw({ type: "REPLACE_ALL", payload: {
+          localStorage.removeItem("gm_device_id");
+          // HARD_RESET: unconditional clean-slate wipe (not a merge like REPLACE_ALL)
+          dispatchRaw({ type: "HARD_RESET", payload: {
             entries: [], bin: [], logs: [], comments: {}, attendance: [], classRolls: {},
             staffList: [], schoolSettings: { name:"", motto:"", session:"", term:"", resumptionDate:"" },
             timetable: _defaultTimetable, notifications: [], staffSignIns: [], salaryStructures: {}, payrollRecords: {}
@@ -6603,6 +6620,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
       localStorage.setItem("gm_last_tenant_id", tenantId);
     }
   }, [tenantId]);
+
   const dispatch = useCallback((action: any) => {
     dispatchRaw(action);
     // Background sync to Supabase
