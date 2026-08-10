@@ -6885,7 +6885,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
       (!dbSearch || e.studentName.toLowerCase().includes(dbSearch.toLowerCase())) &&
       (!dbClass  || e.studentClass === dbClass) &&
       (!dbDate   || e.createdAt.slice(0, 10) === dbDate)
-    );
+    ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [termEntries, entries, dbSearch, dbClass, dbDate, dbTerm, schoolSettings.term, schoolSettings.session]);
 
   const curC = useMemo(() =>
