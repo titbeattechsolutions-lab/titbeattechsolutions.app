@@ -6588,7 +6588,16 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
       if (lastTenantId && lastTenantId !== tenantId) {
         try {
           localStorage.removeItem("greatmind_school_db_v2");
-          dispatchRaw({ type: "REPLACE_ALL", payload: initialState });
+          localStorage.removeItem("sf_fee_structure_v2");
+          localStorage.removeItem("sf_fees_v2");
+          localStorage.removeItem("saved_resources");
+          localStorage.removeItem("gm_score_drafts_v1");
+          localStorage.removeItem("app_tour_completed");
+          dispatchRaw({ type: "REPLACE_ALL", payload: {
+            entries: [], bin: [], logs: [], comments: {}, attendance: [], classRolls: {},
+            staffList: [], schoolSettings: { name:"", motto:"", session:"", term:"", resumptionDate:"" },
+            timetable: _defaultTimetable, notifications: [], staffSignIns: [], salaryStructures: {}, payrollRecords: {}
+          } });
         } catch (e) {}
       }
       localStorage.setItem("gm_last_tenant_id", tenantId);
@@ -8611,6 +8620,11 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                 // 3. Destroy local state (guaranteed to run even if logger fails)
                 try {
                   localStorage.removeItem("greatmind_school_db_v2");
+                  localStorage.removeItem("sf_fee_structure_v2");
+                  localStorage.removeItem("sf_fees_v2");
+                  localStorage.removeItem("saved_resources");
+                  localStorage.removeItem("gm_score_drafts_v1");
+                  localStorage.removeItem("app_tour_completed");
                   localStorage.removeItem("gm_last_tenant_id");
                 } catch (e) {}
                 setAuth({ loggedIn:false, user:null });
