@@ -122,8 +122,10 @@ export default function ProvisionSchoolPage() {
       });
 
       if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
-
+      if (data?.error) {
+        const errMsg = typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error));
+        throw new Error(errMsg);
+      }
       // Simulate visible progress steps since the EF does all 3 atomically
       setStep("pre_registration");
       await new Promise((r) => setTimeout(r, 600));
