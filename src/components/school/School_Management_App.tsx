@@ -18,7 +18,7 @@ import {
   Menu, BookOpen, MoreVertical, ChevronRight, ChevronLeft,
   CalendarDays, ClipboardList, BookMarked, Edit2, ArrowLeft,
   Bell, CalendarClock, Send, Inbox, MessageSquare, Wallet, CheckCircle,
-  FileSpreadsheet, Lock, Info, DollarSign, Loader2, Trophy, Download, UserCircle, HelpCircle, Calculator
+  FileSpreadsheet, Lock, Info, DollarSign, Loader2, Trophy, Download, UserCircle, HelpCircle, Calculator, Copy
 } from "lucide-react";
 import { verifyAdminPin, setAdminPin, loadTenantSession } from "@/lib/tenant-client";
 import { exportToCSV } from "@/lib/exportUtils";
@@ -3783,7 +3783,17 @@ const ResultCheckerPanel = memo(({ tenantId, schoolSettings, dispatch, appState,
                         </td>
                         <td className="px-4 py-3 text-slate-600">{t.students?.class_name || "Unknown"}</td>
                         <td className="px-4 py-3">
-                          <span className="px-2 py-1 bg-slate-100 rounded text-slate-700 font-mono text-xs font-bold tracking-wider">{t.token}</span>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(t.token);
+                              showToast("Token copied to clipboard!");
+                            }}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-mono text-xs font-bold tracking-wider transition-colors border border-slate-200 shadow-sm"
+                            title="Copy Token"
+                          >
+                            {t.token}
+                            <Copy size={13} className="text-slate-400" />
+                          </button>
                         </td>
                         <td className="px-4 py-3 font-medium text-slate-800">
                           {t.term === "first" ? "1st Term" : t.term === "second" ? "2nd Term" : "3rd Term"} {t.academic_year}
