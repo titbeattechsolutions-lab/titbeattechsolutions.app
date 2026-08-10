@@ -6,7 +6,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { BookOpen, ClipboardCheck, BarChart2, UserCircle, CalendarClock, Menu, X, LogOut } from "lucide-react";
+import { BookOpen, ClipboardCheck, BarChart2, UserCircle, CalendarClock, Menu, X, LogOut, GraduationCap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -35,7 +35,13 @@ export default function TeacherLayout({ schoolName, schoolLogo }: { schoolName?:
     )}>
       <div className="flex items-center justify-between px-5 py-4 border-b border-indigo-700">
         <div className="flex items-center gap-3">
-          <img src={schoolLogo || "/logo.png"} alt={schoolLogo ? `${schoolName} Logo` : "Titbeattechsolutions Logo"} className="h-8 w-auto object-contain shrink-0" />
+          {schoolLogo ? (
+            <img src={schoolLogo} alt={`${schoolName} Logo`} className="h-8 w-auto object-contain shrink-0 rounded" />
+          ) : (
+            <div className="h-8 w-8 shrink-0 bg-white/10 rounded flex items-center justify-center">
+              <GraduationCap className="h-5 w-5 text-indigo-300" />
+            </div>
+          )}
           <div>
             <p className="text-xs text-indigo-300 font-medium uppercase tracking-wider">Teacher Portal</p>
             <p className="text-sm font-semibold text-white truncate max-w-[150px]">{schoolName ?? "—"}</p>
