@@ -4866,8 +4866,8 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
                   )}
                 </div>
                 {role === "principal" && tpl.showStamp && (
-                  <div className="w-16 h-10 border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <p className="text-[10px] text-slate-300 font-bold">Stamp</p>
+                  <div className="w-16 h-16 flex items-center justify-center flex-shrink-0">
+                    <AutoStamp schoolName={schoolSettings.name || "School"} date={new Date().toLocaleDateString('en-GB')} color={tpl.accentColor || "#1e40af"} />
                   </div>
                 )}
               </div>
