@@ -318,16 +318,7 @@ export default function ResultChecker() {
                   style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 6 }} />
               </div>
             ) : (
-              <div style={{
-                width: 80, height: 80, borderRadius: '50%', margin: '0 auto 16px',
-                background: 'rgba(255,255,255,0.08)', border: '2px solid rgba(255,255,255,0.15)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 0 32px rgba(99,102,241,0.3)',
-                overflow: 'hidden',
-              }}>
-                <img src="/logo.png" alt="School Logo"
-                  style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 6 }} />
-              </div>
+              <div className="rc-logo-ring">🎓</div>
             )}
             <h1 className="rc-title">
               {branding.name ? branding.name : "Result Checker"}
