@@ -210,10 +210,27 @@ export default function ResultChecker() {
     
     try {
       setDownloading(true);
+      
+      // Temporarily force desktop width to ensure a neat, readable layout on smartphones
+      const originalStyle = element.getAttribute('style') || '';
+      element.style.width = '800px';
+      element.style.maxWidth = '800px';
+      element.style.margin = '0';
+      element.style.boxShadow = 'none';
+      element.style.transform = 'none';
+
       const html2canvas = (await import('html2canvas')).default;
       const { jsPDF } = await import('jspdf');
       
-      const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+      const canvas = await html2canvas(element, { 
+        scale: 2, 
+        useCORS: true,
+        windowWidth: 800
+      });
+      
+      // Restore original styles
+      element.setAttribute('style', originalStyle);
+      
       const imgData = canvas.toDataURL('image/png');
       
       const pdf = new jsPDF({
@@ -222,10 +239,25 @@ export default function ResultChecker() {
         format: 'a4'
       });
       
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
+      const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
       
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      const imgRatio = canvas.width / canvas.height;
+      
+      // Scale to fit within A4 boundaries
+      let printWidth = pdfWidth;
+      let printHeight = pdfWidth / imgRatio;
+      
+      if (printHeight > pdfHeight) {
+        printHeight = pdfHeight;
+        printWidth = pdfHeight * imgRatio;
+      }
+      
+      // Center on page
+      const marginX = (pdfWidth - printWidth) / 2;
+      const marginY = (pdfHeight - printHeight) / 2;
+      
+      pdf.addImage(imgData, 'PNG', marginX, marginY, printWidth, printHeight);
       pdf.save(`Result_${result.student.name.replace(/\s+/g, '_')}.pdf`);
     } catch (e) {
       console.error("Failed to generate PDF", e);
