@@ -6580,6 +6580,20 @@ function useReminderChecker(appState: AppState, dispatch: any, isAdmin: boolean,
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polledData, onLocalEdit, onStateChange }: { onTenantSignOut?: () => void; tenantId?: string; tenantSchoolName?: string; polledData?: any; onLocalEdit?: (state: any) => void; onStateChange?: (state: any) => void } = {}) {
   const [appState, dispatchRaw] = useReducer(appReducer, initialState);
+
+  // Protect against stale data bleed across tenants on the same browser
+  useEffect(() => {
+    if (tenantId) {
+      const lastTenantId = localStorage.getItem("gm_last_tenant_id");
+      if (lastTenantId && lastTenantId !== tenantId) {
+        try {
+          localStorage.removeItem("greatmind_school_db_v2");
+          dispatchRaw({ type: "REPLACE_ALL", payload: initialState });
+        } catch (e) {}
+      }
+      localStorage.setItem("gm_last_tenant_id", tenantId);
+    }
+  }, [tenantId]);
   const dispatch = useCallback((action: any) => {
     dispatchRaw(action);
     // Background sync to Supabase
@@ -8595,6 +8609,10 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                 }
 
                 // 3. Destroy local state (guaranteed to run even if logger fails)
+                try {
+                  localStorage.removeItem("greatmind_school_db_v2");
+                  localStorage.removeItem("gm_last_tenant_id");
+                } catch (e) {}
                 setAuth({ loggedIn:false, user:null });
                 setLoginId(""); setLoginPass(""); setShowLogout(false);
                 setActiveTab("dashboard"); setActiveReport(null); setMenuOpen(false);
