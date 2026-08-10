@@ -6585,7 +6585,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
   useEffect(() => {
     if (tenantId) {
       const lastTenantId = localStorage.getItem("gm_last_tenant_id");
-      if (lastTenantId && lastTenantId !== tenantId) {
+      if (lastTenantId !== tenantId) {
         try {
           localStorage.removeItem("greatmind_school_db_v2");
           localStorage.removeItem("sf_fee_structure_v2");
