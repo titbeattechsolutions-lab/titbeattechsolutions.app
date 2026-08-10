@@ -86,7 +86,7 @@ const gradeColor = (g: string | null) => {
 //  AutoStamp Component 
 const AutoStamp = ({ schoolName, date, color = "#1e40af" }: { schoolName: string; date: string; color?: string }) => {
   const sn = (schoolName || "SCHOOL NAME").toUpperCase();
-  const fs = sn.length > 28 ? 5.2 : sn.length > 20 ? 6.5 : 7.8;
+  const fs = sn.length > 45 ? 3.5 : sn.length > 35 ? 4.2 : sn.length > 28 ? 5.2 : sn.length > 20 ? 6.5 : 7.8;
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', transform: 'rotate(-6deg)', opacity: 0.85, mixBlendMode: 'multiply' }}>
       <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
@@ -101,7 +101,7 @@ const AutoStamp = ({ schoolName, date, color = "#1e40af" }: { schoolName: string
         <circle cx="50" cy="50" r="30" stroke={color} strokeWidth="1" fill="none" />
 
         {/* Dynamic Upper School Name Arc */}
-        <text fill={color} fontSize={fs} fontWeight="bold" letterSpacing="1" textAnchor="middle">
+        <text fill={color} fontSize={fs} fontWeight="bold" letterSpacing={sn.length > 35 ? "0.5" : "1"} textAnchor="middle">
           <textPath href="#top-arc-rc" startOffset="50%">&#9733; {sn} &#9733;</textPath>
         </text>
 
