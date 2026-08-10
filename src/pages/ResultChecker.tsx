@@ -460,28 +460,34 @@ export default function ResultChecker() {
               <div className="h-1.5" style={{ backgroundColor: tpl.accentColor }} />
               
               {/* Header */}
-              <div className="px-8 pt-7 pb-5 flex items-center justify-between gap-4" style={{ borderColor: tpl.headerColor, borderBottomWidth: '2px', paddingLeft: 32, paddingRight: 32, paddingTop: 28, paddingBottom: 20, display: 'flex' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  {tpl.showLogo && result.school.logo && (
-                    <img src={result.school.logo} alt="Logo" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'cover' }} />
+              <div className="px-8 pt-7 pb-5 border-b-2 flex items-center justify-between gap-4" style={{ borderColor: tpl.headerColor }}>
+                <div className="flex items-center gap-4 min-w-0">
+                  {tpl.showLogo && (
+                    result.school.logo ? (
+                      <img src={result.school.logo} alt="Logo" className="rounded-xl object-cover border border-slate-200/60 shadow-sm flex-shrink-0" style={{ width: 64, height: 64 }} />
+                    ) : (
+                      <div className="rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 border border-slate-200/60 shadow-sm flex items-center justify-center flex-shrink-0" style={{ width: 64, height: 64 }}>
+                        <span style={{ fontSize: 32 }}>🎓</span>
+                      </div>
+                    )
                   )}
-                  <div>
-                    <h1 style={{ fontSize: 24, fontWeight: 900, textTransform: 'uppercase', color: tpl.headerColor, lineHeight: 1.1, margin: 0 }}>
+                  <div className="min-w-0">
+                    <h1 className="text-2xl font-black uppercase tracking-tight leading-none mb-1 truncate" style={{ color: tpl.headerColor }}>
                       {result.school.name}
                     </h1>
                     {tpl.showMotto && schoolSettings.motto && (
-                      <p style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 4, color: tpl.accentColor }}>
+                      <p className="text-[10px] font-black uppercase tracking-widest truncate" style={{ color: tpl.accentColor }}>
                         {schoolSettings.motto}
                       </p>
                     )}
                   </div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ display: 'inline-block', color: '#fff', fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', padding: '6px 16px', borderRadius: 9999, backgroundColor: tpl.headerColor }}>
+                <div className="text-right flex-shrink-0">
+                  <span className="inline-block text-white text-xs font-black uppercase tracking-widest px-4 py-1.5 rounded-full" style={{ backgroundColor: tpl.headerColor }}>
                     Report Sheet
                   </span>
-                  <p style={{ fontSize: 12, color: '#64748b', fontWeight: 700, marginTop: 6 }}>
-                    {result.academic_year} · {termLabel(result.term)}
+                  <p className="text-xs text-slate-500 font-bold mt-1.5">
+                    {result.academic_year} &bull; {termLabel(result.term)}
                   </p>
                 </div>
               </div>
