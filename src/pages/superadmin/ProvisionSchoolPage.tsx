@@ -97,9 +97,16 @@ export default function ProvisionSchoolPage() {
       // Generate a temporary password for the new admin if an email is provided
       const tempPassword = form.adminEmail ? Math.random().toString(36).slice(-8) + "Aa1!" : undefined;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any).functions.invoke("provision-school", {
-        body: {
+      // Get the current user's session token to pass as Bearer token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/provision-school`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
           idempotencyKey: form.tenantId, // Using tenantId as idempotency key since it's a random UUID
           school: {
             name: form.name,
@@ -118,10 +125,19 @@ export default function ProvisionSchoolPage() {
             paymentMethod: form.paymentMethod,
           },
           notes: form.notes || undefined,
-        },
+        }),
       });
 
-      if (error) throw new Error(error.message);
+      const data = await response.json();
+
+      if (!response.ok) {
+        // If it's a non-2xx status, we extract the actual JSON error returned by our Edge Function instead of generic HTTP wrapper error
+        const errMsg = data?.error 
+          ? (typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error))) 
+          : `HTTP Error: ${response.status} ${response.statusText}`;
+        throw new Error(errMsg);
+      }
+      
       if (data?.error) {
         const errMsg = typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error));
         throw new Error(errMsg);
