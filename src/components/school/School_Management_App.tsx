@@ -3644,15 +3644,20 @@ const ResultCheckerPanel = memo(({ tenantId, schoolSettings, dispatch, appState,
   }, [isEnabled, fetchTokens]);
 
   const toggleFeature = async () => {
-    try {
-      const { updateSchoolProfile } = await import("@/supabase/schoolService");
-      await updateSchoolProfile(tenantId, { features: { ...schoolSettings.features, result_checker: !isEnabled } });
-      dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { ...schoolSettings, features: { ...schoolSettings.features, result_checker: !isEnabled } } });
-      showToast(`Result Checker ${!isEnabled ? "Enabled" : "Disabled"}!`);
-    } catch (e: any) {
-      showToast(e.message, "error");
-    }
-  };
+      const newStatus = !isEnabled;
+      // Optimistically update UI immediately
+      dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { ...schoolSettings, features: { ...schoolSettings.features, result_checker: newStatus } } });
+      
+      try {
+        const { updateSchoolProfile } = await import("@/supabase/schoolService");
+        await updateSchoolProfile(tenantId, { features: { ...schoolSettings.features, result_checker: newStatus } });
+        showToast(`Result Checker ${newStatus ? "Enabled" : "Disabled"}!`);
+      } catch (e: any) {
+        // Rollback on failure
+        dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { ...schoolSettings, features: { ...schoolSettings.features, result_checker: !newStatus } } });
+        showToast(e.message, "error");
+      }
+    };
 
   const handleGenerate = async () => {
     if (!genClass) return showToast("Select a class first", "error");
@@ -8647,6 +8652,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     </AppCtx.Provider>
   );
 }
+
 
 
 
