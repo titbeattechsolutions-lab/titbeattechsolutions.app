@@ -7524,10 +7524,10 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                       </Card>
                     ))}
                     <Card className="p-5 border-l-4 border-l-amber-500 col-span-2 md:col-span-1">
-                      <p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-1">Session</p>
-                      <p className="text-2xl font-black text-slate-900 leading-tight">{schoolSettings.term || "—"}</p>
-                      <p className="text-xs text-slate-500 font-bold mt-1">{schoolSettings.session || "—"}</p>
-                    </Card>
+                        <p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-1">Academic Session</p>
+                        <p className="text-2xl font-black text-slate-900 leading-tight">{schoolSettings.session || "Not Set"}</p>
+                        <p className="text-xs text-slate-500 font-bold mt-1">{schoolSettings.term ? `${schoolSettings.term}` : "Term not set"}</p>
+                      </Card>
                   </div>
 
                   {/* ── Fees Overview (admin-only) ─────────────────────────────── */}
@@ -8647,6 +8647,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     </AppCtx.Provider>
   );
 }
+
+
 
 
 
