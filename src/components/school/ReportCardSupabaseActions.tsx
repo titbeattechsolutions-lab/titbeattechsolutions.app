@@ -99,8 +99,14 @@ export default function ReportCardSupabaseActions({
     (async () => {
       try {
         // Resolve Student
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         let studentDbId = activeReport.studentId || "";
         let studentAdmissionNo = activeReport.admissionNo || "";
+
+        // If the ID is a local AUTO- id or not a real UUID, force fallback lookup
+        if (studentDbId && !UUID_RE.test(studentDbId)) {
+          studentDbId = "";
+        }
 
         if (!studentDbId) {
           // Fallback: try to find the student by name and class in the database
@@ -768,3 +774,4 @@ export default function ReportCardSupabaseActions({
     </>
   );
 }
+
