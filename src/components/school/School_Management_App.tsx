@@ -3624,7 +3624,7 @@ const ResultCheckerPanel = memo(({ tenantId, schoolSettings, dispatch, appState,
   const [genLoading, setGenLoading] = useState(false);
 
   const isEnabled = schoolSettings?.features?.result_checker === true;
-  const classes = Object.keys(appState.classRolls || {});
+    const classes = ALL_CLASSES;
   
   const fetchTokens = useCallback(async () => {
     try {
@@ -8652,6 +8652,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     </AppCtx.Provider>
   );
 }
+
 
 
 
