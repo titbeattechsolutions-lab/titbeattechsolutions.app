@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
     // ── 7. Fetch report_card metadata ─────────────────────────────────────────
     const { data: reportCard } = await admin
       .from("report_cards")
-      .select("teacher_remark, principal_remark, days_open, days_present, days_absent, signature, total_score, total_subjects, position_in_class, traits")
+      .select("teacher_remark, principal_remark, days_open, days_present, days_absent, signature, total_score, total_subjects, average_score, position_in_class, traits")
       .eq("school_id", school.id)
       .eq("student_id", student.id)
       .eq("term", dbTerm)
@@ -193,9 +193,13 @@ Deno.serve(async (req) => {
 
     // ── 10. Compute summary ──────────────────────────────────────────────────
     const totalSubjects = results?.length ?? 0;
-    const average = totalSubjects > 0
+    // Prefer the explicitly saved average_score from the report_card, fallback to mathematical calculation
+    const calculatedAverage = totalSubjects > 0
       ? (results!.reduce((s, r) => s + (r.score_total ?? 0), 0) / totalSubjects).toFixed(1)
       : "0.0";
+    const average = reportCard?.average_score != null 
+      ? Number(reportCard.average_score).toFixed(1) 
+      : calculatedAverage;
 
     // ── 11. Return result slip data ──────────────────────────────────────────
     return Response.json({

@@ -291,6 +291,7 @@ export default function ReportCardSupabaseActions({
       traits.principalSig  = curC.principalSig  || null;
       traits.teacherName   = classTeacher?.name  || null;
       traits.principalName = (schoolSettings as any).principalName || null;
+      traits.classCount    = activeReport.classCount || null;
 
       // Pick the principal signature (prefer principalSig, fallback teacherSig)
       const signature = curC.principalSig || curC.teacherSig || null;

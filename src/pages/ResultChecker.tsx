@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -277,6 +277,7 @@ export default function ResultChecker() {
   }
 
   const traits = result?.report_card?.traits || {};
+  const classCount = traits.classCount ? `${traits.classCount}` : "�";
   const headers = tpl.showGrade
     ? ["Subject", "CA1", "CA2", "Exam", "Total", "Grade", "Remark"]
     : ["Subject", "CA1", "CA2", "Exam", "Total"];
@@ -285,7 +286,8 @@ export default function ResultChecker() {
     ["Student", result?.student.name || "", "font-black text-blue-700"],
     ["Class", result?.student.class || "", ""],
     ...(tpl.showPosition ? [
-      ["Position", result?.summary.position_in_class ? `${result.summary.position_in_class}` : "—", "font-black text-emerald-700"], 
+      ["Position", result?.summary.position_in_class ? `${result.summary.position_in_class}` : "—", "font-black text-emerald-700"],
+      ["In Class", classCount, ""],
       ["Average", result?.summary.average ? `${result.summary.average}%` : "—", "font-black text-blue-700"]
     ] : []),
   ];
@@ -668,4 +670,7 @@ function parseInlineStyle(styleStr: string) {
   });
   return obj;
 }
+
+
+
 
