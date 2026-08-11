@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -279,8 +279,8 @@ export default function ResultChecker() {
   const traits = result?.report_card?.traits || {};
   const classCount = traits.classCount ? `${traits.classCount}` : "�";
   const headers = tpl.showGrade
-    ? ["Subject", "CA1", "CA2", "Exam", "Total", "Grade", "Remark"]
-    : ["Subject", "CA1", "CA2", "Exam", "Total"];
+    ? ["Subject", "CA", "Exam", "Total", "Grade", "Remark"]
+      : ["Subject", "CA", "Exam", "Total"];
 
   const studentFields = [
     ["Student", result?.student.name || "", "font-black text-blue-700"],
@@ -532,8 +532,7 @@ export default function ResultChecker() {
                       return (
                         <tr key={i} style={{ background: bg }}>
                           <td style={{ padding: pad, borderRight: border, borderBottom: border, fontWeight:700, textTransform:"uppercase", fontSize:10 }}>{r.subject}</td>
-                          <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign:"center", fontWeight:700 }}>{r.ca1 ?? "—"}</td>
-                          <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign:"center", fontWeight:700 }}>{r.ca2 ?? "—"}</td>
+                          <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign:"center", fontWeight:700 }}>{(r.ca1 != null || r.ca2 != null) ? ((r.ca1 || 0) + (r.ca2 || 0)) : "-"}</td>
                           <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign:"center", fontWeight:700 }}>{r.exam ?? "—"}</td>
                           <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign:"center", fontWeight:900, fontSize:12 }}>{r.total ?? "—"}</td>
                           {tpl.showGrade && <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign:"center", fontWeight:900, color:gradeColor(r.grade) }}>{r.grade ?? "—"}</td>}
@@ -544,7 +543,7 @@ export default function ResultChecker() {
                   </tbody>
                   <tfoot>
                     <tr style={{ background: tpl.headerColor }}>
-                      <td colSpan={tpl.showGrade ? 4 : 4} style={{ padding: "9px 10px", color:"#94a3b8", fontWeight:800, fontSize:9, textTransform:"uppercase", letterSpacing:"0.1em" }}>Cumulative Total</td>
+                      <td colSpan={tpl.showGrade ? 3 : 3} style={{ padding: "9px 10px", color:"#94a3b8", fontWeight:800, fontSize:9, textTransform:"uppercase", letterSpacing:"0.1em" }}>Cumulative Total</td>
                       <td style={{ padding: "9px 10px", textAlign:"center", color:"#fff", fontWeight:900, fontSize:14 }}>{result.summary.total_score ?? "—"}</td>
                       {tpl.showGrade && <td style={{ padding: "9px 10px", textAlign:"center", color:"#34d399", fontWeight:900, fontSize:12 }}>{result.summary.average}%</td>}
                       {tpl.showGrade && <td style={{ padding: "9px 10px", color:"#94a3b8", fontWeight:800, fontSize:9, textTransform:"uppercase" }}>Avg.</td>}
@@ -670,6 +669,7 @@ function parseInlineStyle(styleStr: string) {
   });
   return obj;
 }
+
 
 
 
