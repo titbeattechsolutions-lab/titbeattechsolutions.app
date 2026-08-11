@@ -153,13 +153,22 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Helper to normalise term to match what is saved in report_cards and results
+    const normaliseTerm = (t: string) => {
+      const lower = t.toLowerCase();
+      if (lower.includes("second")) return "second";
+      if (lower.includes("third")) return "third";
+      return "first";
+    };
+    const dbTerm = normaliseTerm(tokenRow.term);
+
     // ── 6. Fetch results ─────────────────────────────────────────────────────
     const { data: results } = await admin
       .from("results")
       .select("subject_name, score_ca1, score_ca2, score_exam, score_total, grade, remark, teacher_comment")
       .eq("school_id", school.id)
       .eq("student_id", student.id)
-      .eq("term", tokenRow.term)
+      .eq("term", dbTerm)
       .eq("academic_year", tokenRow.academic_year)
       .order("subject_name");
 
@@ -169,7 +178,7 @@ Deno.serve(async (req) => {
       .select("teacher_remark, principal_remark, days_open, days_present, days_absent, signature, total_score, total_subjects, position_in_class, traits")
       .eq("school_id", school.id)
       .eq("student_id", student.id)
-      .eq("term", tokenRow.term)
+      .eq("term", dbTerm)
       .eq("academic_year", tokenRow.academic_year)
       .maybeSingle();
 
@@ -242,3 +251,5 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+
