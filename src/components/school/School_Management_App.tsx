@@ -6595,31 +6595,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
   const [appState, dispatchRaw] = useReducer(appReducer, initialState);
 
   // Protect against stale data bleed across tenants on the same browser
-  useEffect(() => {
-    if (tenantId) {
-      const lastTenantId = localStorage.getItem("gm_last_tenant_id");
-      if (lastTenantId !== tenantId) {
-        // Different (or first) tenant — nuke ALL tenant-scoped localStorage keys
-        // so `_saved = loadDB()` on any subsequent module-level load returns empty.
-        try {
-          localStorage.removeItem("greatmind_school_db_v2");
-          localStorage.removeItem("sf_fee_structure_v2");
-          localStorage.removeItem("sf_fees_v2");
-          localStorage.removeItem("saved_resources");
-          localStorage.removeItem("gm_score_drafts_v1");
-          localStorage.removeItem("app_tour_completed");
-          localStorage.removeItem("gm_device_id");
-          // HARD_RESET: unconditional clean-slate wipe (not a merge like REPLACE_ALL)
-          dispatchRaw({ type: "HARD_RESET", payload: {
-            entries: [], bin: [], logs: [], comments: {}, attendance: [], classRolls: {},
-            staffList: [], schoolSettings: { name:"", motto:"", session:"", term:"", resumptionDate:"" },
-            timetable: _defaultTimetable, notifications: [], staffSignIns: [], salaryStructures: {}, payrollRecords: {}
-          } });
-        } catch (e) {}
-      }
-      localStorage.setItem("gm_last_tenant_id", tenantId);
-    }
-  }, [tenantId]);
+  useEffect(() => { if (tenantId) localStorage.setItem("gm_last_tenant_id", tenantId); }, [tenantId]);
 
   const dispatch = useCallback((action: any) => {
     dispatchRaw(action);
@@ -8671,6 +8647,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     </AppCtx.Provider>
   );
 }
+
 
 
 
