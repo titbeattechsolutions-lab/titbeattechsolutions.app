@@ -1,4 +1,4 @@
--- Create tenant_deletion_requests table
+﻿-- Create tenant_deletion_requests table
 CREATE TABLE IF NOT EXISTS public.tenant_deletion_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
@@ -41,13 +41,13 @@ WITH CHECK (
 CREATE POLICY "Super admins can view all deletion requests"
 ON public.tenant_deletion_requests FOR SELECT
 TO authenticated
-USING (public.has_role('super_admin'));
+USING (public.has_role(auth.uid(), 'super_admin'::app_role));
 
 -- Super admins can update all requests
 CREATE POLICY "Super admins can update all deletion requests"
 ON public.tenant_deletion_requests FOR UPDATE
 TO authenticated
-USING (public.has_role('super_admin'));
+USING (public.has_role(auth.uid(), 'super_admin'::app_role));
 
 
 -- Create RPC to securely delete a tenant and its staff accounts
@@ -62,7 +62,7 @@ DECLARE
     user_id UUID;
 BEGIN
     -- Verify caller is super admin
-    is_super_admin := public.has_role('super_admin');
+    is_super_admin := public.has_role(auth.uid(), 'super_admin'::app_role);
     IF NOT is_super_admin THEN
         RAISE EXCEPTION 'Access denied. Must be super admin.';
     END IF;
@@ -89,3 +89,4 @@ $$;
 
 -- Grant execution to authenticated users
 GRANT EXECUTE ON FUNCTION public.execute_tenant_deletion(UUID) TO authenticated;
+
