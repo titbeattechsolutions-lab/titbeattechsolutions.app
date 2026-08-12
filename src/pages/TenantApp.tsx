@@ -472,7 +472,7 @@ export default function TenantApp() {
     );
   }
 
-  if (phase === "ready" && session && session.ndprConsentGranted === false) {
+  if (phase === "ready" && session && !session.ndprConsentGranted) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <Card className="max-w-xl w-full p-8 shadow-lg border-blue-100">
