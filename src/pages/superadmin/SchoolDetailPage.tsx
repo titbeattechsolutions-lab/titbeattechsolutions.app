@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -78,27 +78,25 @@ export default function SchoolDetailPage() {
   const [deleting, setDeleting] = useState(false);
 
   const deleteSchool = async () => {
-    if (!schoolId || deleteConfirmName !== school?.name) return;
-    setDeleting(true);
-    
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any).functions.invoke("delete-school", {
-        body: { schoolId }
-      });
+      if (!schoolId || deleteConfirmName !== school?.name || !school?.tenant_id) return;
+      setDeleting(true);
       
-      if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
-      
-      toast({ title: "School deleted successfully" });
-      navigate("/superadmin/schools");
-    } catch (e) {
-      toast({ title: "Failed to delete school", description: (e as Error).message, variant: "destructive" });
-    } finally {
-      setDeleting(false);
-      setDeleteOpen(false);
-    }
-  };
+      try {
+        const { error } = await supabase.rpc("execute_tenant_deletion", {
+          target_tenant_id: school.tenant_id
+        });
+        
+        if (error) throw new Error(error.message);
+        
+        toast({ title: "School deleted successfully" });
+        navigate("/superadmin/schools");
+      } catch (e) {
+        toast({ title: "Failed to delete school", description: (e as Error).message, variant: "destructive" });
+      } finally {
+        setDeleting(false);
+        setDeleteOpen(false);
+      }
+    };
 
   const resetSchoolPin = async () => {
     if (!school?.tenant_id) return;
@@ -523,3 +521,4 @@ function PaymentDialog({ school, billing, onClose, onRecorded }: { school: Schoo
     </div>
   );
 }
+

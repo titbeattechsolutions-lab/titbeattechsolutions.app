@@ -5,6 +5,7 @@ import { logAuthEvent } from "@/lib/auth-logger";
 import { syncActivityLog } from "@/lib/activity-sync";
 import ReportCardSupabaseActions from "./ReportCardSupabaseActions";
 import { StudentsDirectoryTab } from "./StudentsDirectoryTab";
+import { supabase } from "@/integrations/supabase/client";
 import { NAPPS_CURRICULUM } from "./data/nappsCurriculum";
 import { E_NOTES } from "./data/eNotes";
 import { RESOURCE_SOURCES } from "./data/resourceSources";
@@ -8715,6 +8716,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     </AppCtx.Provider>
   );
 }
+
 
 
 
