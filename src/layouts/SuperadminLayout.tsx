@@ -11,6 +11,7 @@ import {
   Menu, X, LogOut, ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 const NAV = [
   { to: "/superadmin/schools",   label: "Schools",         icon: School },
@@ -22,8 +23,19 @@ const NAV = [
 
 export default function SuperadminLayout() {
   const [open, setOpen] = useState(false);
+  const [pendingDeletions, setPendingDeletions] = useState(0);
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    supabase
+      .from("tenant_deletion_requests")
+      .select("id", { count: "exact" })
+      .eq("status", "pending")
+      .then(({ count }) => {
+        if (count) setPendingDeletions(count);
+      });
+  }, []);
 
   const handleSignOut = async () => { await signOut(); navigate("/auth"); };
 
@@ -58,12 +70,17 @@ export default function SuperadminLayout() {
             to={item.to}
             onClick={() => mobile && setOpen(false)}
             className={({ isActive }) => cn(
-              "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-              isActive ? "bg-violet-700 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+              isActive ? "bg-primary text-primary-foreground" : "text-gray-300 hover:bg-gray-900 hover:text-white"
             )}
           >
-            <item.icon size={16} />
-            {item.label}
+            <item.icon className="h-5 w-5 shrink-0" />
+            <span className="flex-1">{item.label}</span>
+            {item.label === "Schools" && pendingDeletions > 0 && (
+              <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                {pendingDeletions}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

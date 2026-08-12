@@ -22,6 +22,7 @@ interface SchoolRow {
   current_term: string;
   created_at: string;
   tenant_id: string;
+  deletion_requested?: boolean;
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -43,12 +44,13 @@ export default function SchoolsListPage() {
   const load = useCallback(async () => {
     setLoading(true);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const [schoolsRes, tenantsRes] = await Promise.all([
+    const [schoolsRes, tenantsRes, delReqsRes] = await Promise.all([
       (supabase as any)
         .from("schools")
         .select("id,tenant_id,name,code,email,current_students,max_students,features,academic_year,current_term,created_at")
         .order("created_at", { ascending: false }),
-      (supabase as any).from("tenants").select("id,status,tenant_code")
+      (supabase as any).from("tenants").select("id,status,tenant_code"),
+      (supabase as any).from("tenant_deletion_requests").select("tenant_id").eq("status", "pending")
     ]);
     setLoading(false);
 
@@ -57,6 +59,7 @@ export default function SchoolsListPage() {
     }
     
     const tenantsMap = new Map((tenantsRes.data || []).map((t: any) => [t.id, { status: t.status, tenant_code: t.tenant_code }]));
+    const pendingSet = new Set((delReqsRes.data || []).map((d: any) => d.tenant_id));
 
     const schoolsData = (schoolsRes.data as any[])?.map((s) => {
       const tenantData = tenantsMap.get(s.tenant_id) || { status: "trial", tenant_code: "N/A" };
@@ -64,6 +67,7 @@ export default function SchoolsListPage() {
         ...s,
         code: tenantData.tenant_code, // Use actual Tenant Code instead of the School PIN stored in schools.code
         status: tenantData.status,
+        deletion_requested: pendingSet.has(s.tenant_id),
       };
     }) || [];
     
@@ -105,8 +109,10 @@ export default function SchoolsListPage() {
     suspended: schools.filter((s) => s.status === "suspended").length,
   };
 
+  const pendingCount = schools.filter(s => s.deletion_requested).length;
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Schools</h1>
@@ -119,6 +125,18 @@ export default function SchoolsListPage() {
           <Button size="sm" onClick={() => navigate("/superadmin/provision")}>+ Provision School</Button>
         </div>
       </div>
+
+      {pendingCount > 0 && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="text-red-600 h-6 w-6 shrink-0" />
+            <div>
+              <h3 className="text-red-800 font-semibold">{pendingCount} Pending Account Deletion Request{pendingCount > 1 ? 's' : ''}</h3>
+              <p className="text-red-600 text-sm">One or more schools have requested permanent account deletion. Please review their details.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <DuplicatesBanner onChanged={load} />
 
@@ -165,7 +183,18 @@ export default function SchoolsListPage() {
                     <p className="font-medium text-slate-800">{s.name}</p>
                     <p className="text-xs text-slate-400">{s.email ?? "—"}</p>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-600">{s.code}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col items-start gap-1">
+                      <Badge variant="secondary" className="font-mono bg-slate-100 text-slate-700 border-slate-200">
+                        {s.code}
+                      </Badge>
+                      {s.deletion_requested && (
+                        <Badge variant="destructive" className="bg-red-100 text-red-700 border-red-200">
+                          Deletion Requested
+                        </Badge>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-slate-600">
                     {s.current_students} / {s.max_students}
                   </td>
