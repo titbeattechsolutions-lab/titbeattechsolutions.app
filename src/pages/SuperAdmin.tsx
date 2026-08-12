@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+﻿import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { logAuthEvent } from "@/lib/auth-logger";
@@ -59,7 +59,47 @@ export default function SuperAdmin() {
   const [createOpen, setCreateOpen] = useState(false);
   const [newPin, setNewPin] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState<Tenant | null>(null);
-  const [globalActivityOpen, setGlobalActivityOpen] = useState(false);
+    const [globalActivityOpen, setGlobalActivityOpen] = useState(false);
+    const [delReqs, setDelReqs] = useState<any[]>([]);
+    
+    const fetchDelReqs = async () => {
+      const { data, error } = await supabase.from("tenant_deletion_requests").select("*, tenants(school_name)").order("created_at", { ascending: false });
+      if (!error && data) setDelReqs(data);
+    };
+
+    const handleDelReq = async (id: string, action: "approve" | "reject", tenantId: string) => {
+      if (action === "approve") {
+        if (!confirm("Are you absolutely sure? This will wipe the tenant completely.")) return;
+        setLoading(true);
+        // First update the request status
+        const { error: updErr } = await supabase.from("tenant_deletion_requests").update({ status: "approved" }).eq("id", id);
+        if (updErr) {
+          toast({ title: "Failed to update request", description: updErr.message, variant: "destructive" });
+          setLoading(false);
+          return;
+        }
+        // Execute the RPC
+        const { error: rpcErr } = await supabase.rpc("execute_tenant_deletion", { target_tenant_id: tenantId });
+        setLoading(false);
+        if (rpcErr) {
+          toast({ title: "Failed to delete tenant", description: rpcErr.message, variant: "destructive" });
+        } else {
+          toast({ title: "Tenant deleted successfully" });
+          fetchDelReqs();
+          fetchTenants(); // Re-fetch the dashboard list
+        }
+      } else {
+        setLoading(true);
+        const { error } = await supabase.from("tenant_deletion_requests").update({ status: "rejected" }).eq("id", id);
+        setLoading(false);
+        if (error) {
+          toast({ title: "Failed", description: error.message, variant: "destructive" });
+        } else {
+          toast({ title: "Request rejected" });
+          fetchDelReqs();
+        }
+      }
+    };
 
   // Auth gate
   useEffect(() => {
@@ -169,10 +209,11 @@ export default function SuperAdmin() {
         </header>
 
         <Tabs defaultValue="dashboard" className="space-y-4 mt-6">
-          <TabsList className="grid w-full grid-cols-2 max-w-sm">
-            <TabsTrigger value="dashboard">Overview Dashboard</TabsTrigger>
-            <TabsTrigger value="my-activity">My Activity</TabsTrigger>
-          </TabsList>
+          <TabsList className="grid w-full grid-cols-3 max-w-[500px]">
+              <TabsTrigger value="dashboard">Overview Dashboard</TabsTrigger>
+              <TabsTrigger value="my-activity">My Activity</TabsTrigger>
+              <TabsTrigger value="deletion-reqs" onClick={fetchDelReqs}>Deletion Requests</TabsTrigger>
+            </TabsList>
 
           <TabsContent value="dashboard" className="space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -237,8 +278,36 @@ export default function SuperAdmin() {
               </div>
             )}
           </TabsContent>
-        </Tabs>
-      </div>
+
+          <TabsContent value="deletion-reqs" className="space-y-6">
+            <Card className="p-6">
+              <h2 className="text-lg font-black text-slate-800 mb-4">Pending Deletion Requests</h2>
+              {delReqs.length === 0 ? (
+                <p className="text-sm text-slate-500">No deletion requests.</p>
+              ) : (
+                <div className="space-y-3">
+                  {delReqs.map(r => (
+                    <div key={r.id} className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 border rounded-xl bg-slate-50 gap-4">
+                      <div>
+                        <p className="font-bold text-slate-800">{r.tenants?.school_name || "Unknown School"}</p>
+                        <p className="text-xs text-slate-500">Tenant ID: {r.tenant_id}</p>
+                        <p className="text-xs text-slate-500">Requested: {new Date(r.created_at).toLocaleString()}</p>
+                        <p className="text-xs mt-1 font-semibold uppercase">Status: <span className={r.status === "pending" ? "text-amber-600" : r.status === "approved" ? "text-green-600" : "text-red-600"}>{r.status}</span></p>
+                      </div>
+                      {r.status === "pending" && (
+                        <div className="flex gap-2">
+                          <button onClick={() => handleDelReq(r.id, "reject", r.tenant_id)} disabled={loading} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50">Reject</button>
+                          <button onClick={() => handleDelReq(r.id, "approve", r.tenant_id)} disabled={loading} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700">Approve & Delete</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+          </Tabs>
+        </div>
 
       {payOpen && (
         <PaymentDialog
@@ -974,3 +1043,4 @@ function SecurityChecksSection() {
     </div>
   );
 }
+

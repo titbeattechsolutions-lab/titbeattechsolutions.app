@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+        tenant_deletion_requests: {
+          Row: {
+            id: string
+            tenant_id: string
+            requested_by: string
+            status: 'pending' | 'approved' | 'rejected' | 'cancelled'
+            created_at: string
+          }
+          Insert: {
+            id?: string
+            tenant_id: string
+            requested_by: string
+            status?: 'pending' | 'approved' | 'rejected' | 'cancelled'
+            created_at?: string
+          }
+          Update: {
+            id?: string
+            tenant_id?: string
+            requested_by?: string
+            status?: 'pending' | 'approved' | 'rejected' | 'cancelled'
+            created_at?: string
+          }
+          Relationships: [
+            {
+              foreignKeyName: "tenant_deletion_requests_requested_by_fkey"
+              columns: ["requested_by"]
+              isOneToOne: false
+              referencedRelation: "users"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "tenant_deletion_requests_tenant_id_fkey"
+              columns: ["tenant_id"]
+              isOneToOne: false
+              referencedRelation: "tenants"
+              referencedColumns: ["id"]
+            }
+          ]
+        }
       activity_logs: {
         Row: {
           action: string
@@ -2471,3 +2510,4 @@ export const Constants = {
     },
   },
 } as const
+

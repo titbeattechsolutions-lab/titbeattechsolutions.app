@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, memo, useReducer, createContext, useContext, useEffect } from "react";
+﻿import { useState, useMemo, useRef, useCallback, memo, useReducer, createContext, useContext, useEffect } from "react";
 import { setAppState, DB_KEY } from "@/lib/app-storage";
 import { useAuth } from "@/contexts/AuthContext";
 import { logAuthEvent } from "@/lib/auth-logger";
@@ -3918,8 +3918,48 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
     return () => clearInterval(intervalId);
   }, [sec]);
   const [clearPinErr, setClearPinErr] = useState("");
+    const [delReq, setDelReq] = useState<any>(null);
+    const [delReqLoading, setDelReqLoading] = useState(false);
+  
+    useEffect(() => { setDraft({ ...schoolSettings }); }, [schoolSettings]);
 
-  useEffect(() => { setDraft({ ...schoolSettings }); }, [schoolSettings]);
+    useEffect(() => {
+      if (tenantId) {
+        supabase.from("tenant_deletion_requests").select("*").eq("tenant_id", tenantId).eq("status", "pending").maybeSingle().then(({ data }) => setDelReq(data));
+      }
+    }, [tenantId]);
+
+    const requestCloudDeletion = async () => {
+      if (!tenantId) return;
+      setDelReqLoading(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { data, error } = await supabase.from("tenant_deletion_requests").insert({
+        tenant_id: tenantId,
+        requested_by: session.user.id,
+      }).select().single();
+      
+      setDelReqLoading(false);
+      if (error) {
+        showToast("Failed to request deletion: " + error.message, "error");
+      } else {
+        setDelReq(data);
+        showToast("Account deletion requested. Pending Super Admin approval.", "warning");
+      }
+    };
+
+    const cancelCloudDeletion = async () => {
+      if (!delReq) return;
+      setDelReqLoading(true);
+      const { error } = await supabase.from("tenant_deletion_requests").update({ status: "cancelled" }).eq("id", delReq.id);
+      setDelReqLoading(false);
+      if (error) {
+        showToast("Failed to cancel: " + error.message, "error");
+      } else {
+        setDelReq(null);
+        showToast("Deletion request cancelled.", "success");
+      }
+    };
 
   // Compute DB stats
   useEffect(() => {
@@ -4519,7 +4559,30 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
               </Card>
 
               {/* Danger zone */}
-              <Card className="p-5 border-2 border-red-100 space-y-3">
+                {delReq && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-black text-red-700">Account Deletion Requested</p>
+                      <p className="text-xs text-red-600">Pending Super Admin confirmation.</p>
+                    </div>
+                    <Btn variant="outline" size="sm" onClick={cancelCloudDeletion} disabled={delReqLoading}>
+                      Cancel Request
+                    </Btn>
+                  </div>
+                )}
+                <Card className="p-5 border-2 border-red-100 space-y-3">
+                  {!delReq && (
+                    <div className="border-b border-red-100 pb-4 mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertTriangle size={14} className="text-red-500" />
+                        <p className="text-xs font-black uppercase text-red-600">Danger Zone - Delete Cloud Account</p>
+                      </div>
+                      <p className="text-xs text-red-500 font-medium mb-3">Permanently deletes your school account and all data from the cloud.</p>
+                      <Btn variant="danger" size="sm" onClick={requestCloudDeletion} disabled={delReqLoading}>
+                        Request Account Deletion
+                      </Btn>
+                    </div>
+                  )}
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={14} className="text-red-500" />
                   <p className="text-xs font-black uppercase text-red-600">Danger Zone — Clear All Data</p>
@@ -8652,6 +8715,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     </AppCtx.Provider>
   );
 }
+
+
 
 
 
