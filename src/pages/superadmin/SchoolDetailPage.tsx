@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, ShieldOff, ShieldCheck, RotateCcw, KeyRound, Activity } from "lucide-react";
+import { ArrowLeft, Loader2, ShieldOff, ShieldCheck, RotateCcw, KeyRound, Activity, AlertTriangle, CheckCircle } from "lucide-react";
 import TenantActivityAudit from "@/components/TenantActivityAudit";
 import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogHeader, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -76,6 +76,24 @@ export default function SchoolDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [pendingDeletionReqId, setPendingDeletionReqId] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState(false);
+
+  const rejectDeletion = async () => {
+    if (!pendingDeletionReqId) return;
+    setRejecting(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any).from("tenant_deletion_requests")
+      .update({ status: "rejected" })
+      .eq("id", pendingDeletionReqId);
+    setRejecting(false);
+    if (error) {
+      toast({ title: "Failed to reject", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Deletion request rejected" });
+      setPendingDeletionReqId(null);
+    }
+  };
 
   const deleteSchool = async () => {
       if (!schoolId || !school?.tenant_id || deleteConfirmName.trim().toLowerCase() !== school?.name?.trim().toLowerCase()) return;
@@ -154,6 +172,15 @@ export default function SchoolDetailPage() {
     const schoolData = sRes.data;
     if (schoolData) {
       schoolData.code = schoolData.tenants?.tenant_code || schoolData.code;
+      
+      // Fetch pending deletion request for this tenant
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: delData } = await (supabase as any).from("tenant_deletion_requests")
+        .select("id")
+        .eq("tenant_id", schoolData.tenant_id)
+        .eq("status", "pending")
+        .maybeSingle();
+      setPendingDeletionReqId(delData?.id || null);
     }
     
     setSchool(schoolData as SchoolDetail);
@@ -216,6 +243,27 @@ export default function SchoolDetailPage() {
           {school.status}
         </span>
       </div>
+
+      {pendingDeletionReqId && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="text-red-600 h-6 w-6 shrink-0" />
+            <div>
+              <h3 className="text-red-800 font-semibold">Account Deletion Requested</h3>
+              <p className="text-red-600 text-sm">This school has requested permanent account deletion.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={rejectDeletion} disabled={rejecting} className="bg-white hover:bg-slate-50 border-slate-200 text-slate-700">
+              {rejecting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
+              Reject Request
+            </Button>
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+              Approve & Delete
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* School profile */}
