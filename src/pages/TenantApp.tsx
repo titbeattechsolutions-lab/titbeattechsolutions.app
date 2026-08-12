@@ -128,7 +128,7 @@ export default function TenantApp() {
     // App component mounts. This ensures the module-level `_saved = loadDB()` in
     // School_Management_App reads an empty store and initialState stays clean.
     const lastTenantId = localStorage.getItem("gm_last_tenant_id");
-    if (lastTenantId && lastTenantId !== s.tenantId) {
+    if (lastTenantId !== s.tenantId) {
       const TENANT_KEYS = [
         DB_KEY,
         "sf_fees_v2",
@@ -146,6 +146,9 @@ export default function TenantApp() {
     // ── End pre-clear ──────────────────────────────────────────────────────────
 
     (async () => {
+      if (lastTenantId !== s.tenantId) {
+        await clearAppState();
+      }
       try {
 
         const remote = await fetchTenantData(s);

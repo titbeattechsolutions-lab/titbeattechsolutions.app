@@ -928,20 +928,28 @@ const _defaultTimetable: TimetableState = {
   cells: {},
 };
 
+const EMPTY_STATE: AppState = {
+  entries: [], bin: [], logs: [], comments: {}, attendance: [],
+  classRolls: {}, staffList: _defaultStaff,
+  schoolSettings: { name:"", motto:"", session:"", term:"", resumptionDate:"" },
+  timetable: _defaultTimetable, notifications: [], staffSignIns: [],
+  salaryStructures: {}, payrollRecords: {},
+};
+
 const initialState: AppState = {
-  entries:        _saved.entries        ?? [],
-  bin:            _saved.bin            ?? [],
-  logs:           _saved.logs           ?? [],
-  comments:       _saved.comments       ?? {},
-  attendance:     _saved.attendance     ?? [],
-  classRolls:     _saved.classRolls     ?? {},
-  staffList:      _saved.staffList      ?? _defaultStaff,
-  schoolSettings: _saved.schoolSettings ?? { name:"", motto:"", session:"", term:"", resumptionDate:"" },
-  timetable:      _saved.timetable      ?? _defaultTimetable,
-  notifications:  _saved.notifications  ?? [],
-  staffSignIns:   _saved.staffSignIns   ?? [],
-  salaryStructures: _saved.salaryStructures ?? {},
-  payrollRecords: _saved.payrollRecords ?? {},
+  entries:        _saved.entries        ?? EMPTY_STATE.entries,
+  bin:            _saved.bin            ?? EMPTY_STATE.bin,
+  logs:           _saved.logs           ?? EMPTY_STATE.logs,
+  comments:       _saved.comments       ?? EMPTY_STATE.comments,
+  attendance:     _saved.attendance     ?? EMPTY_STATE.attendance,
+  classRolls:     _saved.classRolls     ?? EMPTY_STATE.classRolls,
+  staffList:      _saved.staffList      ?? EMPTY_STATE.staffList,
+  schoolSettings: _saved.schoolSettings ?? EMPTY_STATE.schoolSettings,
+  timetable:      _saved.timetable      ?? EMPTY_STATE.timetable,
+  notifications:  _saved.notifications  ?? EMPTY_STATE.notifications,
+  staffSignIns:   _saved.staffSignIns   ?? EMPTY_STATE.staffSignIns,
+  salaryStructures: _saved.salaryStructures ?? EMPTY_STATE.salaryStructures,
+  payrollRecords: _saved.payrollRecords ?? EMPTY_STATE.payrollRecords,
 };
 
 function mkLog(action: string, student: string, subject: string, detail = "", actor = "") {
@@ -1180,7 +1188,7 @@ function appReducer(state: AppState, action: any): AppState {
       // Unlike REPLACE_ALL (which merges for cross-device sync), this wipes ALL
       // existing state and replaces it with the payload. Never use for normal sync.
       return {
-        ...initialState,
+        ...EMPTY_STATE,
         ...(action.payload || {}),
         schoolSettings: {
           name: "", motto: "", session: "", term: "", resumptionDate: "",
