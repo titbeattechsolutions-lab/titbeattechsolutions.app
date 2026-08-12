@@ -3,11 +3,13 @@ import { useNavigate } from "react-router-dom";
 import App from "@/components/school/School_Management_App";
 import {
   loadTenantSession,
+  saveTenantSession,
   fetchTenantData,
   saveTenantDataV3,
   clearTenantSession,
   daysRemaining,
   checkTenantStatus,
+  acceptNdprConsent,
   type TenantSession,
 } from "@/lib/tenant-client";
 import { logAuthEvent } from "@/lib/auth-logger";
@@ -47,6 +49,7 @@ export default function TenantApp() {
   const [lastSyncAt, setLastSyncAt] = useState<number>(0);
   const [polledData, setPolledData] = useState<any>(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [ndprSaving, setNdprSaving] = useState(false);
 
   const saveTimer = useRef<NodeJS.Timeout>();
   const pullTimer = useRef<NodeJS.Timeout>();
@@ -469,12 +472,59 @@ export default function TenantApp() {
     );
   }
 
+  if (phase === "ready" && session && session.ndprConsentGranted === false) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <Card className="max-w-xl w-full p-8 shadow-lg border-blue-100">
+          <h1 className="text-2xl font-black text-slate-900 mb-2">Welcome to {session.schoolName}</h1>
+          <p className="text-slate-600 mb-6">Before you access your dashboard, please review and accept our Data Processing Agreement.</p>
+          
+          <div className="bg-white border rounded-xl p-4 text-sm text-slate-600 h-48 overflow-y-auto mb-6">
+            <h3 className="font-bold text-slate-900 mb-2">Privacy Policy & Data Processing Agreement</h3>
+            <p className="mb-2">In compliance with the Nigeria Data Protection Regulation (NDPR) and global privacy standards, we require your explicit consent to process and store your school's data.</p>
+            <p className="mb-2">By checking the box below, you agree that TitbeatTech acts as a Data Processor on behalf of your school (the Data Controller), and you authorize us to securely store academic records, staff profiles, and related information necessary for providing the School Management Service.</p>
+          </div>
+
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            setNdprSaving(true);
+            const success = await acceptNdprConsent(session.sessionToken);
+            if (success) {
+              const updatedSession = { ...session, ndprConsentGranted: true };
+              setSession(updatedSession);
+              saveTenantSession(updatedSession);
+            } else {
+              toast({ title: "Error", description: "Could not save consent. Please try again.", variant: "destructive" });
+              setNdprSaving(false);
+            }
+          }}>
+            <label className="flex items-start gap-3 p-4 border rounded-xl bg-blue-50/50 cursor-pointer hover:bg-blue-50 transition-colors mb-6">
+              <input type="checkbox" required className="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300" />
+              <span className="text-sm font-medium text-slate-800">
+                I agree to the Privacy Policy and consent to the processing of my school's data in accordance with NDPR.
+              </span>
+            </label>
+            
+            <div className="flex gap-3 justify-end">
+              <Button type="button" variant="outline" onClick={signOut} disabled={ndprSaving}>Sign Out</Button>
+              <Button type="submit" disabled={ndprSaving}>
+                {ndprSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Accept & Continue
+              </Button>
+            </div>
+          </form>
+        </Card>
+      </div>
+    );
+  }
+
+  // --- Main Ready State UI ---
   const d = session ? daysRemaining(session) : null;
   const showBanner = session && (session.status === "trial" || (d !== null && d <= 14));
 
   const syncLabel =
-    syncPhase === "pulling" ? "Syncing…" :
-    syncPhase === "pushing" ? "Saving…" :
+    syncPhase === "error" ? "Offline - Changes saved locally"
+    : syncPhase === "pushing" ? "Saving..." :
     syncPhase === "error" ? "Offline" :
     lastSyncAt ? `Synced ${Math.max(1, Math.round((Date.now() - lastSyncAt) / 1000))}s ago` : "Synced";
 

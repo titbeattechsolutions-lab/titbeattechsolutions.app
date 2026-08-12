@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useRef, useCallback, memo, useReducer, createContext, useContext, useEffect } from "react";
+import { useState, useMemo, useRef, useCallback, memo, useReducer, createContext, useContext, useEffect } from "react";
 import { setAppState, DB_KEY } from "@/lib/app-storage";
 import { useAuth } from "@/contexts/AuthContext";
 import { logAuthEvent } from "@/lib/auth-logger";
@@ -21,7 +21,7 @@ import {
   Bell, CalendarClock, Send, Inbox, MessageSquare, Wallet, CheckCircle,
   FileSpreadsheet, Lock, Info, DollarSign, Loader2, Trophy, Download, UserCircle, HelpCircle, Calculator, Copy
 } from "lucide-react";
-import { verifyAdminPin, setAdminPin, loadTenantSession } from "@/lib/tenant-client";
+import { verifyAdminPin, setAdminPin, loadTenantSession, requestCloudDeletion as rpcRequestCloudDeletion, cancelCloudDeletion as rpcCancelCloudDeletion, fetchCloudDeletionStatus as rpcFetchCloudDeletionStatus } from "@/lib/tenant-client";
 import { exportToCSV } from "@/lib/exportUtils";
 import { getOrdinal } from "@/lib/school-helpers";
 import { Joyride, CallBackProps, STATUS, Step, EVENTS, ACTIONS, TooltipRenderProps } from 'react-joyride';
@@ -3926,39 +3926,44 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
 
     useEffect(() => {
       if (tenantId) {
-        supabase.from("tenant_deletion_requests").select("*").eq("tenant_id", tenantId).eq("status", "pending").maybeSingle().then(({ data }) => setDelReq(data));
+        const session = loadTenantSession();
+        if (session) {
+          rpcFetchCloudDeletionStatus(session.sessionToken).then((data) => setDelReq(data));
+        }
       }
     }, [tenantId]);
 
     const requestCloudDeletion = async () => {
       if (!tenantId) return;
       setDelReqLoading(true);
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = loadTenantSession();
       if (!session) return;
-      const { data, error } = await supabase.from("tenant_deletion_requests").insert({
-        tenant_id: tenantId,
-        requested_by: session.user.id,
-      }).select().single();
       
-      setDelReqLoading(false);
-      if (error) {
-        showToast("Failed to request deletion: " + error.message, "error");
-      } else {
+      try {
+        const data = await rpcRequestCloudDeletion(session.sessionToken);
         setDelReq(data);
         showToast("Account deletion requested. Pending Super Admin approval.", "warning");
+      } catch (error: any) {
+        showToast("Failed to request deletion: " + error.message, "error");
+      } finally {
+        setDelReqLoading(false);
       }
     };
 
     const cancelCloudDeletion = async () => {
       if (!delReq) return;
       setDelReqLoading(true);
-      const { error } = await supabase.from("tenant_deletion_requests").update({ status: "cancelled" }).eq("id", delReq.id);
-      setDelReqLoading(false);
-      if (error) {
-        showToast("Failed to cancel: " + error.message, "error");
-      } else {
+      const session = loadTenantSession();
+      if (!session) return;
+      
+      try {
+        await rpcCancelCloudDeletion(session.sessionToken);
         setDelReq(null);
         showToast("Deletion request cancelled.", "success");
+      } catch (error: any) {
+        showToast("Failed to cancel: " + error.message, "error");
+      } finally {
+        setDelReqLoading(false);
       }
     };
 

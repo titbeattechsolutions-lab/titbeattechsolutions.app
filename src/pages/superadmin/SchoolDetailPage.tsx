@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -78,7 +78,7 @@ export default function SchoolDetailPage() {
   const [deleting, setDeleting] = useState(false);
 
   const deleteSchool = async () => {
-      if (!schoolId || deleteConfirmName !== school?.name || !school?.tenant_id) return;
+      if (!schoolId || !school?.tenant_id || deleteConfirmName.trim().toLowerCase() !== school?.name?.trim().toLowerCase()) return;
       setDeleting(true);
       
       try {
@@ -304,7 +304,7 @@ export default function SchoolDetailPage() {
                     <Button 
                       variant="destructive" 
                       onClick={deleteSchool} 
-                      disabled={deleting || deleteConfirmName !== school.name}
+                      disabled={deleting || deleteConfirmName.trim().toLowerCase() !== school.name.trim().toLowerCase()}
                     >
                       {deleting ? <Loader2 className="animate-spin mr-2" size={16} /> : null}
                       Permanently Delete

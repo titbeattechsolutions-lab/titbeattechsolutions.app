@@ -51,9 +51,7 @@ export default function PlatformStatsPage() {
             current_students: s.current_students
           }))
         : [];
-      const studentsCount = schools
-        .filter((s: any) => s.status === "active" || s.status === "trial")
-        .reduce((sum: number, s: any) => sum + Number(s.current_students || 0), 0);
+      const studentsCount = schools.reduce((sum: number, s: any) => sum + Number(s.current_students || 0), 0);
       const teacherCountsData = teachersRes.status === "fulfilled" ? (teachersRes.value.data ?? []) : [];
       const teachersCount = teacherCountsData.reduce((sum: number, c: any) => sum + Number(c.teacher_count), 0);
       const payments = paymentsRes.status === "fulfilled" ? (paymentsRes.value.data ?? []) as { amount: number; status: string }[] : [];

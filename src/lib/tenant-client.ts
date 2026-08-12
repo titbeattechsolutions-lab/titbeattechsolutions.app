@@ -16,6 +16,7 @@ export interface TenantSession {
   trialStartedAt: string | null;
   isAdmin: boolean;
   hasAdminPin: boolean;
+  ndprConsentGranted?: boolean;
 }
 
 export function loadTenantSession(): TenantSession | null {
@@ -37,7 +38,7 @@ export function clearTenantSession() {
 
 /** Verify school PIN. Returns session info (without admin flag) or null. */
 export async function verifySchoolPin(tenantCode: string, pin: string): Promise<Omit<TenantSession, "isAdmin"> | null> {
-  const { data, error } = await supabase.rpc("verify_school_pin_v3", { _tenant_code: tenantCode, _pin: pin });
+  const { data, error } = await supabase.rpc("verify_school_pin_v4", { _tenant_code: tenantCode, _pin: pin });
   if (error || !data || data.length === 0) return null;
   const row = data[0];
   const session = {
@@ -49,6 +50,7 @@ export async function verifySchoolPin(tenantCode: string, pin: string): Promise<
     subscriptionEndsAt: row.subscription_ends_at,
     trialStartedAt: row.trial_started_at,
     hasAdminPin: row.has_admin_pin,
+    ndprConsentGranted: row.ndpr_consent_granted ?? false,
   };
   
   return session;
@@ -127,4 +129,26 @@ export async function checkTenantStatus(
   } catch {
     return null;
   }
+}
+
+export async function acceptNdprConsent(sessionToken: string): Promise<boolean> {
+  const { error } = await supabase.rpc("accept_ndpr_consent", { _session_token: sessionToken });
+  return !error;
+}
+
+export async function requestCloudDeletion(sessionToken: string): Promise<any> {
+  const { data, error } = await supabase.rpc("request_tenant_deletion_v2", { _session_token: sessionToken });
+  if (error) throw error;
+  return data;
+}
+
+export async function cancelCloudDeletion(sessionToken: string): Promise<boolean> {
+  const { error } = await supabase.rpc("cancel_tenant_deletion_v2", { _session_token: sessionToken });
+  return !error;
+}
+
+export async function fetchCloudDeletionStatus(sessionToken: string): Promise<any> {
+  const { data, error } = await supabase.rpc("get_tenant_deletion_request_v2", { _session_token: sessionToken });
+  if (error) return null;
+  return data;
 }
