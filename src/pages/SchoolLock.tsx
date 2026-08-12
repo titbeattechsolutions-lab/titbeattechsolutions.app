@@ -10,6 +10,7 @@ import {
   loadTenantSession,
   clearTenantSession,
   daysRemaining,
+  acceptNdprConsent,
 } from "@/lib/tenant-client";
 import { GraduationCap } from "lucide-react";
 
@@ -36,6 +37,7 @@ export default function SchoolLock() {
   const [pending, setPending] = useState<Awaited<ReturnType<typeof verifySchoolPin>>>(null);
   const [showPin, setShowPin] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [ndprConsent, setNdprConsent] = useState(false);
 
   useEffect(() => {
     const existing = loadTenantSession();
@@ -75,14 +77,31 @@ export default function SchoolLock() {
   const handleAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pending) return;
+    
+    if (!pending.ndprConsentGranted && !ndprConsent) {
+      toast({ title: "Please accept the NDPR agreement", variant: "destructive" });
+      return;
+    }
+    
     setLoading(true);
     const ok = await verifyAdminPin({ ...pending, isAdmin: false }, adminPin.trim());
-    setLoading(false);
     if (!ok) {
+      setLoading(false);
       toast({ title: "Wrong admin PIN", variant: "destructive" });
       return;
     }
-    const confirmedSession = { ...pending, isAdmin: true, hasAdminPin: true };
+    
+    if (!pending.ndprConsentGranted && ndprConsent) {
+      const success = await acceptNdprConsent(pending.sessionToken);
+      if (!success) {
+        setLoading(false);
+        toast({ title: "Failed to record NDPR consent", variant: "destructive" });
+        return;
+      }
+    }
+    
+    setLoading(false);
+    const confirmedSession = { ...pending, isAdmin: true, hasAdminPin: true, ndprConsentGranted: pending.ndprConsentGranted || ndprConsent };
     saveTenantSession(confirmedSession);
     logAuthEvent({ authType: "tenant", eventType: "login", tenantId: confirmedSession.tenantId, sessionToken: confirmedSession.sessionToken }).catch(() => {});
     navigate("/app", { replace: true });
@@ -91,6 +110,12 @@ export default function SchoolLock() {
   const handleSetAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pending) return;
+    
+    if (!pending.ndprConsentGranted && !ndprConsent) {
+      toast({ title: "Please accept the NDPR agreement", variant: "destructive" });
+      return;
+    }
+    
     if (adminPin.length < 4) {
       toast({ title: "Password too short", description: "Use at least 4 characters.", variant: "destructive" });
       return;
@@ -101,12 +126,23 @@ export default function SchoolLock() {
     }
     setLoading(true);
     const ok = await setAdminPin({ ...pending, isAdmin: false }, adminPin.trim());
-    setLoading(false);
     if (!ok) {
+      setLoading(false);
       toast({ title: "Could not set PIN", description: "Already set — contact provider.", variant: "destructive" });
       return;
     }
-    const confirmedSession = { ...pending, isAdmin: true, hasAdminPin: true };
+    
+    if (!pending.ndprConsentGranted && ndprConsent) {
+      const success = await acceptNdprConsent(pending.sessionToken);
+      if (!success) {
+        setLoading(false);
+        toast({ title: "Failed to record NDPR consent", variant: "destructive" });
+        return;
+      }
+    }
+    
+    setLoading(false);
+    const confirmedSession = { ...pending, isAdmin: true, hasAdminPin: true, ndprConsentGranted: pending.ndprConsentGranted || ndprConsent };
     saveTenantSession(confirmedSession);
     logAuthEvent({ authType: "tenant", eventType: "login", tenantId: confirmedSession.tenantId, sessionToken: confirmedSession.sessionToken }).catch(() => {});
     toast({ title: "Admin PIN created", description: "Welcome!" });
@@ -256,12 +292,28 @@ export default function SchoolLock() {
                       style={{ position: "absolute", right: "1rem", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 0 }}>
                       {showPin ? "Hide" : "Show"}
                     </button>
+                    </div>
                   </div>
-                </div>
+  
+                  {pending && !pending.ndprConsentGranted && (
+                    <div className="flex items-start gap-2 bg-slate-50 border p-3 rounded-md text-xs text-slate-700">
+                      <input 
+                        type="checkbox" 
+                        id="ndpr-admin" 
+                        required 
+                        className="mt-0.5"
+                        checked={ndprConsent}
+                        onChange={e => setNdprConsent(e.target.checked)}
+                      />
+                      <label htmlFor="ndpr-admin" className="cursor-pointer">
+                        I agree to the Privacy Policy and consent to the processing of my school's data in accordance with NDPR.
+                      </label>
+                    </div>
+                  )}
 
-                <button type="submit" className="auth-btn" disabled={loading}>
-                  {loading ? <><Spinner /> Verifying…</> : <>Unlock School</>}
-                </button>
+                  <button type="submit" className="auth-btn" disabled={loading}>
+                    {loading ? <><Spinner /> Verifying…</> : <>Unlock School</>}
+                  </button>
 
                 <button type="button" className="auth-back-link" style={{ justifyContent: "center", marginBottom: 0 }}
                   onClick={() => { setStep("school"); setPending(null); setAdminPinInput(""); }}>
@@ -289,15 +341,31 @@ export default function SchoolLock() {
                   <div style={{ position: "relative" }}>
                     <input id="confirmPin" className="auth-input" type={showConfirm ? "text" : "password"} minLength={4} value={confirmPin} onChange={(e) => setConfirmPin(e.target.value)} required placeholder="Re-enter password" />
                     <button type="button" onClick={() => setShowConfirm(p => !p)} style={{ position: "absolute", right: "1rem", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 0 }}>{showConfirm ? "Hide" : "Show"}</button>
+                    </div>
+                    {confirmPin && adminPin && confirmPin !== adminPin && (
+                      <p style={{ marginTop: "0.4rem", fontSize: "0.75rem", color: "#ef4444" }}>PINs don't match</p>
+                    )}
                   </div>
-                  {confirmPin && adminPin && confirmPin !== adminPin && (
-                    <p style={{ marginTop: "0.4rem", fontSize: "0.75rem", color: "#ef4444" }}>PINs don't match</p>
-                  )}
-                </div>
 
-                <button type="submit" className="auth-btn" disabled={loading} style={{ marginTop: "0.5rem" }}>
-                  {loading ? <><Spinner /> Saving…</> : <>Create PIN & Enter</>}
-                </button>
+                  {pending && !pending.ndprConsentGranted && (
+                    <div className="flex items-start gap-2 bg-slate-50 border p-3 rounded-md text-xs text-slate-700">
+                      <input 
+                        type="checkbox" 
+                        id="ndpr-setadmin" 
+                        required 
+                        className="mt-0.5"
+                        checked={ndprConsent}
+                        onChange={e => setNdprConsent(e.target.checked)}
+                      />
+                      <label htmlFor="ndpr-setadmin" className="cursor-pointer">
+                        I agree to the Privacy Policy and consent to the processing of my school's data in accordance with NDPR.
+                      </label>
+                    </div>
+                  )}
+  
+                  <button type="submit" className="auth-btn" disabled={loading} style={{ marginTop: "0.5rem" }}>
+                    {loading ? <><Spinner /> Saving…</> : <>Create PIN & Enter</>}
+                  </button>
               </form>
             )}
           </div>
