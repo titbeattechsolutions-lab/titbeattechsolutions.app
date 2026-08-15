@@ -3845,6 +3845,242 @@ const ResultCheckerPanel = memo(({ tenantId, schoolSettings, dispatch, appState,
   );
 });
 
+
+// 🏆🏆🏆 Promotion Wizard 🏆🏆🏆
+const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tenantId?: string }) => {
+  const { state } = useApp();
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [mappings, setMappings] = useState<Record<string, string>>({});
+  const [retained, setRetained] = useState<Record<string, string[]>>({});
+  
+  // Calculate unique classes
+  const classesList = useMemo(() => {
+    return Array.from(new Set([
+      ...Object.keys(state.classRolls),
+      ...state.entries.map(e => e.class),
+      ...state.attendance.map(a => a.studentClass)
+    ])).filter(Boolean).sort();
+  }, [state.classRolls, state.entries, state.attendance]);
+
+  // Load students for retention selection
+  const [studentsByClass, setStudentsByClass] = useState<Record<string, any[]>>({});
+  useEffect(() => {
+    if (step === 2 && tenantId) {
+      setLoading(true);
+      import("@/integrations/supabase/client").then(async ({ supabase }) => {
+        const { data } = await supabase.from("students").select("id, first_name, last_name, class_name").eq("school_id", tenantId).eq("status", "active");
+        if (data) {
+          const grouped: Record<string, any[]> = {};
+          data.forEach(s => {
+            if (!grouped[s.class_name]) grouped[s.class_name] = [];
+            grouped[s.class_name].push(s);
+          });
+          setStudentsByClass(grouped);
+        }
+        setLoading(false);
+      });
+    }
+  }, [step, tenantId]);
+
+  const handleExecute = async () => {
+    if (!tenantId) return;
+    setLoading(true);
+    const { supabase } = await import("@/integrations/supabase/client");
+
+    try {
+      // 1. Filter out DO_NOT_PROMOTE
+      const activeMappings = Object.entries(mappings).filter(([_, target]) => target !== "DO_NOT_PROMOTE");
+      
+      // 2. Topological sort to avoid overlap
+      const graph: Record<string, string> = {};
+      const inDegree: Record<string, number> = {};
+      activeMappings.forEach(([src, tgt]) => {
+        if (tgt !== "GRADUATE") {
+          graph[src] = tgt;
+          if (inDegree[tgt] === undefined) inDegree[tgt] = 0;
+          inDegree[tgt]++;
+        }
+        if (inDegree[src] === undefined) inDegree[src] = 0;
+      });
+
+      const queue: string[] = Object.keys(inDegree).filter(k => inDegree[k] === 0);
+      const order: string[] = [];
+      while (queue.length > 0) {
+        const curr = queue.shift()!;
+        order.push(curr);
+        const tgt = graph[curr];
+        if (tgt) {
+          inDegree[tgt]--;
+          if (inDegree[tgt] === 0) queue.push(tgt);
+        }
+      }
+      
+      // Execute from end of topological sort to beginning (i.e. highest class first)
+      const executionOrder = order.reverse();
+      
+      for (const currentClass of executionOrder) {
+        const targetClass = mappings[currentClass];
+        if (!targetClass) continue;
+        
+        const retainedIds = retained[currentClass] || [];
+
+        if (targetClass === "GRADUATE") {
+          let q = supabase.from("students").update({ status: "graduated", updated_at: new Date().toISOString() })
+            .eq("school_id", tenantId).eq("class_name", currentClass).eq("status", "active");
+          if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
+          await q;
+        } else {
+          let q = supabase.from("students").update({ class_name: targetClass, updated_at: new Date().toISOString() })
+            .eq("school_id", tenantId).eq("class_name", currentClass).eq("status", "active");
+          if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
+          await q;
+        }
+      }
+      
+      alert("Promotion completed successfully! The page will now reload.");
+      window.location.reload();
+      
+    } catch (err: any) {
+      console.error(err);
+      alert("Error during promotion: " + err.message);
+      setLoading(false);
+    }
+  };
+
+  const hasPromotions = Object.values(mappings).some(v => v !== "DO_NOT_PROMOTE");
+
+  return (
+    <Modal maxW="max-w-2xl" onBgClick={onClose} zIndex={400}>
+      <MHead icon={AlertTriangle} title="Smart Promotion Wizard" subtitle="Move students to their next classes for the new session" color="bg-indigo-600" onClose={onClose} />
+      
+      <div className="p-6">
+        {step === 1 && (
+          <div className="space-y-4">
+            <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl">
+              <h3 className="font-bold text-indigo-800">Step 1: Map Classes</h3>
+              <p className="text-sm text-indigo-600">Where should students in each current class go next?</p>
+            </div>
+            
+            <div className="max-h-[60vh] overflow-y-auto space-y-2">
+              {classesList.map(c => (
+                <div key={c} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                  <div className="flex-1 font-bold text-slate-700">{c}</div>
+                  <ChevronRight className="text-slate-400 shrink-0 hidden sm:block" size={16} />
+                  <select 
+                    value={mappings[c] || "DO_NOT_PROMOTE"}
+                    onChange={e => setMappings(prev => ({ ...prev, [c]: e.target.value }))}
+                    className="flex-1 p-2 bg-white border border-slate-200 rounded-md font-medium text-sm"
+                  >
+                    <option value="DO_NOT_PROMOTE">Do not promote (Retain all)</option>
+                    <option value="GRADUATE">🎓 Graduate / Leave School</option>
+                    <optgroup label="Promote to Class:">
+                      {classesList.filter(tc => tc !== c).map(tc => (
+                        <option key={tc} value={tc}>{tc}</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
+              ))}
+              {classesList.length === 0 && <p className="text-slate-500 text-sm italic">No classes found in this school yet.</p>}
+            </div>
+
+            <div className="flex justify-end pt-4">
+              <Btn variant="primary" onClick={() => setStep(2)} disabled={!hasPromotions}>Next Step: Retain Students</Btn>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-4">
+            <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl">
+              <h3 className="font-bold text-amber-800">Step 2: Retain Students</h3>
+              <p className="text-sm text-amber-600">Select any specific students who should NOT be promoted with their class.</p>
+            </div>
+            
+            {loading ? (
+              <div className="p-8 text-center text-slate-400">Loading student lists...</div>
+            ) : (
+              <div className="max-h-[50vh] overflow-y-auto space-y-6">
+                {classesList.filter(c => mappings[c] && mappings[c] !== "DO_NOT_PROMOTE").map(c => (
+                  <div key={c} className="space-y-2">
+                    <h4 className="font-bold text-slate-700 flex justify-between border-b pb-1">
+                      <span>{c} <span className="text-sm font-normal text-slate-500">({studentsByClass[c]?.length || 0} students)</span></span>
+                      <span className="text-sm text-indigo-600">Going to: {mappings[c] === "GRADUATE" ? "Graduation" : mappings[c]}</span>
+                    </h4>
+                    {(!studentsByClass[c] || studentsByClass[c].length === 0) ? (
+                      <p className="text-xs text-slate-400 italic">No active students found in this class.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {studentsByClass[c].map(s => {
+                          const isRetained = retained[c]?.includes(s.id);
+                          return (
+                            <label key={s.id} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${isRetained ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
+                              <input 
+                                type="checkbox" 
+                                checked={isRetained || false}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setRetained(prev => {
+                                    const current = prev[c] || [];
+                                    if (checked) return { ...prev, [c]: [...current, s.id] };
+                                    return { ...prev, [c]: current.filter(id => id !== s.id) };
+                                  });
+                                }}
+                                className="rounded text-red-500 focus:ring-red-500"
+                              />
+                              <span className={`text-sm font-medium ${isRetained ? 'text-red-700' : 'text-slate-700'}`}>
+                                {s.first_name} {s.last_name}
+                              </span>
+                              {isRetained && <span className="ml-auto text-xs font-bold text-red-500 uppercase">Retained</span>}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-between pt-4">
+              <Btn variant="ghost" onClick={() => setStep(1)}>Back</Btn>
+              <Btn variant="primary" onClick={() => setStep(3)}>Review & Execute</Btn>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="space-y-4">
+            <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl">
+              <h3 className="font-bold text-emerald-800">Final Review</h3>
+              <p className="text-sm text-emerald-600">Review your promotion plan before executing. This will update the database permanently.</p>
+            </div>
+            
+            <div className="max-h-[50vh] overflow-y-auto space-y-2 p-4 bg-slate-50 rounded-xl border border-slate-200">
+              <ul className="list-disc pl-5 space-y-1 text-sm text-slate-700 font-medium">
+                {Object.entries(mappings).filter(([_, m]) => m !== "DO_NOT_PROMOTE").map(([src, tgt]) => (
+                  <li key={src}>
+                    <span className="font-bold">{src}</span> will be moved to <span className="font-bold text-indigo-600">{tgt === "GRADUATE" ? "Graduated Status" : tgt}</span>
+                    {retained[src]?.length > 0 && <span className="text-red-600 ml-2">({retained[src].length} students retained)</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="flex justify-between pt-4">
+              <Btn variant="ghost" onClick={() => setStep(2)}>Back</Btn>
+              <Btn variant="primary" onClick={handleExecute} disabled={loading}>
+                {loading ? "Executing..." : "Confirm & Execute"}
+              </Btn>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+});
+
 const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
   isAdmin: boolean;
   showToast: (msg: string, type?: string) => void;
@@ -8727,6 +8963,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
           @page { size: A4 portrait; margin: 12mm; }
         }
       `}</style>
+          {showPromo && <PromotionWizard tenantId={tenantId} onClose={() => setShowPromo(false)} />}
     </AppCtx.Provider>
   );
 }
