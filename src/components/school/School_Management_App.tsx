@@ -4728,6 +4728,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                     const localStructs = JSON.parse(localStorage.getItem("sf_fee_structure_v2") || "{}");
                     const localPayments = JSON.parse(localStorage.getItem("sf_fees_v2") || "{}");
                     const { db: schoolDb } = await import("@/supabase/schoolService");
+                    const { supabase } = await import("@/integrations/supabase/client");
                     
                     let migratedStructs = 0;
                     let migratedPayments = 0;
@@ -4786,7 +4787,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
 });
 
 // ─── AutoStamp Component ───────────────────────────────────────────────────────
-const AutoStamp = ({ schoolName, date, color = "#1e40af" }: { schoolName: string; date: string; color?: string }) => {
+function AutoStamp({ schoolName, date, color = "#1e40af" }: { schoolName: string; date: string; color?: string }) {
   const sn = (schoolName || "SCHOOL NAME").toUpperCase();
   const fs = sn.length > 45 ? 3.5 : sn.length > 35 ? 4.2 : sn.length > 28 ? 5.2 : sn.length > 20 ? 6.5 : 7.8;
   return (

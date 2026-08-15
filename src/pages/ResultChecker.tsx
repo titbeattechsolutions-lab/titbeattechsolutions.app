@@ -84,7 +84,7 @@ const gradeColor = (g: string | null) => {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 //  AutoStamp Component 
-const AutoStamp = ({ schoolName, date, color = "#1e40af" }: { schoolName: string; date: string; color?: string }) => {
+function AutoStamp({ schoolName, date, color = "#1e40af" }: { schoolName: string; date: string; color?: string }) {
   const sn = (schoolName || "SCHOOL NAME").toUpperCase();
   const fs = sn.length > 45 ? 3.5 : sn.length > 35 ? 4.2 : sn.length > 28 ? 5.2 : sn.length > 20 ? 6.5 : 7.8;
   return (
