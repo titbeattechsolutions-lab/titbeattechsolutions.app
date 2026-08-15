@@ -4000,10 +4000,6 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
               .eq("school_id", tenantId).eq("class_name", currentClass).eq("status", "active");
             if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
             await q;
-          })
-            .eq("school_id", tenantId).eq("class_name", currentClass).eq("status", "active");
-          if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
-          await q;
         }
       }
       
