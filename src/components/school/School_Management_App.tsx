@@ -8187,6 +8187,34 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                         }} title="Export Excel">
                           <Download size={14}/> Export
                         </Btn>
+                        <Btn variant="primary" onClick={async () => {
+                          if (!dbClass || dbClass === "All") {
+                            showToast("Please select a specific class to generate the Master Broadsheet.", "error");
+                            return;
+                          }
+                          showToast("Generating Master Broadsheet...");
+                          try {
+                            const ok = await loadSheetJS();
+                            if (!ok) throw new Error("Could not load Excel engine.");
+                            
+                            const { exportMasterBroadsheet } = await import("./MasterBroadsheetGenerator");
+                            const { supabase } = await import("@/integrations/supabase/client");
+                            
+                            await exportMasterBroadsheet({
+                              tenantId,
+                              className: dbClass,
+                              session: schoolSettings.session,
+                              term: schoolSettings.term,
+                              supabase,
+                              XLSX: (window as any).XLSX
+                            });
+                            showToast("Master Broadsheet exported!");
+                          } catch(err: any) {
+                            showToast(err.message, "error");
+                          }
+                        }} title="Master Broadsheet">
+                          <Download size={14}/> Master List
+                        </Btn>
                       </div>
                       {(isAdmin || can("manageRecords")) && (
                         <Btn variant={showBin ? "primary" : "outline"} onClick={() => setShowBin(b => !b)}>
