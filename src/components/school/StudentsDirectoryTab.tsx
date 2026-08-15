@@ -408,8 +408,14 @@ export function StudentsDirectoryTab({ tenantId }: { tenantId?: string }) {
         {/* Export Buttons */}
         <div className="flex items-center gap-2">
           <button 
-            disabled={isExporting}
-            onClick={handlePrint}
+              onClick={() => window.dispatchEvent(new CustomEvent("open-promotion-wizard"))}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors text-sm font-bold shadow-sm"
+            >
+              <GraduationCap size={16} /> Bulk Promote
+            </button>
+            <button 
+              disabled={isExporting}
+              onClick={handlePrint}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm font-bold shadow-sm"
           >
             <Printer size={16} /> Print

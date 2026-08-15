@@ -4233,7 +4233,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
     setTimeout(() => setSaved(false), 2000);
     
     if (isNewTerm) {
-      setShowPromo(true);
+      window.dispatchEvent(new CustomEvent("open-promotion-wizard"));
     }
   };
 
@@ -6947,6 +6947,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
   const [setupPin, setSetupPin] = useState({ nxt: "", cnf: "" });
   const [setupErr, setSetupErr] = useState("");
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [showPromo, setShowPromo] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const [showLogout, setShowLogout] = useState(false);
@@ -8970,7 +8971,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
           @page { size: A4 portrait; margin: 12mm; }
         }
       `}</style>
-          </AppCtx.Provider>
+            {showPromo && <PromotionWizard tenantId={tenantId} onClose={() => setShowPromo(false)} />}
+      </AppCtx.Provider>
   );
 }
 
