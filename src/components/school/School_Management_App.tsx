@@ -3863,6 +3863,39 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
     ])).filter(Boolean).sort();
   }, [state.classRolls, state.entries, state.attendance]);
 
+  // Auto-map based on standard Nigerian progression
+  useEffect(() => {
+    if (classesList.length === 0 || Object.keys(mappings).length > 0) return;
+    
+    const progression = [
+      "creche", "pre-nursery", "nursery 1", "nursery 2", 
+      "primary 1", "primary 2", "primary 3", "primary 4", "primary 5", "primary 6",
+      "jss 1", "jss 2", "jss 3", "ss 1", "ss 2", "ss 3"
+    ];
+    
+    const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').replace(/jss(\d)/, 'jss $1').replace(/ss(\d)/, 'ss $1').trim();
+    
+    const newMap: Record<string, string> = {};
+    classesList.forEach(c => {
+      const normC = normalize(c);
+      const idx = progression.indexOf(normC);
+      
+      if (idx !== -1) {
+        if (idx === progression.length - 1) {
+          newMap[c] = "GRADUATE";
+        } else {
+          const nextTarget = progression[idx + 1];
+          const match = classesList.find(tc => normalize(tc) === nextTarget);
+          if (match) newMap[c] = match;
+          else newMap[c] = "DO_NOT_PROMOTE";
+        }
+      } else {
+          newMap[c] = "DO_NOT_PROMOTE";
+      }
+    });
+    setMappings(newMap);
+  }, [classesList]);
+
   // Load students for retention selection
   const [studentsByClass, setStudentsByClass] = useState<Record<string, any[]>>({});
   useEffect(() => {
