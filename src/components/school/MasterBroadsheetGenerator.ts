@@ -5,7 +5,7 @@ interface BroadsheetParams {
   className: string;
   session: string;
   term: string;
-  supabase: SupabaseClient<any, "public", any>;
+  entries: any[];
   XLSX: any;
 }
 
@@ -35,28 +35,19 @@ function calculatePosition(score: number, allScores: number[]) {
 }
 
 export async function exportMasterBroadsheet({
-  tenantId,
   className,
   session,
   term,
-  supabase,
+  entries,
   XLSX
 }: BroadsheetParams) {
-  // 1. Fetch all results for this class and session across ALL terms
-  // To support cumulative averages, we must get first, second, and third term data.
-  const { data: resultsData, error } = await supabase.from("results")
-    .select(`
-      student_id, student_name, admission_no, subject_name,
-      term, score_ca1, score_ca2, score_exam, score_total
-    `)
-    .eq("school_id", tenantId)
-    .eq("class_name", className)
-    .eq("academic_year", session);
-
-  if (error) {
-    console.error("Failed to fetch broadsheet data:", error);
-    throw new Error("Failed to fetch broadsheet data: " + error.message);
-  }
+  // Filter local entries to match the class and session
+  // Note: local entries might not have `session`, but if they do, we match it.
+  // We assume all entries passed belong to this tenant.
+  const resultsData = entries.filter(e => 
+    e.studentClass === className && 
+    (!e.session || e.session === session)
+  );
 
   if (!resultsData || resultsData.length === 0) {
     throw new Error(`No records found for ${className} in ${session}.`);
@@ -67,22 +58,23 @@ export async function exportMasterBroadsheet({
   const isSecondTerm = targetTerm === "second";
 
   // Identify all unique subjects taken by this class in the target term
-  const targetTermResults = resultsData.filter(r => r.term === targetTerm);
+  // We assume e.term contains "first", "second", etc. or matches `term`
+  const targetTermResults = resultsData.filter(r => normaliseTerm(r.term || term) === targetTerm);
   if (targetTermResults.length === 0) {
     throw new Error(`No records found for ${className} in ${term}.`);
   }
 
-  const uniqueSubjects = Array.from(new Set(targetTermResults.map(r => r.subject_name))).sort();
+  const uniqueSubjects = Array.from(new Set(targetTermResults.map(r => r.subject))).sort();
 
   // Group by student
   const studentMap = new Map<string, any>();
   
   for (const r of resultsData) {
-    if (!studentMap.has(r.student_id)) {
-      studentMap.set(r.student_id, {
-        id: r.student_id,
-        name: r.student_name,
-        admission_no: r.admission_no,
+    const studentId = r.studentName; // Using name as ID since local entries don't always have student_id
+    if (!studentMap.has(studentId)) {
+      studentMap.set(studentId, {
+        id: studentId,
+        name: r.studentName,
         terms: {
           first: { subjects: {}, total: 0, count: 0 },
           second: { subjects: {}, total: 0, count: 0 },
@@ -91,15 +83,15 @@ export async function exportMasterBroadsheet({
       });
     }
     
-    const stu = studentMap.get(r.student_id);
-    const t = r.term as "first" | "second" | "third";
+    const stu = studentMap.get(studentId);
+    const t = normaliseTerm(r.term || term) as "first" | "second" | "third";
     
-    stu.terms[t].subjects[r.subject_name] = {
-      ca: (r.score_ca1 || 0) + (r.score_ca2 || 0),
-      exam: r.score_exam || 0,
-      total: r.score_total || 0,
+    stu.terms[t].subjects[r.subject] = {
+      ca: r.caScore || 0,
+      exam: r.examScore || 0,
+      total: r.total || 0,
     };
-    stu.terms[t].total += (r.score_total || 0);
+    stu.terms[t].total += (r.total || 0);
     stu.terms[t].count += 1;
   }
 

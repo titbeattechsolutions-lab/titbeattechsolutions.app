@@ -8227,14 +8227,12 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                             if (!ok) throw new Error("Could not load Excel engine.");
                             
                             const { exportMasterBroadsheet } = await import("./MasterBroadsheetGenerator");
-                            const { supabase } = await import("@/integrations/supabase/client");
                             
                             await exportMasterBroadsheet({
-                              tenantId,
                               className: dbClass,
                               session: schoolSettings.session,
                               term: schoolSettings.term,
-                              supabase,
+                              entries: entries,
                               XLSX: (window as any).XLSX
                             });
                             showToast("Master Broadsheet exported!");
