@@ -39,6 +39,8 @@ interface SchoolDetail {
   status: string;
   created_at: string;
   updated_at: string;
+  ndpr_consent_granted?: boolean;
+  ndpr_consent_date?: string | null;
 }
 
 interface BillingDetail {
@@ -160,7 +162,7 @@ export default function SchoolDetailPage() {
     
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [sRes, bRes] = await Promise.all([
-      (supabase as any).from("schools").select("*, tenants(tenant_code)").eq("id", schoolId).single(),
+      (supabase as any).from("schools").select("*, tenants(tenant_code, ndpr_consent_granted, ndpr_consent_date)").eq("id", schoolId).single(),
       (supabase as any).from("billing").select("plan,status,trial_ends_at,current_period_start,current_period_end").eq("school_id", schoolId).maybeSingle()
     ]);
     
@@ -172,6 +174,8 @@ export default function SchoolDetailPage() {
     const schoolData = sRes.data;
     if (schoolData) {
       schoolData.code = schoolData.tenants?.tenant_code || schoolData.code;
+      schoolData.ndpr_consent_granted = schoolData.tenants?.ndpr_consent_granted || false;
+      schoolData.ndpr_consent_date = schoolData.tenants?.ndpr_consent_date || null;
       
       // Fetch pending deletion request for this tenant
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -422,35 +426,67 @@ export default function SchoolDetailPage() {
             <div className="space-y-2">
               <p className="text-xs font-medium text-slate-500">School PIN</p>
               <Button size="sm" variant="outline" onClick={resetSchoolPin} className="w-full justify-start text-slate-700">
-                <RotateCcw size={14} className="mr-2" /> Reset School PIN
+                <RotateCcw className="w-4 h-4 mr-2" /> Reset School PIN
               </Button>
-              <p className="text-[11px] text-slate-400">Revokes all active sessions and issues a new PIN.</p>
             </div>
-            <div className="space-y-2 pt-2 border-t border-slate-100">
+            <div className="space-y-2">
               <p className="text-xs font-medium text-slate-500">Admin PIN</p>
               <Button size="sm" variant="outline" onClick={resetAdminPin} className="w-full justify-start text-slate-700">
-                <KeyRound size={14} className="mr-2" /> Reset Admin PIN
+                <KeyRound className="w-4 h-4 mr-2" /> Reset Admin PIN
               </Button>
-              <p className="text-[11px] text-slate-400">Forces admin to create a new PIN on next login.</p>
             </div>
-            <div className="space-y-2 pt-2 border-t border-slate-100">
-              <p className="text-xs font-medium text-slate-500">Activity Logs</p>
+            <div className="space-y-2 pt-2 border-t">
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button size="sm" variant="outline" className="w-full justify-start text-slate-700">
-                    <Activity size={14} className="mr-2" /> View Detailed Audit Log
+                  <Button size="sm" variant="secondary" className="w-full justify-start text-slate-700">
+                    <Activity className="w-4 h-4 mr-2" /> View Audit Logs
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+                <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
                   <DialogHeader>
-                    <DialogTitle>Activity Audit: {school.name}</DialogTitle>
-                    <DialogDescription>Review granular staff and system actions performed in this tenant.</DialogDescription>
+                    <DialogTitle>Security & Auth Logs</DialogTitle>
+                    <DialogDescription>Viewing auth logs for {school.name}</DialogDescription>
                   </DialogHeader>
-                  <TenantActivityAudit schoolId={school.id} />
+                  <div className="flex-1 min-h-0 overflow-y-auto">
+                    <TenantActivityAudit tenantId={school.tenant_id} />
+                  </div>
                 </DialogContent>
               </Dialog>
               <p className="text-[11px] text-slate-400">View detailed cryptographic and session logs.</p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Data Privacy & Compliance (NDPR) */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Data Privacy (NDPR)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-lg border">
+              {school.ndpr_consent_granted ? (
+                <>
+                  <ShieldCheck className="text-green-600 h-6 w-6 shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Consent Granted</p>
+                    <p className="text-xs text-slate-500">
+                      {school.ndpr_consent_date ? new Date(school.ndpr_consent_date).toLocaleString() : 'Date unrecorded'}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <ShieldOff className="text-amber-500 h-6 w-6 shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Not Granted</p>
+                    <p className="text-xs text-slate-500">School Admin has not accepted DPA.</p>
+                  </div>
+                </>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Evidence of Data Processing Agreement (DPA) under Nigeria Data Protection Regulation (NDPR).
+            </p>
           </CardContent>
         </Card>
       </div>
