@@ -4099,8 +4099,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
   const logoUrl = draft.logoUrl || schoolSettings?.logoUrl || null;
   const [pinSh, setPinSh] = useState({ cur: false, nxt: false, cnf: false });
   const [saved, setSaved] = useState(false);
-    const [showPromo, setShowPromo] = useState(false);
-  const [dbStats, setDbStats] = useState<{ size: string; keys: string[] }>({ size: "—", keys: [] });
+    const [dbStats, setDbStats] = useState<{ size: string; keys: string[] }>({ size: "—", keys: [] });
   const [clearPin, setClearPin] = useState("");
 
   const [logs, setLogs] = useState<any[]>([]);
@@ -6948,6 +6947,12 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
   const [setupErr, setSetupErr] = useState("");
   const [activeTab, setActiveTab] = useState("dashboard");
   const [showPromo, setShowPromo] = useState(false);
+  useEffect(() => {
+    const handler = () => setShowPromo(true);
+    window.addEventListener("open-promotion-wizard", handler);
+    return () => window.removeEventListener("open-promotion-wizard", handler);
+  }, []);
+
   const [menuOpen, setMenuOpen] = useState(false);
 
   const [showLogout, setShowLogout] = useState(false);
