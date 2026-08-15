@@ -3931,7 +3931,43 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
           if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
           await q;
         } else {
-          let q = supabase.from("students").update({ class_name: targetClass, updated_at: new Date().toISOString() })
+            // RESOLVE CLASS ID FOR NEW TERM/SESSION to prevent schema logic bleed
+            const termRaw = state.schoolSettings?.term || "First Term";
+            const normTerm = termRaw.toLowerCase().includes("first") ? "first" : termRaw.toLowerCase().includes("second") ? "second" : "third";
+            const session = state.schoolSettings?.session || "2025/2026";
+            
+            let classId = null;
+            const { data: existingClass } = await supabase.from("classes")
+              .select("id")
+              .eq("school_id", tenantId)
+              .eq("name", targetClass)
+              .eq("academic_year", session)
+              .eq("term", normTerm)
+              .maybeSingle();
+              
+            if (existingClass?.id) {
+              classId = existingClass.id;
+            } else {
+              const { data: newClass, error: cErr } = await supabase.from("classes")
+                .insert({
+                  school_id: tenantId,
+                  name: targetClass,
+                  academic_year: session,
+                  term: normTerm
+                })
+                .select("id")
+                .single();
+              if (!cErr && newClass?.id) classId = newClass.id;
+            }
+
+            const payload: any = { class_name: targetClass, updated_at: new Date().toISOString() };
+            if (classId) payload.class_id = classId;
+
+            let q = supabase.from("students").update(payload)
+              .eq("school_id", tenantId).eq("class_name", currentClass).eq("status", "active");
+            if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
+            await q;
+          })
             .eq("school_id", tenantId).eq("class_name", currentClass).eq("status", "active");
           if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
           await q;
