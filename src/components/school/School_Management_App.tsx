@@ -3858,10 +3858,19 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
   const classesList = useMemo(() => {
     return Array.from(new Set([
       ...Object.keys(state.classRolls),
-      ...state.entries.map(e => e.class),
+      ...state.entries.map(e => e.studentClass),
       ...state.attendance.map(a => a.studentClass)
     ])).filter(Boolean).sort();
   }, [state.classRolls, state.entries, state.attendance]);
+
+  const allTargetClasses = useMemo(() => {
+    const progressionClasses = [
+      "Creche", "Pre-Nursery", "Nursery 1", "Nursery 2", 
+      "Primary 1", "Primary 2", "Primary 3", "Primary 4", "Primary 5", "Primary 6",
+      "JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"
+    ];
+    return Array.from(new Set([...classesList, ...progressionClasses]));
+  }, [classesList]);
 
   // Auto-map based on standard Nigerian progression
   useEffect(() => {
@@ -3873,6 +3882,12 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
       "jss 1", "jss 2", "jss 3", "ss 1", "ss 2", "ss 3"
     ];
     
+    const displayNames = [
+      "Creche", "Pre-Nursery", "Nursery 1", "Nursery 2", 
+      "Primary 1", "Primary 2", "Primary 3", "Primary 4", "Primary 5", "Primary 6",
+      "JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"
+    ];
+
     const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').replace(/jss(\d)/, 'jss $1').replace(/ss(\d)/, 'ss $1').trim();
     
     const newMap: Record<string, string> = {};
@@ -3886,8 +3901,7 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
         } else {
           const nextTarget = progression[idx + 1];
           const match = classesList.find(tc => normalize(tc) === nextTarget);
-          if (match) newMap[c] = match;
-          else newMap[c] = "DO_NOT_PROMOTE";
+          newMap[c] = match || displayNames[idx + 1];
         }
       } else {
           newMap[c] = "DO_NOT_PROMOTE";
@@ -4040,7 +4054,7 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
                     <option value="DO_NOT_PROMOTE">Do not promote (Retain all)</option>
                     <option value="GRADUATE">🎓 Graduate / Leave School</option>
                     <optgroup label="Promote to Class:">
-                      {classesList.filter(tc => tc !== c).map(tc => (
+                      {allTargetClasses.filter(tc => tc !== c).map(tc => (
                         <option key={tc} value={tc}>{tc}</option>
                       ))}
                     </optgroup>
