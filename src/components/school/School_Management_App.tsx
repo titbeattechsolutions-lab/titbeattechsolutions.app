@@ -4099,6 +4099,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
   const logoUrl = draft.logoUrl || schoolSettings?.logoUrl || null;
   const [pinSh, setPinSh] = useState({ cur: false, nxt: false, cnf: false });
   const [saved, setSaved] = useState(false);
+    const [showPromo, setShowPromo] = useState(false);
   const [dbStats, setDbStats] = useState<{ size: string; keys: string[] }>({ size: "—", keys: [] });
   const [clearPin, setClearPin] = useState("");
 
@@ -4224,10 +4225,16 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
   }, [sec]);
 
   const saveInfo = () => {
+    const isNewTerm = (schoolSettings.term === "Third Term" && draft.term === "First Term") ||
+                      (schoolSettings.session !== draft.session && draft.term === "First Term");
     dispatch({ type: "SET_SCHOOL_SETTINGS", payload: draft });
     setSaved(true);
     showToast("Settings saved");
     setTimeout(() => setSaved(false), 2000);
+    
+    if (isNewTerm) {
+      setShowPromo(true);
+    }
   };
 
   const handleLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -8963,8 +8970,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
           @page { size: A4 portrait; margin: 12mm; }
         }
       `}</style>
-          {showPromo && <PromotionWizard tenantId={tenantId} onClose={() => setShowPromo(false)} />}
-    </AppCtx.Provider>
+          </AppCtx.Provider>
   );
 }
 
