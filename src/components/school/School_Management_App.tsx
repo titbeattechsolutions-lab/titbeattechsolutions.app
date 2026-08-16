@@ -2319,6 +2319,7 @@ const SETTINGS_SECTIONS = [
   { id:"logo",     label:"School Logo",    icon:"🖼️" },
   { id:"info",     label:"School Info",    icon:"🏫" },
   { id:"session",  label:"Session & Term", icon:"📅" },
+  { id:"grading",  label:"Grading System", icon:"📊" },
   { id:"result_checker", label:"Result Checker", icon:"🔑" },
   { id:"payroll",  label:"Payroll",        icon:"💰" },
   { id:"template", label:"Report Template",icon:"📋" },
