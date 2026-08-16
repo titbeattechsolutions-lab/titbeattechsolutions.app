@@ -236,8 +236,6 @@ export async function exportMasterBroadsheet({
 
   // Apply merges
   const merges = [];
-  merges.push({ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }); // S/N vertically
-  merges.push({ s: { r: 0, c: 1 }, e: { r: 1, c: 1 } }); // NAME OF STUDENTS vertically
   
   let currentC = 2;
   uniqueSubjects.forEach(() => {
