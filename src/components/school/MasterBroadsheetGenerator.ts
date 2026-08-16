@@ -149,8 +149,8 @@ export async function exportMasterBroadsheet({
   const allOverallTotals = students.map(s => s.targetOverallTotal);
 
   // Build the Excel Data Array
-  const row1: any[] = ["S/N", "NAME OF STUDENTS"];
-  const row2: any[] = ["", ""];
+  const row1: any[] = ["", "SUBJECT"];
+  const row2: any[] = ["S/N", "NAME OF STUDENTS"];
 
   // Push subject headers
   uniqueSubjects.forEach(subj => {
@@ -251,15 +251,25 @@ export async function exportMasterBroadsheet({
   ws["!merges"] = merges;
 
   // We could apply styles here if XLSX is a version that supports it
+  // and we increase the height of the first row to accommodate vertical text
+  ws["!rows"] = [{ hpt: 100 }];
+  
   const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
   for (let R = 0; R <= 1; R++) {
     for (let C = 0; C <= range.e.c; C++) {
       const cellAddress = { c: C, r: R };
       const cellRef = XLSX.utils.encode_cell(cellAddress);
       if (!ws[cellRef]) continue;
+      
+      const isSubjectHeader = R === 0 && C >= 2; // Col 2 onwards in row 0 are the rotated subjects/headers
+      
       ws[cellRef].s = {
         font: { bold: true },
-        alignment: { horizontal: "center", vertical: "center" },
+        alignment: { 
+          horizontal: "center", 
+          vertical: "center",
+          textRotation: isSubjectHeader ? 90 : 0
+        },
         fill: { fgColor: { rgb: "E2E8F0" } }
       };
     }
