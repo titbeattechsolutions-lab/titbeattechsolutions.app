@@ -149,8 +149,8 @@ export async function exportMasterBroadsheet({
   const allOverallTotals = students.map(s => s.targetOverallTotal);
 
   // Build the Excel Data Array
-  const row1: any[] = ["SUBJECT"];
-  const row2: any[] = ["S/N", "NAME OF STUDENTS"];
+  const row1: any[] = ["S/N", "NAME OF STUDENTS"];
+  const row2: any[] = ["", ""];
 
   // Push subject headers
   uniqueSubjects.forEach(subj => {
@@ -234,7 +234,8 @@ export async function exportMasterBroadsheet({
 
   // Apply merges
   const merges = [];
-  merges.push({ s: { r: 0, c: 1 }, e: { r: 0, c: 1 } }); 
+  merges.push({ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }); // S/N vertically
+  merges.push({ s: { r: 0, c: 1 }, e: { r: 1, c: 1 } }); // NAME OF STUDENTS vertically
   
   let currentC = 2;
   uniqueSubjects.forEach(() => {
