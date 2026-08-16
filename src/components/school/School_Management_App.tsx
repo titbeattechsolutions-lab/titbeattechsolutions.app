@@ -5773,7 +5773,7 @@ const AttendanceTab = memo(() => {
                 <p className="text-xs font-black uppercase text-slate-400 tracking-wide">Add Individual Student</p>
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div className="sm:col-span-2">
-                    <Inp value={newName} onChange={(e: any) => setNewName(e.target.value)} placeholder="Student full name"
+                    <Inp value={newName} onChange={(e: any) => setNewName(e.target.value.toUpperCase())} placeholder="Student full name"
                       onKeyDown={(e: any) => e.key === "Enter" && addStudent()} />
                   </div>
                   <div className="sm:col-span-1">
@@ -8079,7 +8079,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                         <input
                           list="student-suggestions"
                           value={scoreForm.studentName}
-                          onChange={e => setScoreForm(f => ({ ...f, studentName: e.target.value }))}
+                          onChange={e => setScoreForm(f => ({ ...f, studentName: e.target.value.toUpperCase() }))}
                           placeholder="Student full name"
                           className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-semibold text-sm text-slate-900 focus:border-blue-500 focus:bg-white outline-none transition-all placeholder:text-slate-300"
                         />
