@@ -6,6 +6,7 @@ interface BroadsheetParams {
   session: string;
   term: string;
   schoolName?: string;
+  gradingScale?: any[];
   entries: any[];
   XLSX: any;
 }
@@ -17,7 +18,14 @@ const normaliseTerm = (t: string) => {
   return "first";
 };
 
-function getGrade(score: number) {
+function getGrade(score: number, scale?: any[]) {
+  if (scale && scale.length > 0) {
+    const sorted = [...scale].sort((a, b) => b.min - a.min);
+    for (const band of sorted) {
+      if (score >= band.min) return { grade: band.grade, remark: band.remark };
+    }
+  }
+  // Default WAEC fallback
   if (score >= 75) return { grade: "A1", remark: "Excellent" };
   if (score >= 70) return { grade: "B2", remark: "Very Good" };
   if (score >= 65) return { grade: "B3", remark: "Good" };
@@ -40,6 +48,7 @@ export async function exportMasterBroadsheet({
   session,
   term,
   schoolName = "School",
+  gradingScale,
   entries,
   XLSX
 }: BroadsheetParams) {
@@ -213,7 +222,7 @@ export async function exportMasterBroadsheet({
     }
 
     const pos = calculatePosition(stu.targetOverallTotal, allOverallTotals);
-    row.push(pos, getGrade(stu.overallAverage).remark);
+    row.push(pos, getGrade(stu.overallAverage, gradingScale).remark);
 
     aoa.push(row);
   });

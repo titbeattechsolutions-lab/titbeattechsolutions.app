@@ -56,6 +56,7 @@ export interface School {
   academic_year: string;
   current_term: "first" | "second" | "third";
   features: Record<string, boolean>;
+  grading_scale?: { min: number, max: number, grade: string, remark: string }[] | null;
   max_students: number;
   current_students: number;
   default_teacher_signature?: string | null;

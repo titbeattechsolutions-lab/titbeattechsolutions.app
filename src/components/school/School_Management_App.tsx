@@ -4456,6 +4456,67 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
               </div>
             </Card>
           )}
+                    {sec === "grading" && (
+            <Card className="p-6 space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-black uppercase text-slate-700">Grading System</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Customize the grading scale for broadsheets and reports.</p>
+                </div>
+                <Btn variant="ghost" size="sm" onClick={() => {
+                  setDraft(d => ({
+                    ...d,
+                    grading_scale: [
+                      {"min": 75, "max": 100, "grade": "A1", "remark": "Excellent"},
+                      {"min": 70, "max": 74, "grade": "B2", "remark": "Very Good"},
+                      {"min": 65, "max": 69, "grade": "B3", "remark": "Good"},
+                      {"min": 50, "max": 64, "grade": "C4", "remark": "Credit"},
+                      {"min": 40, "max": 49, "grade": "D7", "remark": "Pass"},
+                      {"min": 0,  "max": 39, "grade": "F9", "remark": "Fail"}
+                    ]
+                  }));
+                }}>Reset Default</Btn>
+              </div>
+              <div className="space-y-3">
+                {(draft.grading_scale || []).map((band: any, idx: number) => (
+                  <div key={idx} className="grid grid-cols-[1fr_1fr_1.5fr_2fr_auto] gap-2 items-center">
+                    <Inp type="number" placeholder="Min" value={band.min} onChange={(e: any) => {
+                      const newScale = [...(draft.grading_scale || [])];
+                      newScale[idx].min = Number(e.target.value);
+                      setDraft(d => ({ ...d, grading_scale: newScale }));
+                    }} />
+                    <Inp type="number" placeholder="Max" value={band.max} onChange={(e: any) => {
+                      const newScale = [...(draft.grading_scale || [])];
+                      newScale[idx].max = Number(e.target.value);
+                      setDraft(d => ({ ...d, grading_scale: newScale }));
+                    }} />
+                    <Inp placeholder="Grade" value={band.grade} onChange={(e: any) => {
+                      const newScale = [...(draft.grading_scale || [])];
+                      newScale[idx].grade = e.target.value;
+                      setDraft(d => ({ ...d, grading_scale: newScale }));
+                    }} />
+                    <Inp placeholder="Remark" value={band.remark} onChange={(e: any) => {
+                      const newScale = [...(draft.grading_scale || [])];
+                      newScale[idx].remark = e.target.value;
+                      setDraft(d => ({ ...d, grading_scale: newScale }));
+                    }} />
+                    <Btn variant="ghost" size="sm" onClick={() => {
+                      const newScale = [...(draft.grading_scale || [])];
+                      newScale.splice(idx, 1);
+                      setDraft(d => ({ ...d, grading_scale: newScale }));
+                    }}>
+                      <X size={14} className="text-red-500" />
+                    </Btn>
+                  </div>
+                ))}
+                <Btn variant="ghost" size="sm" onClick={() => {
+                  setDraft(d => ({ ...d, grading_scale: [...(d.grading_scale || []), { min: 0, max: 0, grade: "", remark: "" }] }));
+                }} className="text-blue-600 mt-2">
+                  <PlusCircle size={14} /> Add Row
+                </Btn>
+              </div>
+            </Card>
+          )}
           {sec === "session" && (
             <Card className="p-6 space-y-5">
               <div>
@@ -8247,6 +8308,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                               session: schoolSettings.session,
                               term: schoolSettings.term,
                               schoolName: schoolSettings.name || "School",
+                              gradingScale: schoolSettings.grading_scale || [],
                               entries: entries,
                               XLSX: (window as any).XLSX
                             });

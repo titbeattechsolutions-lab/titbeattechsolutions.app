@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -868,6 +868,7 @@ export type Database = {
           default_teacher_signature: string | null
           email: string | null
           features: Json | null
+          grading_scale: Json | null
           id: string
           logo: string | null
           max_students: number
