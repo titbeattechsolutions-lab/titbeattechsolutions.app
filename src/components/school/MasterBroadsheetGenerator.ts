@@ -5,6 +5,7 @@ interface BroadsheetParams {
   className: string;
   session: string;
   term: string;
+  schoolName?: string;
   entries: any[];
   XLSX: any;
 }
@@ -38,6 +39,7 @@ export async function exportMasterBroadsheet({
   className,
   session,
   term,
+  schoolName = "School",
   entries,
   XLSX
 }: BroadsheetParams) {
@@ -180,7 +182,7 @@ export async function exportMasterBroadsheet({
 
   // Fill student rows
   students.forEach((stu, idx) => {
-    const row: any[] = [idx + 1, stu.name];
+    const row: any[] = [idx + 1, stu.name.toUpperCase()];
 
     uniqueSubjects.forEach(subj => {
       const s = stu.terms[targetTerm].subjects[subj];
@@ -278,5 +280,6 @@ export async function exportMasterBroadsheet({
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Master List");
 
-  XLSX.writeFile(wb, `${className}_Master_List_${term}.xlsx`);
+  const safeSchoolName = schoolName.replace(/[^a-zA-Z0-9]/g, '_');
+  XLSX.writeFile(wb, `${safeSchoolName}_${className}_Master_List_${term}.xlsx`);
 }

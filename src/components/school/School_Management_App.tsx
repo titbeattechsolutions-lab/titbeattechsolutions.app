@@ -8246,6 +8246,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                               className: dbClass,
                               session: schoolSettings.session,
                               term: schoolSettings.term,
+                              schoolName: schoolSettings.name || "School",
                               entries: entries,
                               XLSX: (window as any).XLSX
                             });
