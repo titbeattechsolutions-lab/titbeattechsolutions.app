@@ -11,13 +11,13 @@
  */
 
 import { supabase } from "@/integrations/supabase/client";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 
-let _tenantDb: any = null;
+let _tenantDb: SupabaseClient<Database> | null = null;
 let _lastToken: string | null = null;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const db = (): any => {
+export const db = (): SupabaseClient<Database> => {
   try {
     const raw = sessionStorage.getItem("schoolapp_tenant_session_v2");
     const token = raw ? JSON.parse(raw).sessionToken : null;
@@ -26,7 +26,7 @@ export const db = (): any => {
     if (!_tenantDb || _lastToken !== token) {
       const url = import.meta.env.VITE_SUPABASE_URL;
       const key = import.meta.env.VITE_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-      _tenantDb = createClient(url, key, {
+      _tenantDb = createClient<Database>(url, key, {
         global: { headers: { "x-tenant-session": token } },
         auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "tenant-session-db" }
       });
@@ -453,7 +453,7 @@ export async function bulkCreateStudents(
       errors.push({ row: i, reason: error.message });
     } else {
       inserted += (data ?? []).length;
-      (data ?? []).forEach((row: any) => ids.push(row.id));
+      (data ?? []).forEach((row: { id: string }) => ids.push(row.id));
     }
   }
   return { inserted, ids, errors };
@@ -1048,7 +1048,7 @@ export async function fetchResultCheckerTokens(schoolId: string | null): Promise
     .order("created_at", { ascending: false });
 
   throwIfError(error, "fetchResultCheckerTokens");
-  return data as any;
+  return data as unknown as ResultCheckerToken[];
 }
 
 export async function generateTokensForClass(

@@ -25,6 +25,7 @@ import { verifyAdminPin, setAdminPin, loadTenantSession, requestCloudDeletion as
 import { exportToCSV } from "@/lib/exportUtils";
 import { getOrdinal } from "@/lib/school-helpers";
 import { Joyride, CallBackProps, STATUS, Step, EVENTS, ACTIONS, TooltipRenderProps } from 'react-joyride';
+import { jsPDF } from "jspdf";
 
 // ─── Upgrade Imports (CDN-based, no bundler needed) ──────────────────────────
 // Firebase, jsPDF and SheetJS are loaded dynamically at runtime to keep this
@@ -2700,6 +2701,49 @@ const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) =
     setPayingStudent(null); setPayAmount(""); setPayNote("");
   };
 
+  const generateReceiptPDF = () => {
+    if (!receiptData) return;
+    try {
+      const doc = new jsPDF({ format: "a5" });
+      const schName = schoolSettings?.name || "School";
+      
+      // Header
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text(schName, 14, 20);
+      
+      doc.setFontSize(12);
+      doc.text("OFFICIAL PAYMENT RECEIPT", 14, 30);
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 40);
+      doc.text(`Term: ${receiptData.term}`, 14, 46);
+      
+      doc.setLineWidth(0.5);
+      doc.line(14, 52, 134, 52); // A5 width is 148
+      
+      // Body
+      doc.setFontSize(11);
+      doc.text(`Student Name:  ${(receiptData.student || "").toUpperCase()}`, 14, 62);
+      doc.text(`Amount Paid:   NGN ${receiptData.amount.toLocaleString()}`, 14, 70);
+      
+      doc.setFont("helvetica", "bold");
+      doc.text(`Balance:        NGN ${receiptData.balance.toLocaleString()}`, 14, 78);
+      
+      // Footer
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(9);
+      doc.text("Thank you for your payment!", 14, 95);
+      
+      doc.save(`Receipt_${receiptData.student.replace(/\s+/g, '_')}_${term.replace(/\s+/g, '_')}.pdf`);
+      showToast("Receipt downloaded successfully!", "success");
+    } catch (e) {
+      console.error(e);
+      showToast("Failed to generate PDF.", "error");
+    }
+  };
+
   const statusOf = (paid: number, expected: number) => {
     if (expected <= 0) return { label: "No Structure", color: "bg-slate-100 text-slate-500" };
     if (paid <= 0) return { label: "Outstanding", color: "bg-red-100 text-red-700" };
@@ -2950,6 +2994,13 @@ const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) =
                   Share Receipt via WhatsApp
                 </button>
               )}
+              <button 
+                className="w-full flex items-center justify-center h-14 text-lg font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg transition-colors"
+                onClick={generateReceiptPDF}
+              >
+                <Printer className="mr-2 h-6 w-6" />
+                Download / Print Receipt
+              </button>
               <button 
                 className="w-full flex items-center justify-center h-14 text-lg font-bold text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors"
                 onClick={() => setShowReceiptModal(false)}
