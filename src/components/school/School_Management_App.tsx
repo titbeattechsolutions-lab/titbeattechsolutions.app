@@ -2575,12 +2575,10 @@ const FeesTab = memo(({ showToast }: { showToast: (msg: string, type?: string) =
   useEffect(() => { localStorage.setItem(FEE_STRUCT_LS, JSON.stringify(structures)); }, [structures]);
   useEffect(() => { localStorage.setItem(FEES_LS, JSON.stringify(payments)); }, [payments]);
 
-  // Classes with enrolled students (from rolls or entries)
+  // All possible classes (not just those with enrolled students)
   const classes = useMemo(() => {
-    const fromRolls = Object.keys(classRolls).filter(c => (classRolls[c] || []).length > 0);
-    const fromEntries = [...new Set(entries.map(e => e.studentClass))];
-    return [...new Set([...fromRolls, ...fromEntries])].sort();
-  }, [classRolls, entries]);
+    return ALL_CLASSES;
+  }, []);
 
   useEffect(() => { if (!activeClass && classes.length > 0) setActiveClass(classes[0]); }, [classes, activeClass]);
 
