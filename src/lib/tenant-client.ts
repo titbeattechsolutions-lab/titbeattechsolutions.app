@@ -156,3 +156,8 @@ export async function fetchCloudDeletionStatus(session: TenantSession): Promise<
   if (error || !data || data.length === 0) return { status: null, requestedAt: null };
   return { status: data[0]?.status ?? null, requestedAt: data[0]?.requested_at ?? null };
 }
+
+export async function acceptNdprConsent(sessionToken: string): Promise<boolean> {
+  const { error } = await supabase.rpc("accept_ndpr_consent", { _session_token: sessionToken });
+  return !error;
+}
