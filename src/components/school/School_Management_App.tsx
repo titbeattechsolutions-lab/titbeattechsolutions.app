@@ -8900,11 +8900,25 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
                               const updated = { ...myStaffRecord, signature: val, updatedAt: new Date().toISOString() };
                               dispatch({ type: "SAVE_STAFF", payload: updated });
                               showToast("Signature saved successfully", "success");
+                              
+                              // Sync to Supabase profiles table so it reflects globally across devices
+                              if (tenantId && myStaffRecord.id) {
+                                import("@/integrations/supabase/client").then(async ({ supabase }) => {
+                                  await supabase.from("profiles").update({ signature: val || null }).eq("staff_member_id", myStaffRecord.id).eq("school_id", tenantId);
+                                });
+                              }
                             }}
                             onClear={() => {
                               const updated = { ...myStaffRecord, signature: "", updatedAt: new Date().toISOString() };
                               dispatch({ type: "SAVE_STAFF", payload: updated });
                               showToast("Signature cleared", "info");
+                              
+                              // Clear from Supabase profiles table as well
+                              if (tenantId && myStaffRecord.id) {
+                                import("@/integrations/supabase/client").then(async ({ supabase }) => {
+                                  await supabase.from("profiles").update({ signature: null }).eq("staff_member_id", myStaffRecord.id).eq("school_id", tenantId);
+                                });
+                              }
                             }}
                           />
                         </div>

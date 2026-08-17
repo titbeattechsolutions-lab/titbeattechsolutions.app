@@ -123,15 +123,18 @@ export default function ReportCardSupabaseActions({
           }
         }
 
+        let data: any = null;
+        
         if (!studentDbId) {
           console.warn(`Could not link report to a student database record for "${activeReport.name}".`);
+        } else {
+          const res = await db()
+            .from("students")
+            .select("id, guardian_email, first_name, last_name, other_names, admission_no, class_id")
+            .eq("school_id", schoolId)
+            .eq("id", studentDbId);
+          data = res.data;
         }
-
-        const { data } = await db()
-          .from("students")
-          .select("id, guardian_email, first_name, last_name, other_names, admission_no, class_id")
-          .eq("school_id", schoolId)
-          .eq("id", studentDbId);
           
         let foundClassId: string | null = null;
 

@@ -5,6 +5,7 @@ import { getStudents } from "@/supabase/schoolService";
 import { useApp } from "./School_Management_App";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { ALL_CLASSES } from "@/lib/school-constants";
 
 export function StudentsDirectoryTab({ tenantId }: { tenantId?: string }) {
   const [statusFilter, setStatusFilter] = useState<"active" | "graduated" | "withdrawn" | "suspended">("active");
@@ -28,6 +29,7 @@ export function StudentsDirectoryTab({ tenantId }: { tenantId?: string }) {
     const list = [...(classesData || [])];
     const existingNames = new Set(list.map(c => c.name.toLowerCase()));
     
+    // Add legacy ones from offline JSON blob
     if (appCtx?.state?.classRolls) {
       for (const className of Object.keys(appCtx.state.classRolls)) {
         if (!existingNames.has(className.toLowerCase())) {
@@ -36,7 +38,30 @@ export function StudentsDirectoryTab({ tenantId }: { tenantId?: string }) {
         }
       }
     }
-    return list.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Preserve curriculum order: map ALL_CLASSES first, then append any remaining ones
+    const orderedList: any[] = [];
+    const usedNames = new Set<string>();
+
+    for (const className of ALL_CLASSES) {
+      const dbClass = list.find(c => c.name.toLowerCase() === className.toLowerCase());
+      if (dbClass) {
+        orderedList.push(dbClass);
+      } else {
+        orderedList.push({ id: className, name: className });
+      }
+      usedNames.add(className.toLowerCase());
+    }
+
+    // Append any extra/custom classes not in the global curriculum
+    for (const item of list) {
+      if (!usedNames.has(item.name.toLowerCase())) {
+        orderedList.push(item);
+        usedNames.add(item.name.toLowerCase());
+      }
+    }
+
+    return orderedList;
   }, [classesData, appCtx?.state?.classRolls]);
   
   const displayStudents = (() => {
