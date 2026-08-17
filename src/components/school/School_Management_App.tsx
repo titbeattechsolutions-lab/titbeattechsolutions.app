@@ -42,6 +42,9 @@ const CURRICULUM: Record<string, { classes: string[]; subjects: string[] }> = {
   "Junior Secondary": { classes:["JSS 1","JSS 2","JSS 3"],                       subjects:["Mathematics","English Language","Basic Science","Basic Technology","Social Studies","Civic Education","Agricultural Science","Home Economics","Business Studies","CRS","IRS","PHE","Computer Studies","Cultural & Creative Arts","French","Nigerian Language"] },
   "Senior Secondary": { classes:["SS 1","SS 2","SS 3"],                          subjects:["Mathematics","English Language","Civic Education","Biology","Economics","Physics","Chemistry","Further Mathematics","Agricultural Science","Geography","Government","Literature-in-English","CRS","IRS","Financial Accounting","Commerce","Data Processing","Marketing","Technical Drawing"] },
 };
+const PLAN_LIMITS: Record<string, number> = {
+  micro: 200, starter: 500, growth: 1000, enterprise: 10000, trial: 200
+};
 const ALL_CLASSES: string[] = Object.values(CURRICULUM).flatMap(c => c.classes);
 const TERMS = ["First Term","Second Term","Third Term"];
 const ROLES = ["Teacher","Class Teacher","Subject Teacher","Head of Dept","Bursar","Secretary","Headmaster","Headmistress","Vice Principal","Principal"];
@@ -1211,6 +1214,7 @@ interface AppCtxType {
   showToast: (msg: string, type?: string) => void;
   currentActor: string;
   tenantId?: string;
+  tenantPlan?: string;
 }
 const AppCtx = createContext<AppCtxType | null>(null);
 export const useApp = () => useContext(AppCtx)!;
@@ -5426,7 +5430,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
 // ATTENDANCE TAB
 // ─────────────────────────────────────────────────────────────────────────────
 const AttendanceTab = memo(() => {
-  const { state, dispatch, showToast, currentActor, tenantId } = useApp();
+  const { state, dispatch, showToast, currentActor, tenantId, tenantPlan } = useApp();
   const { attendance, classRolls, entries } = state;
   const [attTab, setAttTab] = useState<"roll" | "mark" | "history">("roll");
 
@@ -5477,6 +5481,11 @@ const AttendanceTab = memo(() => {
 
   const confirmCSVImport = () => {
     if (!rollClass) return showToast("Select a class first", "error");
+    
+    // Check Limits
+    const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
+    const currentTotalStudents = Object.values(classRolls || {}).flat().length;
+    
     const existing = classRolls[rollClass] || [];
     const existingNames = new Set(existing.map(s => s.name.toLowerCase()));
     const newStudents = csvPreview
@@ -5484,6 +5493,12 @@ const AttendanceTab = memo(() => {
       .map(s => ({ id: uid(), name: s.name, admNo: s.admNo }));
     const dupes = csvPreview.length - newStudents.length;
     if (!newStudents.length) { showToast("All students already in roll", "warning"); return; }
+    
+    if (currentTotalStudents + newStudents.length > limit) {
+      const available = Math.max(0, limit - currentTotalStudents);
+      return showToast(`Can only add ${available} more student${available !== 1 ? 's' : ''} on the ${tenantPlan || "trial"} tier (limit: ${limit}). Please upgrade.`, "error");
+    }
+    
     dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: [...existing, ...newStudents], actor: currentActor });
     
     // Phase 4 Roster Cutover Dual-Write
@@ -5525,6 +5540,13 @@ const AttendanceTab = memo(() => {
   const addStudent = () => {
     if (!newName.trim()) return showToast("Enter student name", "error");
     if (!rollClass) return showToast("Select a class", "error");
+    
+    const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
+    const currentTotalStudents = Object.values(classRolls || {}).flat().length;
+    if (currentTotalStudents >= limit) {
+      return showToast(`Student limit reached (${limit}) for the ${tenantPlan || "trial"} tier. Please upgrade.`, "error");
+    }
+    
     const existing = classRolls[rollClass] || [];
     if (existing.find(s => s.name.toLowerCase() === newName.trim().toLowerCase()))
       return showToast("Student already exists", "error");
@@ -5566,12 +5588,22 @@ const AttendanceTab = memo(() => {
   const addBulk = () => {
     if (!rollClass) return showToast("Select a class", "error");
     const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean);
+    
+    const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
+    const currentTotalStudents = Object.values(classRolls || {}).flat().length;
+    
     const existing = classRolls[rollClass] || [];
     const existingNames = new Set(existing.map(s => s.name.toLowerCase()));
     const newStudents = lines
       .filter(l => !existingNames.has(l.toLowerCase()))
       .map(l => ({ id: uid(), name: l, admNo: "" }));
     if (!newStudents.length) return showToast("All students already in roll", "warning");
+    
+    if (currentTotalStudents + newStudents.length > limit) {
+      const available = Math.max(0, limit - currentTotalStudents);
+      return showToast(`Can only add ${available} more student${available !== 1 ? 's' : ''} on the ${tenantPlan || "trial"} tier (limit: ${limit}). Please upgrade.`, "error");
+    }
+    
     const localIds = newStudents.map(s => s.id);
     dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: [...existing, ...newStudents], actor: currentActor });
 
@@ -5602,6 +5634,11 @@ const AttendanceTab = memo(() => {
   };
 
   const confirmStudent = (student: RollStudent) => {
+    const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
+    const currentTotalStudents = Object.values(classRolls || {}).flat().length;
+    if (currentTotalStudents >= limit) {
+      return showToast(`Student limit reached (${limit}) for the ${tenantPlan || "trial"} tier. Please upgrade.`, "error");
+    }
     const existing = (classRolls[rollClass] || []);
     dispatch({
       type: "SAVE_CLASS_ROLL",
@@ -7106,7 +7143,7 @@ function useReminderChecker(appState: AppState, dispatch: any, isAdmin: boolean,
 
 // Main App
 // ─────────────────────────────────────────────────────────────────────────────
-export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polledData, onLocalEdit, onStateChange }: { onTenantSignOut?: () => void; tenantId?: string; tenantSchoolName?: string; polledData?: any; onLocalEdit?: (state: any) => void; onStateChange?: (state: any) => void } = {}) {
+export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenantPlan, polledData, onLocalEdit, onStateChange }: { onTenantSignOut?: () => void; tenantId?: string; tenantSchoolName?: string; tenantPlan?: string; polledData?: any; onLocalEdit?: (state: any) => void; onStateChange?: (state: any) => void } = {}) {
   const [appState, dispatchRaw] = useReducer(appReducer, initialState);
 
   // Protect against stale data bleed across tenants on the same browser
@@ -7707,7 +7744,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, polle
     () => appState.notifications.filter(n => notificationVisible(n, isAdmin, currentActor) && !n.readBy.includes(currentActor)).length,
     [appState.notifications, isAdmin, currentActor]
   );
-  const ctxValue = useMemo<AppCtxType>(() => ({ state: appState, dispatch, showToast, currentActor, tenantId }), [appState, showToast, currentActor, tenantId]);
+  const ctxValue = useMemo<AppCtxType>(() => ({ state: appState, dispatch, showToast, currentActor, tenantId, tenantPlan }), [appState, showToast, currentActor, tenantId, tenantPlan]);
 
   // ── Ref to distinguish local edits from remote state replacements ───────
   const isApplyingRemoteRef = useRef(false);

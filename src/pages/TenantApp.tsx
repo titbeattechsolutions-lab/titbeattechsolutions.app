@@ -517,7 +517,7 @@ export default function TenantApp() {
         </div>
       )}
 
-      <App key={session?.tenantId || "app"} tenantSchoolName={session?.schoolName} tenantId={session?.tenantId} onTenantSignOut={signOut} polledData={polledData} onStateChange={handleStateChange} onLocalEdit={handleLocalEdit} />
+      <App key={session?.tenantId || "app"} tenantSchoolName={session?.schoolName} tenantId={session?.tenantId} tenantPlan={session?.planTier} onTenantSignOut={signOut} polledData={polledData} onStateChange={handleStateChange} onLocalEdit={handleLocalEdit} />
     </div>
   );
 }
