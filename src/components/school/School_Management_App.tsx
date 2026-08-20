@@ -7503,11 +7503,26 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [termEntries, entries, dbSearch, dbClass, dbDate, dbTerm, schoolSettings.term, schoolSettings.session]);
 
-  const curC = useMemo(() =>
-    activeReport
-      ? (appState.comments[activeReport.id] || { teacher:"", principal:"", teacherSig:"", principalSig:"", daysOpen:"", daysPresent:"", daysAbsent:"" })
-      : { teacher:"", principal:"", teacherSig:"", principalSig:"", daysOpen:"", daysPresent:"", daysAbsent:"" },
-  [activeReport, appState.comments]);
+  const curC = useMemo(() => {
+    if (!activeReport) return { teacher:"", principal:"", teacherSig:"", principalSig:"", daysOpen:"", daysPresent:"", daysAbsent:"" };
+    const c = appState.comments[activeReport.id] || { teacher:"", principal:"", teacherSig:"", principalSig:"", daysOpen:"", daysPresent:"", daysAbsent:"" };
+    if (!c.isCustomAttendance) {
+      const classAtt = appState.attendance.filter(a => a.studentClass === activeReport.class);
+      if (classAtt.length > 0) {
+        const uniqueDates = new Set(classAtt.map(a => a.date));
+        const studentAtt = classAtt.filter(a => a.studentName.toLowerCase() === activeReport.name.toLowerCase());
+        const presentCount = studentAtt.filter(a => a.status === "Present" || a.status === "Late").length;
+        const absentCount = studentAtt.filter(a => a.status === "Absent").length;
+        return {
+          ...c,
+          daysOpen: String(uniqueDates.size),
+          daysPresent: String(presentCount),
+          daysAbsent: String(absentCount),
+        };
+      }
+    }
+    return c;
+  }, [activeReport, appState.comments, appState.attendance]);
 
   const attRate = useMemo(() => {
     const o = parseInt(curC.daysOpen) || 0, p = parseInt(curC.daysPresent) || 0;
@@ -7728,21 +7743,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     
     const total = records.reduce((a, c) => a + c.total, 0);
 
-    // Auto-fill attendance if empty
-    const curComments = appState.comments[student.id] || {};
-    if (!curComments.daysOpen && !curComments.daysPresent && !curComments.daysAbsent) {
-      const classAttendance = appState.attendance.filter(a => a.studentClass === student.class);
-      if (classAttendance.length > 0) {
-        const uniqueDates = new Set(classAttendance.map(a => a.date));
-        const studentAttendance = classAttendance.filter(a => a.studentName.toLowerCase() === student.name.toLowerCase());
-        const presentCount = studentAttendance.filter(a => a.status === "Present" || a.status === "Late").length;
-        const absentCount = studentAttendance.filter(a => a.status === "Absent").length;
-        
-        dispatch({ type: "SET_COMMENT", studentId: student.id, field: "daysOpen", value: String(uniqueDates.size) });
-        dispatch({ type: "SET_COMMENT", studentId: student.id, field: "daysPresent", value: String(presentCount) });
-        dispatch({ type: "SET_COMMENT", studentId: student.id, field: "daysAbsent", value: String(absentCount) });
-      }
-    }
+
 
     setActiveReport({
       id: student.id,
@@ -8726,9 +8727,20 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                       })()}
                       <div className="p-6 space-y-6">
                         <Card className="p-5 border-2 border-slate-100 bg-slate-50">
-                          <div className="flex items-center gap-2 mb-4">
-                            <CalendarDays size={16} className="text-blue-600" />
-                            <p className="text-sm font-black uppercase text-slate-900">Attendance Record</p>
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                              <CalendarDays size={16} className="text-blue-600" />
+                              <p className="text-sm font-black uppercase text-slate-900">Attendance Record</p>
+                            </div>
+                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer">
+                              <input 
+                                type="checkbox" 
+                                checked={!(appState.comments[activeReport.id]?.isCustomAttendance)}
+                                onChange={e => dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:"isCustomAttendance", value: !e.target.checked })}
+                                className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+                              />
+                              Auto-Sync
+                            </label>
                           </div>
                           <div className="grid grid-cols-3 gap-4">
                             {([
@@ -8743,8 +8755,12 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                                   value={curC[f] || ""}
                                   onChange={e => {
                                     const v = e.target.value;
-                                    if (v === "" || (+v >= 0 && +v <= 365))
+                                    if (v === "" || (+v >= 0 && +v <= 365)) {
                                       dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:f, value:v });
+                                      if (!appState.comments[activeReport.id]?.isCustomAttendance) {
+                                        dispatch({ type:"SET_COMMENT", studentId:activeReport.id, field:"isCustomAttendance", value:true });
+                                      }
+                                    }
                                   }}
                                   onKeyDown={e => ["-","e","E","+"].includes(e.key) && e.preventDefault()}
                                   className={`w-full px-4 py-4 rounded-xl border-2 font-black text-center text-xl outline-none transition-all shadow-sm ${c === "emerald" ? "bg-emerald-50 border-emerald-100 focus:border-emerald-400" : c === "red" ? "bg-red-50 border-red-100 focus:border-red-400" : "bg-slate-50 border-slate-100 focus:border-slate-400"}`}
