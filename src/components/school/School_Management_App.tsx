@@ -46,6 +46,14 @@ const PLAN_LIMITS: Record<string, number> = {
   micro: 200, starter: 500, growth: 1000, enterprise: 10000, trial: 200
 };
 const ALL_CLASSES: string[] = Object.values(CURRICULUM).flatMap(c => c.classes);
+const getTrueStudentCount = (state: AppState, additionalNames: string[] = []) => {
+  const allNames = new Set([
+    ...Object.values(state?.classRolls || {}).flat().map(s => s.name.toLowerCase().trim()),
+    ...(state?.entries || []).map(e => e.studentName.toLowerCase().trim()),
+    ...additionalNames.map(n => n.toLowerCase().trim())
+  ]);
+  return allNames.size;
+};
 const TERMS = ["First Term","Second Term","Third Term"];
 const ROLES = ["Teacher","Class Teacher","Subject Teacher","Head of Dept","Bursar","Secretary","Headmaster","Headmistress","Vice Principal","Principal"];
 const PERMS_META = [
@@ -5522,8 +5530,7 @@ const AttendanceTab = memo(() => {
     
     // Check Limits
     const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
-    const currentTotalStudents = Object.values(classRolls || {}).flat().length;
-    
+    const currentTotalStudents = getTrueStudentCount(state);
     const existing = classRolls[rollClass] || [];
     const existingNames = new Set(existing.map(s => s.name.toLowerCase()));
     const newStudents = csvPreview
@@ -5532,7 +5539,8 @@ const AttendanceTab = memo(() => {
     const dupes = csvPreview.length - newStudents.length;
     if (!newStudents.length) { showToast("All students already in roll", "warning"); return; }
     
-    if (currentTotalStudents + newStudents.length > limit) {
+    const projectedTotal = getTrueStudentCount(state, newStudents.map(s => s.name));
+    if (projectedTotal > limit) {
       const available = Math.max(0, limit - currentTotalStudents);
       return showToast(`Can only add ${available} more student${available !== 1 ? 's' : ''} on the ${tenantPlan || "trial"} tier (limit: ${limit}). Please upgrade.`, "error");
     }
@@ -5580,8 +5588,8 @@ const AttendanceTab = memo(() => {
     if (!rollClass) return showToast("Select a class", "error");
     
     const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
-    const currentTotalStudents = Object.values(classRolls || {}).flat().length;
-    if (currentTotalStudents >= limit) {
+    const projectedTotal = getTrueStudentCount(state, [newName || student?.name || ""]);
+    if (projectedTotal > limit) {
       return showToast(`Student limit reached (${limit}) for the ${tenantPlan || "trial"} tier. Please upgrade.`, "error");
     }
     
@@ -5628,8 +5636,7 @@ const AttendanceTab = memo(() => {
     const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean);
     
     const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
-    const currentTotalStudents = Object.values(classRolls || {}).flat().length;
-    
+    const currentTotalStudents = getTrueStudentCount(state);
     const existing = classRolls[rollClass] || [];
     const existingNames = new Set(existing.map(s => s.name.toLowerCase()));
     const newStudents = lines
@@ -5637,7 +5644,8 @@ const AttendanceTab = memo(() => {
       .map(l => ({ id: uid(), name: l, admNo: "" }));
     if (!newStudents.length) return showToast("All students already in roll", "warning");
     
-    if (currentTotalStudents + newStudents.length > limit) {
+    const projectedTotal = getTrueStudentCount(state, newStudents.map(s => s.name));
+    if (projectedTotal > limit) {
       const available = Math.max(0, limit - currentTotalStudents);
       return showToast(`Can only add ${available} more student${available !== 1 ? 's' : ''} on the ${tenantPlan || "trial"} tier (limit: ${limit}). Please upgrade.`, "error");
     }
@@ -5673,8 +5681,8 @@ const AttendanceTab = memo(() => {
 
   const confirmStudent = (student: RollStudent) => {
     const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
-    const currentTotalStudents = Object.values(classRolls || {}).flat().length;
-    if (currentTotalStudents >= limit) {
+    const projectedTotal = getTrueStudentCount(state, [newName || student?.name || ""]);
+    if (projectedTotal > limit) {
       return showToast(`Student limit reached (${limit}) for the ${tenantPlan || "trial"} tier. Please upgrade.`, "error");
     }
     const existing = (classRolls[rollClass] || []);
@@ -7642,6 +7650,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
       (!e.session || e.session === schoolSettings.session)
     )) return showToast(`${subject} already exists for ${studentName}.`, "error");
     const ca = parseFloat(caScore) || 0, ex = parseFloat(examScore) || 0;
+    const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
+    if (getTrueStudentCount(state, [studentName]) > limit) return showToast(`Student limit reached (${limit}). Please upgrade.`, "error");
     if (ca < 0 || ca > 40) return showToast("CA score must be 0–40", "error");
     if (ex < 0 || ex > 60) return showToast("Exam score must be 0–60", "error");
     dispatch({
@@ -7697,6 +7707,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     const d = caDrafts.find(x => x.id === draftId);
     if (!d) return;
     const ex = parseFloat(examStr);
+    const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
+    if (getTrueStudentCount(state, [d.studentName]) > limit) return showToast(`Student limit reached (${limit}). Please upgrade.`, "error");
     if (isNaN(ex) || ex < 0 || ex > 60) return showToast("Exam score must be 0–60", "error");
     if (entries.some(e =>
       e.studentName.toLowerCase().trim() === d.studentName.toLowerCase().trim() &&
