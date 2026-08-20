@@ -497,7 +497,7 @@ async function exportReportToPDF(report: any, curC: any, attRate: number | null,
     ? [["Subject", "CA /40", "Exam /60", "Total /100", "Grade", "Remark"]]
     : [["Subject", "CA /40", "Exam /60", "Total /100"]];
   const tableData = report.records.map((r: any) => {
-    const g = getGrade(r.total);
+    const g = getGrade(r.total, schoolSettings?.grading_scale);
     return tpl.showGrade
       ? [r.subject.toUpperCase(), r.caScore, r.examScore, r.total, g.grade, g.remark]
       : [r.subject.toUpperCase(), r.caScore, r.examScore, r.total];
@@ -607,6 +607,7 @@ async function exportClassToExcel(
   term: string,
   entries: Entry[],
   attendance: AttendanceRecord[],
+  gradingScale?: any[],
 ): Promise<void> {
   const ok = await loadSheetJS();
   if (!ok) return;
@@ -635,7 +636,7 @@ async function exportClassToExcel(
       if (e) totalScore += e.total;
     });
     const avg = sEntries.length ? totalScore / sEntries.length : 0;
-    row.push(totalScore, avg.toFixed(1), getGrade(avg).grade);
+    row.push(totalScore, avg.toFixed(1), getGrade(avg, gradingScale).grade);
     summaryData.push(row);
     studentTotals.push({ name: student, total: totalScore, avg });
   });
@@ -664,7 +665,7 @@ async function exportClassToExcel(
       [""],
       ["Subject", "CA Score", "Exam Score", "Total", "Grade", "Remark"],
       ...sEntries.map(e => {
-        const g = getGrade(e.total);
+        const g = getGrade(e.total, gradingScale);
         return [e.subject, e.caScore, e.examScore, e.total, g.grade, g.remark];
       }),
       [""],
@@ -721,7 +722,7 @@ async function exportSingleStudentExcel(report: any, curC: any, attRate: number 
   const ok = await loadSheetJS();
   if (!ok) return;
   const wb = XLSX.utils.book_new();
-  const g = getGrade(parseFloat(report.summary.avg));
+  const g = getGrade(parseFloat(report.summary.avg), schoolSettings?.grading_scale);
   
   const borderAll = { top: { style: "thin", color: { auto: 1 } }, bottom: { style: "thin", color: { auto: 1 } }, left: { style: "thin", color: { auto: 1 } }, right: { style: "thin", color: { auto: 1 } } };
   const headerStyle = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "1E3A8A" } }, alignment: { horizontal: "center", vertical: "center" }, border: borderAll };
@@ -748,7 +749,7 @@ async function exportSingleStudentExcel(report: any, curC: any, attRate: number 
     ["ACADEMIC PERFORMANCE", "", "", "", "", ""],
     ["Subject", "CA /40", "Exam /60", "Total /100", "Grade", "Remark"],
     ...report.records.map((r: any) => {
-      const gr = getGrade(r.total);
+      const gr = getGrade(r.total, schoolSettings?.grading_scale);
       return [r.subject, r.caScore, r.examScore, r.total, gr.grade, gr.remark];
     }),
     ["CUMULATIVE TOTAL", "", "", report.summary.total, `${report.summary.avg}%`, g.remark],
@@ -879,7 +880,11 @@ function parseCSVRoll(csvText: string): { name: string; admNo: string }[] {
     .filter(s => s.name.length >= 2); // Skip empty/garbage rows
 }
 
-const getGrade = (s: number) => {
+const getGrade = (s: number, scale?: any[]) => {
+  if (scale && scale.length > 0) {
+    const band = scale.find(b => s >= Number(b.min) && s <= Number(b.max));
+    if (band) return { grade: band.grade, remark: band.remark, color: "#3b82f6", bg: "#dbeafe" };
+  }
   if (s >= 75) return { grade:"A1", remark:"Excellent",  color:"#059669", bg:"#d1fae5" };
   if (s >= 70) return { grade:"B2", remark:"Very Good",  color:"#10b981", bg:"#d1fae5" };
   if (s >= 65) return { grade:"B3", remark:"Good",       color:"#2563eb", bg:"#dbeafe" };
@@ -5006,7 +5011,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                       const classes = [...new Set(state.entries.map(e => e.studentClass))];
                       showToast(`Exporting ${classes.length} class${classes.length!==1?"es":""}…`);
                       for (const cls of classes) {
-                        await exportClassToExcel(cls, state.schoolSettings.session, state.schoolSettings.term, state.entries, state.attendance);
+                        await exportClassToExcel(cls, state.schoolSettings.session, state.schoolSettings.term, state.entries, state.attendance, state.schoolSettings.grading_scale);
                       }
                       showToast("All classes exported!");
                     }}>
@@ -5346,7 +5351,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
           </thead>
           <tbody>
             {report.records.map((r: any, i: number) => {
-              const g = getGrade(r.total);
+              const g = getGrade(r.total, schoolSettings?.grading_scale);
               const bg = tpl.tableStyle === "striped" ? (i % 2 === 0 ? "transparent" : "rgba(248,250,252,0.65)") : "transparent";
               const border = tpl.tableStyle === "minimal" ? "none" : "1px solid #e2e8f0";
               const pad = report.records.length > 12 ? "4px 8px" : "8px 10px";
@@ -7511,8 +7516,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
       if (classAtt.length > 0) {
         const uniqueDates = new Set(classAtt.map(a => a.date));
         const studentAtt = classAtt.filter(a => a.studentName.toLowerCase() === activeReport.name.toLowerCase());
-        const presentCount = studentAtt.filter(a => a.status === "Present" || a.status === "Late").length;
-        const absentCount = studentAtt.filter(a => a.status === "Absent").length;
+        const presentCount = studentAtt.filter(a => a.status?.toLowerCase() === "present" || a.status?.toLowerCase() === "late").length;
+        const absentCount = studentAtt.filter(a => a.status?.toLowerCase() === "absent" || a.status?.toLowerCase() === "excused").length;
         return {
           ...c,
           daysOpen: String(uniqueDates.size),
@@ -8328,7 +8333,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                       {/* Score preview */}
                       {(scoreForm.caScore !== "" || scoreForm.examScore !== "") && (() => {
                         const t = (+scoreForm.caScore || 0) + (+scoreForm.examScore || 0);
-                        const g = getGrade(t);
+                        const g = getGrade(t, schoolSettings?.grading_scale);
                         return (
                           <div className="bg-slate-50 rounded-xl p-4 text-center border-2 border-slate-100">
                             <p className="text-xs font-black uppercase text-slate-400 mb-1">Total Preview</p>
@@ -8405,7 +8410,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                         <Btn variant="primary" onClick={() => {
                           const headers = ["Student", "Class", "Subject", "CA", "Exam", "Total", "Grade"];
                           const rows = filteredEntries.map(e => [
-                            e.studentName, e.studentClass, e.subject, e.caScore, e.examScore, e.total, getGrade(e.total).grade
+                            e.studentName, e.studentClass, e.subject, e.caScore, e.examScore, e.total, getGrade(e.total, schoolSettings?.grading_scale).grade
                           ]);
                           exportToCSV(`Academic_Records`, headers, rows);
                         }} title="Export Excel">
@@ -8504,7 +8509,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
                                   {filteredEntries.map(e => {
-                                    const g = getGrade(e.total);
+                                    const g = getGrade(e.total, schoolSettings?.grading_scale);
                                     const { date, time } = fmtTs(e.createdAt);
                                     return (
                                       <tr key={e.id} className="hover:bg-slate-50 transition-colors">
@@ -8556,7 +8561,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                               </thead>
                               <tbody className="divide-y divide-slate-50">
                                 {bin.map(e => {
-                                  const g = getGrade(e.total);
+                                  const g = getGrade(e.total, schoolSettings?.grading_scale);
                                   const cr = fmtTs(e.createdAt);
                                   const dl = fmtTs(e.deletedAt);
                                   return (
@@ -8609,7 +8614,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                       {rpClass !== "All" && filteredStudents.length > 0 && can("printReports") && (
                         <Btn variant="outline" size="sm" onClick={async () => {
                           showToast(`Exporting ${rpClass}…`);
-                          await exportClassToExcel(rpClass, schoolSettings.session, schoolSettings.term, entries, attendance);
+                          await exportClassToExcel(rpClass, schoolSettings.session, schoolSettings.term, entries, attendance, schoolSettings.grading_scale);
                           showToast(`${rpClass} exported to Excel`);
                         }}>
                           📊 Export {rpClass}

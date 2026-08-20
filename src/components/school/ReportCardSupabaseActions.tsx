@@ -400,11 +400,19 @@ export default function ReportCardSupabaseActions({
           }
 
           const getGrade = (total: number) => {
-            if (total >= 70) return { grade: "A", remark: "Excellent" };
-            if (total >= 60) return { grade: "B", remark: "Very Good" };
-            if (total >= 50) return { grade: "C", remark: "Credit" };
-            if (total >= 40) return { grade: "D", remark: "Pass" };
-            return { grade: "F", remark: "Fail" };
+            if (schoolSettings?.grading_scale?.length > 0) {
+              const band = schoolSettings.grading_scale.find((b: any) => total >= Number(b.min) && total <= Number(b.max));
+              if (band) return { grade: band.grade, remark: band.remark };
+            }
+            if (total >= 75) return { grade: "A1", remark: "Excellent" };
+            if (total >= 70) return { grade: "B2", remark: "Very Good" };
+            if (total >= 65) return { grade: "B3", remark: "Good" };
+            if (total >= 60) return { grade: "C4", remark: "Credit" };
+            if (total >= 55) return { grade: "C5", remark: "Credit" };
+            if (total >= 50) return { grade: "C6", remark: "Credit" };
+            if (total >= 45) return { grade: "D7", remark: "Pass" };
+            if (total >= 40) return { grade: "E8", remark: "Pass" };
+            return { grade: "F9", remark: "Fail" };
           };
 
           const { grade, remark } = r.grade && r.remark ? { grade: r.grade, remark: r.remark } : getGrade(r.total);
