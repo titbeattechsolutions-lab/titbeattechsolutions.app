@@ -216,9 +216,6 @@ export default function TenantApp() {
       const { _rev, _updatedAt, _deviceId, ...cleanData } = parsed;
       const expectedRev = localRev.current;
 
-        "retryCount:", retryCount, "expectedRev:", expectedRev, 
-        "trigger source:", explicitState ? "explicit local edit" : "ref/localStorage fallback");
-
       const result = await saveTenantDataV3(session, expectedRev, cleanData);
 
       if (result.success) {
