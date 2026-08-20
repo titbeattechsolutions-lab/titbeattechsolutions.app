@@ -882,7 +882,8 @@ function parseCSVRoll(csvText: string): { name: string; admNo: string }[] {
 
 const getGrade = (s: number, scale?: any[]) => {
   if (scale && scale.length > 0) {
-    const band = scale.find(b => s >= Number(b.min) && s <= Number(b.max));
+    const sortedScale = [...scale].sort((a, b) => Number(b.min) - Number(a.min));
+    const band = sortedScale.find(b => s >= Number(b.min));
     if (band) return { grade: band.grade, remark: band.remark, color: "#3b82f6", bg: "#dbeafe" };
   }
   if (s >= 75) return { grade:"A1", remark:"Excellent",  color:"#059669", bg:"#d1fae5" };
@@ -4571,12 +4572,12 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
               <div className="space-y-3">
                 {(draft.grading_scale || []).map((band: any, idx: number) => (
                   <div key={idx} className="grid grid-cols-[1fr_1fr_1.5fr_2fr_auto] gap-2 items-center">
-                    <Inp type="number" placeholder="Min" value={band.min} onChange={(e: any) => {
+                    <Inp type="number" step="any" placeholder="Min" value={band.min} onChange={(e: any) => {
                       const newScale = [...(draft.grading_scale || [])];
                       newScale[idx].min = Number(e.target.value);
                       setDraft(d => ({ ...d, grading_scale: newScale }));
                     }} />
-                    <Inp type="number" placeholder="Max" value={band.max} onChange={(e: any) => {
+                    <Inp type="number" step="any" placeholder="Max" value={band.max} onChange={(e: any) => {
                       const newScale = [...(draft.grading_scale || [])];
                       newScale[idx].max = Number(e.target.value);
                       setDraft(d => ({ ...d, grading_scale: newScale }));

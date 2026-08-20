@@ -401,7 +401,8 @@ export default function ReportCardSupabaseActions({
 
           const getGrade = (total: number) => {
             if (schoolSettings?.grading_scale?.length > 0) {
-              const band = schoolSettings.grading_scale.find((b: any) => total >= Number(b.min) && total <= Number(b.max));
+              const sortedScale = [...schoolSettings.grading_scale].sort((a: any, b: any) => Number(b.min) - Number(a.min));
+              const band = sortedScale.find((b: any) => total >= Number(b.min));
               if (band) return { grade: band.grade, remark: band.remark };
             }
             if (total >= 75) return { grade: "A1", remark: "Excellent" };
