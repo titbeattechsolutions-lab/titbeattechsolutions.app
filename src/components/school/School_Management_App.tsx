@@ -3902,7 +3902,7 @@ const ResultCheckerPanel = memo(({ tenantId, schoolSettings, dispatch, appState,
 
 // 🏆🏆🏆 Promotion Wizard 🏆🏆🏆
 const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tenantId?: string }) => {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [mappings, setMappings] = useState<Record<string, string>>({});
@@ -4019,6 +4019,7 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
       
       // Execute from end of topological sort to beginning (i.e. highest class first)
       const executionOrder = order.reverse();
+      const newClassRolls = { ...state.classRolls };
       
       for (const currentClass of executionOrder) {
         const targetClass = mappings[currentClass];
@@ -4026,11 +4027,19 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
         
         const retainedIds = retained[currentClass] || [];
 
+        // Modify local class rolls array
+        const currentStudents = newClassRolls[currentClass] || [];
+        const movingStudents = currentStudents.filter(s => !retainedIds.includes(s.id));
+        const retainedStudents = currentStudents.filter(s => retainedIds.includes(s.id));
+
         if (targetClass === "GRADUATE") {
           let q = supabase.from("students").update({ status: "graduated", updated_at: new Date().toISOString() })
             .eq("school_id", tenantId).eq("class_name", currentClass).eq("status", "active");
           if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
           await q;
+
+          // Update local state: remove moving students (graduating)
+          newClassRolls[currentClass] = retainedStudents;
         } else {
             // RESOLVE CLASS ID FOR NEW TERM/SESSION to prevent schema logic bleed
             const termRaw = state.schoolSettings?.term || "First Term";
@@ -4068,7 +4077,30 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
               .eq("school_id", tenantId).eq("class_name", currentClass).eq("status", "active");
             if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
             await q;
+
+            // Update local state: move students
+            newClassRolls[currentClass] = retainedStudents;
+            newClassRolls[targetClass] = [...(newClassRolls[targetClass] || []), ...movingStudents];
         }
+      }
+      
+      // Save offline state back to IndexedDB and Cloud
+      const newState = { ...state, classRolls: newClassRolls };
+      dispatch({ type: "REPLACE_ALL", payload: newState });
+      
+      try {
+        const { setAppState } = await import("@/lib/app-storage");
+        const { saveTenantDataV3, loadTenantSession } = await import("@/lib/tenant-client");
+        const json = JSON.stringify(newState);
+        await setAppState(json);
+        const s = loadTenantSession();
+        if (s) {
+          // Attempt to push immediately to cloud so reload gets fresh data
+          const localRev = newState._rev || 0;
+          await saveTenantDataV3(s, localRev, newState);
+        }
+      } catch (e) {
+        console.warn("Failed to save local state immediately before reload", e);
       }
       
       alert("Promotion completed successfully! The page will now reload.");
