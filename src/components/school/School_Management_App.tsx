@@ -3984,12 +3984,27 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
     if (step === 2 && tenantId) {
       setLoading(true);
       import("@/integrations/supabase/client").then(async ({ supabase }) => {
-        const { data } = await supabase.from("students").select("id, first_name, last_name, class_name").eq("school_id", tenantId).eq("status", "active");
-        if (data) {
+        try {
+          const { data } = await supabase.from("students").select("id, first_name, last_name, class_name").eq("school_id", tenantId).eq("status", "active");
+          if (data && data.length > 0) {
+            const grouped: Record<string, any[]> = {};
+            data.forEach(s => {
+              if (!grouped[s.class_name]) grouped[s.class_name] = [];
+              grouped[s.class_name].push(s);
+            });
+            setStudentsByClass(grouped);
+          } else {
+            throw new Error("No data");
+          }
+        } catch (e) {
           const grouped: Record<string, any[]> = {};
-          data.forEach(s => {
-            if (!grouped[s.class_name]) grouped[s.class_name] = [];
-            grouped[s.class_name].push(s);
+          Object.keys(state.classRolls).forEach(c => {
+            grouped[c] = (state.classRolls[c] || []).map(s => ({
+              id: s.id,
+              first_name: s.name.split(" ")[0] || "",
+              last_name: s.name.split(" ").slice(1).join(" ") || "",
+              class_name: c
+            }));
           });
           setStudentsByClass(grouped);
         }
@@ -4002,6 +4017,10 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
     if (!tenantId) return;
     setLoading(true);
     const { supabase } = await import("@/integrations/supabase/client");
+    
+    // Check if user has a real Supabase Auth session (Admin) vs a PIN session (Staff)
+    const { data: { session: authSession } } = await supabase.auth.getSession();
+    const isRealAdmin = !!authSession;
 
     try {
       // 1. Filter out DO_NOT_PROMOTE
@@ -4047,50 +4066,54 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
         const retainedStudents = currentStudents.filter(s => retainedIds.includes(s.id));
 
         if (targetClass === "GRADUATE") {
-          let q = supabase.from("students").update({ status: "graduated", updated_at: new Date().toISOString() })
-            .eq("school_id", tenantId).eq("class_name", currentClass).eq("status", "active");
-          if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
-          await q;
+          if (isRealAdmin) {
+            let q = supabase.from("students").update({ status: "graduated", updated_at: new Date().toISOString() })
+              .eq("school_id", tenantId).eq("class_name", currentClass).eq("status", "active");
+            if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
+            await q;
+          }
 
           // Update local state: remove moving students (graduating)
           newClassRolls[currentClass] = retainedStudents;
         } else {
-            // RESOLVE CLASS ID FOR NEW TERM/SESSION to prevent schema logic bleed
-            const termRaw = state.schoolSettings?.term || "First Term";
-            const normTerm = termRaw.toLowerCase().includes("first") ? "first" : termRaw.toLowerCase().includes("second") ? "second" : "third";
-            const session = state.schoolSettings?.session || "2025/2026";
-            
-            let classId = null;
-            const { data: existingClass } = await supabase.from("classes")
-              .select("id")
-              .eq("school_id", tenantId)
-              .eq("name", targetClass)
-              .eq("academic_year", session)
-              .eq("term", normTerm)
-              .maybeSingle();
+            if (isRealAdmin) {
+              // RESOLVE CLASS ID FOR NEW TERM/SESSION to prevent schema logic bleed
+              const termRaw = state.schoolSettings?.term || "First Term";
+              const normTerm = termRaw.toLowerCase().includes("first") ? "first" : termRaw.toLowerCase().includes("second") ? "second" : "third";
+              const session = state.schoolSettings?.session || "2025/2026";
               
-            if (existingClass?.id) {
-              classId = existingClass.id;
-            } else {
-              const { data: newClass, error: cErr } = await supabase.from("classes")
-                .insert({
-                  school_id: tenantId,
-                  name: targetClass,
-                  academic_year: session,
-                  term: normTerm
-                })
+              let classId = null;
+              const { data: existingClass } = await supabase.from("classes")
                 .select("id")
-                .single();
-              if (!cErr && newClass?.id) classId = newClass.id;
+                .eq("school_id", tenantId)
+                .eq("name", targetClass)
+                .eq("academic_year", session)
+                .eq("term", normTerm)
+                .maybeSingle();
+                
+              if (existingClass?.id) {
+                classId = existingClass.id;
+              } else {
+                const { data: newClass, error: cErr } = await supabase.from("classes")
+                  .insert({
+                    school_id: tenantId,
+                    name: targetClass,
+                    academic_year: session,
+                    term: normTerm
+                  })
+                  .select("id")
+                  .single();
+                if (!cErr && newClass?.id) classId = newClass.id;
+              }
+
+              const payload: any = { class_name: targetClass, updated_at: new Date().toISOString() };
+              if (classId) payload.class_id = classId;
+
+              let q = supabase.from("students").update(payload)
+                .eq("school_id", tenantId).eq("class_name", currentClass).eq("status", "active");
+              if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
+              await q;
             }
-
-            const payload: any = { class_name: targetClass, updated_at: new Date().toISOString() };
-            if (classId) payload.class_id = classId;
-
-            let q = supabase.from("students").update(payload)
-              .eq("school_id", tenantId).eq("class_name", currentClass).eq("status", "active");
-            if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
-            await q;
 
             // Update local state: move students
             newClassRolls[currentClass] = retainedStudents;
