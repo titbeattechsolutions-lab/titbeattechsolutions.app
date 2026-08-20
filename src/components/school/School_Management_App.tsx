@@ -5133,7 +5133,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                       if (!currentCode || isBuggy) {
                         const newCode = generateStaffCode(updatedStaff[i].name, existingCodes);
                         if (isBuggy) {
-                          console.log(`Fixing buggy code for ${updatedStaff[i].name}: ${currentCode} -> ${newCode}`);
+                          
                           changedNames.push(`${updatedStaff[i].name} (${currentCode} -> ${newCode})`);
                         }
                         updatedStaff[i] = { ...updatedStaff[i], staffCode: newCode };
@@ -5142,7 +5142,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                       }
                     }
                     if (changedNames.length > 0) {
-                      console.log("Total staff fixed:", changedNames.length, changedNames);
+                      // staff codes fixed silently
                     }
                     dispatch({ type: "REPLACE_ALL", payload: { 
                       ...state, 

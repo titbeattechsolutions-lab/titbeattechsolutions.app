@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 interface ReportData {
   studentName: string;
@@ -183,53 +183,63 @@ export function exportToPDF(data: ReportData) {
   return fileName;
 }
 
-export function exportToExcel(data: ReportData) {
-  const wb = XLSX.utils.book_new();
-
-  // Report sheet
-  const header = [
-    [data.schoolName.toUpperCase()],
-    [data.motto],
-    ["STUDENT REPORT SHEET"],
-    [],
-    ["Student:", data.studentName, "", "Session:", data.session],
-    ["Class:", data.className, "", "Position:", `${data.position} of ${data.classCount}`],
-    ["Term:", data.term, "", "Average:", `${data.summary.avg}%`],
-    [],
-    ["Subject", "CA /40", "Exam /60", "Total /100", "Grade", "Remark"],
-  ];
-
-  const rows = data.records.map((r) => {
-    const g = getGradeInfo(r.total);
-    return [r.subject, r.caScore, r.examScore, r.total, g.grade, g.remark];
-  });
-
-  const footer = [
-    [],
-    ["CUMULATIVE TOTAL", "", "", `${data.summary.total}/${data.summary.obtainable}`, `${data.summary.avg}%`, "Average"],
-    [],
-    ["ATTENDANCE"],
-    ["Days Opened", data.comments.daysOpen || "—", "Days Present", data.comments.daysPresent || "—", "Days Absent", data.comments.daysAbsent || "—"],
-    ["Attendance Rate", data.attRate !== null ? `${data.attRate}%` : "—"],
-    [],
-    ["CLASS TEACHER'S REMARK", data.comments.teacher || "No remark"],
-    ["Signature", data.comments.teacherSig || ""],
-    ["PRINCIPAL'S REMARK", data.comments.principal || "No remark"],
-    ["Signature", data.comments.principalSig || ""],
-    [],
-    ["Next Term Resumption:", data.resumptionDate || "—"],
-  ];
-
-  const ws = XLSX.utils.aoa_to_sheet([...header, ...rows, ...footer]);
+export async function exportToExcel(data: ReportData) {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Report Sheet");
 
   // Column widths
-  ws["!cols"] = [
-    { wch: 30 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 15 },
+  ws.columns = [
+    { width: 30 }, { width: 10 }, { width: 10 },
+    { width: 12 }, { width: 8 },  { width: 15 },
   ];
 
-  XLSX.utils.book_append_sheet(wb, ws, "Report Sheet");
+  const addRow = (values: any[], bold = false, bgArgb?: string) => {
+    const row = ws.addRow(values);
+    if (bold) row.font = { bold: true };
+    if (bgArgb) row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: bgArgb } };
+    return row;
+  };
+
+  // Header section
+  addRow([data.schoolName.toUpperCase()], true);
+  addRow([data.motto]);
+  addRow(["STUDENT REPORT SHEET"], true);
+  addRow([]);
+  addRow(["Student:", data.studentName, "", "Session:", data.session]);
+  addRow(["Class:", data.className, "", "Position:", `${data.position} of ${data.classCount}`]);
+  addRow(["Term:", data.term, "", "Average:", `${data.summary.avg}%`]);
+  addRow([]);
+  addRow(["Subject", "CA /40", "Exam /60", "Total /100", "Grade", "Remark"], true, "FFE2E8F0");
+
+  // Subject rows
+  data.records.forEach((r) => {
+    const g = getGradeInfo(r.total);
+    addRow([r.subject, r.caScore, r.examScore, r.total, g.grade, g.remark]);
+  });
+
+  // Footer
+  addRow([]);
+  addRow(["CUMULATIVE TOTAL", "", "", `${data.summary.total}/${data.summary.obtainable}`, `${data.summary.avg}%`, "Average"], true);
+  addRow([]);
+  addRow(["ATTENDANCE"], true);
+  addRow(["Days Opened", data.comments.daysOpen || "—", "Days Present", data.comments.daysPresent || "—", "Days Absent", data.comments.daysAbsent || "—"]);
+  addRow(["Attendance Rate", data.attRate !== null ? `${data.attRate}%` : "—"]);
+  addRow([]);
+  addRow(["CLASS TEACHER'S REMARK", data.comments.teacher || "No remark"]);
+  addRow(["Signature", data.comments.teacherSig || ""]);
+  addRow(["PRINCIPAL'S REMARK", data.comments.principal || "No remark"]);
+  addRow(["Signature", data.comments.principalSig || ""]);
+  addRow([]);
+  addRow(["Next Term Resumption:", data.resumptionDate || "—"]);
 
   const fileName = `${data.studentName.replace(/\s+/g, "_")}_Report_${data.term.replace(/\s+/g, "_")}.xlsx`;
-  XLSX.writeFile(wb, fileName);
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
   return fileName;
 }

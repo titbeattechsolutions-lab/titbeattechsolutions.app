@@ -1,6 +1,21 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { exportToPDF } from "./report-export";
 import { getOrdinal } from "./school-helpers";
+
+// ─── Shared helper: trigger browser file download from a buffer ──
+async function downloadBuffer(buffer: ArrayBuffer, fileName: string) {
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 // ─── Attendance Export ────────────────────────────────────────
 export function exportAttendanceCSV(attendance: any[], fileName = "attendance_export.csv") {
@@ -11,20 +26,33 @@ export function exportAttendanceCSV(attendance: any[], fileName = "attendance_ex
   downloadBlob(csv, fileName, "text/csv;charset=utf-8");
 }
 
-export function exportAttendanceExcel(attendance: any[], fileName = "attendance_export.xlsx") {
+export async function exportAttendanceExcel(attendance: any[], fileName = "attendance_export.xlsx") {
   if (!attendance.length) return;
-  const wb = XLSX.utils.book_new();
-  const data = attendance.map((a) => ({
-    Student: a.studentName, Class: a.studentClass, Date: a.date, Status: a.status, Note: a.note || "",
-  }));
-  const ws = XLSX.utils.json_to_sheet(data);
-  ws["!cols"] = [{ wch: 25 }, { wch: 15 }, { wch: 12 }, { wch: 10 }, { wch: 30 }];
-  XLSX.utils.book_append_sheet(wb, ws, "Attendance");
-  XLSX.writeFile(wb, fileName);
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Attendance");
+
+  ws.columns = [
+    { header: "Student",  key: "Student",  width: 25 },
+    { header: "Class",    key: "Class",    width: 15 },
+    { header: "Date",     key: "Date",     width: 12 },
+    { header: "Status",   key: "Status",   width: 10 },
+    { header: "Note",     key: "Note",     width: 30 },
+  ];
+
+  // Bold header row
+  ws.getRow(1).font = { bold: true };
+
+  attendance.forEach((a) =>
+    ws.addRow({ Student: a.studentName, Class: a.studentClass, Date: a.date, Status: a.status, Note: a.note || "" })
+  );
+
+  const buffer = await wb.xlsx.writeBuffer();
+  downloadBuffer(buffer, fileName);
 }
 
 // ─── Bulk Class Results Export ────────────────────────────────
-export function exportClassResultsExcel(
+export async function exportClassResultsExcel(
   entries: any[], className: string, term: string, session: string, schoolName: string, fileName?: string
 ) {
   const classEntries = entries.filter((e) => e.studentClass === className && e.term === term && e.session === session);
@@ -33,18 +61,27 @@ export function exportClassResultsExcel(
   const students = [...new Set(classEntries.map((e) => e.studentName))];
   const subjects = [...new Set(classEntries.map((e) => e.subject))];
 
-  const wb = XLSX.utils.book_new();
-  const header = [
-    [schoolName.toUpperCase()],
-    [`${className} — ${term} — ${session}`],
-    [],
-    ["S/N", "Student Name", ...subjects.flatMap((s) => [s + " (CA)", s + " (Exam)", s + " (Total)"]), "Grand Total", "Average", "Position"],
-  ];
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(className.slice(0, 31)); // Excel tab name max 31 chars
+
+  // Title rows
+  ws.addRow([schoolName.toUpperCase()]);
+  ws.getRow(1).font = { bold: true, size: 13 };
+  ws.addRow([`${className} — ${term} — ${session}`]);
+  ws.addRow([]); // spacer
+
+  // Header row
+  const headerRow = ws.addRow([
+    "S/N", "Student Name",
+    ...subjects.flatMap((s) => [s + " (CA)", s + " (Exam)", s + " (Total)"]),
+    "Grand Total", "Average", "Position",
+  ]);
+  headerRow.font = { bold: true };
+  headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
 
   const standings = students.map((name) => {
     const recs = classEntries.filter((e) => e.studentName === name);
-    const total = recs.reduce((s, e) => s + e.total, 0);
-    return { name, total };
+    return { name, total: recs.reduce((s, e) => s + e.total, 0) };
   }).sort((a, b) => b.total - a.total);
 
   const rows = students.map((name) => {
@@ -59,12 +96,18 @@ export function exportClassResultsExcel(
     return [pos, name, ...subjectCols, grandTotal, avg, getOrdinal(pos)];
   }).sort((a, b) => (a[0] as number) - (b[0] as number));
 
-  const ws = XLSX.utils.aoa_to_sheet([...header, ...rows]);
-  ws["!cols"] = [{ wch: 5 }, { wch: 25 }, ...subjects.flatMap(() => [{ wch: 8 }, { wch: 8 }, { wch: 8 }]), { wch: 10 }, { wch: 8 }, { wch: 8 }];
-  XLSX.utils.book_append_sheet(wb, ws, className);
+  rows.forEach((row) => ws.addRow(row));
+
+  // Column widths
+  ws.getColumn(1).width = 5;
+  ws.getColumn(2).width = 25;
+  let col = 3;
+  subjects.forEach(() => { ws.getColumn(col).width = 8; ws.getColumn(col+1).width = 8; ws.getColumn(col+2).width = 8; col += 3; });
+  ws.getColumn(col).width = 10; ws.getColumn(col+1).width = 8; ws.getColumn(col+2).width = 8;
 
   const fn = fileName || `${className.replace(/\s+/g, "_")}_Results_${term.replace(/\s+/g, "_")}.xlsx`;
-  XLSX.writeFile(wb, fn);
+  const buffer = await wb.xlsx.writeBuffer();
+  downloadBuffer(buffer, fn);
   return fn;
 }
 
