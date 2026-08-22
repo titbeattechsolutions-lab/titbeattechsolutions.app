@@ -4016,11 +4016,8 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
   const handleExecute = async () => {
     if (!tenantId) return;
     setLoading(true);
-    const { supabase } = await import("@/integrations/supabase/client");
-    
-    // Check if user has a real Supabase Auth session (Admin) vs a PIN session (Staff)
-    const { data: { session: authSession } } = await supabase.auth.getSession();
-    const isRealAdmin = !!authSession;
+    const { db: schoolDb } = await import("@/supabase/schoolService");
+    const sdb = schoolDb();
 
     try {
       // 1. Filter out DO_NOT_PROMOTE
@@ -4040,13 +4037,14 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
 
       const queue: string[] = Object.keys(inDegree).filter(k => inDegree[k] === 0);
       const order: string[] = [];
+      
       while (queue.length > 0) {
-        const curr = queue.shift()!;
-        order.push(curr);
-        const tgt = graph[curr];
-        if (tgt) {
-          inDegree[tgt]--;
-          if (inDegree[tgt] === 0) queue.push(tgt);
+        const u = queue.shift()!;
+        order.push(u);
+        const v = graph[u];
+        if (v) {
+          inDegree[v]--;
+          if (inDegree[v] === 0) queue.push(v);
         }
       }
       
@@ -4066,24 +4064,24 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
         const retainedStudents = currentStudents.filter(s => retainedIds.includes(s.id));
 
         if (targetClass === "GRADUATE") {
-          if (isRealAdmin) {
-            let q = supabase.from("students").update({ status: "graduated", updated_at: new Date().toISOString() })
-              .eq("school_id", tenantId).eq("class_name", currentClass).eq("status", "active");
-            if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
-            await q;
+          if (movingStudents.length > 0) {
+            const movingIds = movingStudents.map(s => s.id);
+            await sdb.from("students").update({ status: "graduated", updated_at: new Date().toISOString() })
+              .eq("school_id", tenantId)
+              .in("id", movingIds);
           }
 
           // Update local state: remove moving students (graduating)
           newClassRolls[currentClass] = retainedStudents;
         } else {
-            if (isRealAdmin) {
+            if (movingStudents.length > 0) {
               // RESOLVE CLASS ID FOR NEW TERM/SESSION to prevent schema logic bleed
               const termRaw = state.schoolSettings?.term || "First Term";
               const normTerm = termRaw.toLowerCase().includes("first") ? "first" : termRaw.toLowerCase().includes("second") ? "second" : "third";
               const session = state.schoolSettings?.session || "2025/2026";
               
               let classId = null;
-              const { data: existingClass } = await supabase.from("classes")
+              const { data: existingClass } = await sdb.from("classes")
                 .select("id")
                 .eq("school_id", tenantId)
                 .eq("name", targetClass)
@@ -4094,7 +4092,7 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
               if (existingClass?.id) {
                 classId = existingClass.id;
               } else {
-                const { data: newClass, error: cErr } = await supabase.from("classes")
+                const { data: newClass, error: cErr } = await sdb.from("classes")
                   .insert({
                     school_id: tenantId,
                     name: targetClass,
@@ -4102,17 +4100,17 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
                     term: normTerm
                   })
                   .select("id")
-                  .single();
+                  .maybeSingle();
                 if (!cErr && newClass?.id) classId = newClass.id;
               }
 
               const payload: any = { class_name: targetClass, updated_at: new Date().toISOString() };
               if (classId) payload.class_id = classId;
 
-              let q = supabase.from("students").update(payload)
-                .eq("school_id", tenantId).eq("class_name", currentClass).eq("status", "active");
-              if (retainedIds.length > 0) q = q.not("id", "in", `(${retainedIds.join(',')})`);
-              await q;
+              const movingIds = movingStudents.map(s => s.id);
+              await sdb.from("students").update(payload)
+                .eq("school_id", tenantId)
+                .in("id", movingIds);
             }
 
             // Update local state: move students
@@ -6308,7 +6306,7 @@ function PendingDraftRow({ draft, onFinalize, onDelete }: {
         </p>
       </div>
       <input
-        type="number" min="0" max="60" step="0.5" placeholder="Exam"
+        type="number" min="0" max="60" step="any" placeholder="Exam"
         value={exam}
         onChange={e => { const v = e.target.value; if (v === "" || (+v >= 0 && +v <= 60)) setExam(v); }}
         onKeyDown={e => ["-","e","E","+"].includes(e.key) && e.preventDefault()}
@@ -7691,7 +7689,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     showToast("Score saved — form refreshed");
     // Full refresh: clear name, class, subject and scores
     setScoreForm({ studentName: "", studentClass: "", subject: "", caScore: "", examScore: "" });
-  }, [scoreForm, entries, showToast, schoolSettings.term, schoolSettings.session, isAdmin, auth.user]);
+  }, [scoreForm, entries, showToast, schoolSettings.term, schoolSettings.session, isAdmin, auth.user, tenantPlan, state, dispatch]);
 
   // Save CA-only draft (exam pending). Drafts are scoped to the current term/session.
   const saveCADraft = useCallback(() => {
@@ -7751,7 +7749,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     });
     setCaDrafts(p => p.filter(x => x.id !== draftId));
     showToast(`${d.subject} finalized for ${d.studentName}`);
-  }, [caDrafts, entries, showToast, isAdmin, auth.user]);
+  }, [caDrafts, entries, showToast, isAdmin, auth.user, tenantPlan, state, dispatch]);
 
   const deleteDraft = useCallback((draftId: string) => {
     setCaDrafts(p => p.filter(x => x.id !== draftId));
@@ -8352,7 +8350,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                               type="number"
                               min="0"
                               max={max}
-                              step="0.5"
+                              step="any"
                               value={field === "caScore" && draftMatch && scoreForm.caScore === "" ? String(draftMatch.caScore) : scoreForm[field]}
                               placeholder={`0–${max}`}
                               onChange={e => {
