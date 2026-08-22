@@ -7906,14 +7906,24 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     if (!s) return setLoginErr("Invalid Staff ID or PIN.");
     if (s.status === "revoked") return setLoginErr("Your access has been revoked. Contact admin.");
 
-    const { allowedLoginStart, allowedLoginEnd } = appState.schoolSettings || {};
-      if (allowedLoginStart && allowedLoginEnd) {
-        const now = new Date();
-        const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
-        if (currentTime < allowedLoginStart || currentTime > allowedLoginEnd) {
-          return setLoginErr(`Login restricted: Access only permitted between ${allowedLoginStart} and ${allowedLoginEnd}.`);
+            const { allowedLoginStart, allowedLoginEnd } = appState.schoolSettings || {};
+        if (allowedLoginStart && allowedLoginEnd && s.role !== "school_admin" && s.role !== "principal") {
+          const now = new Date();
+          const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+          let isAllowed = false;
+          
+          if (allowedLoginStart <= allowedLoginEnd) {
+            // Normal day shift (e.g. 07:00 to 16:00)
+            isAllowed = currentTime >= allowedLoginStart && currentTime <= allowedLoginEnd;
+          } else {
+            // Overnight shift (e.g. 22:00 to 06:00)
+            isAllowed = currentTime >= allowedLoginStart || currentTime <= allowedLoginEnd;
+          }
+          
+          if (!isAllowed) {
+            return setLoginErr(`Login restricted: Access only permitted between ${allowedLoginStart} and ${allowedLoginEnd}. (Admin bypass enabled)`);
+          }
         }
-      }
 
       const pinOk = await verifyPIN(loginPass, s.pin);
     if (!pinOk) return setLoginErr("Invalid name or PIN.");
@@ -9638,6 +9648,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
       </AppCtx.Provider>
   );
 }
+
+
 
 
 
