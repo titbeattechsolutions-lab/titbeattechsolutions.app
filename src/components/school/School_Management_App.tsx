@@ -6801,14 +6801,14 @@ function TimetableView({
                             </button>
                             
                             {(mine || isAdmin) && c && ttType === "class" && (() => {
-                              const cs = (classSessions || []).find(s => s.date === today() && s.className === activeClass && s.subject === c.subject && s.teacherName === currentActor);
+                              const cs = (classSessions || []).find(s => s.date === today() && s.className === activeClass && s.subject === c.subject);
                               if (cs && cs.endTime) {
                                 return <div className="mt-1 text-[9px] font-bold text-center text-emerald-700 bg-emerald-100 py-1 rounded-md border border-emerald-300">Class Done</div>;
                               }
                               if (cs && !cs.endTime) {
                                 return <button onClick={() => dispatch({ type: "END_CLASS_SESSION", payload: { id: cs.id, endTime: new Date().toISOString() } })} className="mt-1 text-[9px] font-bold text-center text-white bg-red-500 py-1 rounded-md w-full hover:bg-red-600 transition-colors animate-pulse">End Class</button>;
                               }
-                              return <button onClick={() => dispatch({ type: "START_CLASS_SESSION", payload: { id: uid(), subject: c.subject, className: activeClass, teacherName: currentActor, date: today(), startTime: new Date().toISOString(), endTime: null } })} className="mt-1 text-[9px] font-bold text-center text-white bg-blue-500 py-1 rounded-md w-full hover:bg-blue-600 transition-colors">Start Class</button>;
+                              return <button onClick={() => dispatch({ type: "START_CLASS_SESSION", payload: { id: uid(), subject: c.subject, className: activeClass, teacherName: (c.teacherName || currentActor), date: today(), startTime: new Date().toISOString(), endTime: null } })} className="mt-1 text-[9px] font-bold text-center text-white bg-blue-500 py-1 rounded-md w-full hover:bg-blue-600 transition-colors">Start Class</button>;
                             })()}
                           </div>
                         </td>
@@ -6819,9 +6819,52 @@ function TimetableView({
             </tbody>
           </table>
         </div>
-      </Card>
+              </Card>
 
-      {/* Auto-Set Modal */}
+        {/* Admin Class Session Logs */}
+        {isAdmin && classSessions && classSessions.length > 0 && (
+          <Card className="p-4 mt-6">
+            <h3 className="font-black text-slate-800 mb-4">Today's Class Sessions Activity Log</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="text-slate-400 bg-slate-50 uppercase font-black">
+                  <tr>
+                    <th className="px-3 py-2 rounded-l-lg">Time</th>
+                    <th className="px-3 py-2">Class</th>
+                    <th className="px-3 py-2">Subject</th>
+                    <th className="px-3 py-2">Teacher</th>
+                    <th className="px-3 py-2 rounded-r-lg">Duration</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {classSessions.filter(s => s.date === today()).sort((a,b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()).map(s => {
+                    let duration = "Ongoing";
+                    if (s.endTime) {
+                      const diff = new Date(s.endTime).getTime() - new Date(s.startTime).getTime();
+                      duration = Math.round(diff / 60000) + " mins";
+                    }
+                    return (
+                      <tr key={s.id} className="hover:bg-slate-50">
+                        <td className="px-3 py-2 font-bold text-slate-600">
+                          {new Date(s.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          {s.endTime && " - " + new Date(s.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </td>
+                        <td className="px-3 py-2 font-bold text-slate-700">{s.className}</td>
+                        <td className="px-3 py-2 text-indigo-600 font-bold">{s.subject}</td>
+                        <td className="px-3 py-2 text-slate-600">{s.teacherName}</td>
+                        <td className="px-3 py-2">
+                          {s.endTime ? <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded font-bold">{duration}</span> : <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold animate-pulse">Live</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+
+        {/* Auto-Set Modal */}
       {showAutoSet && (
         <Modal onBgClick={() => setShowAutoSet(false)}>
           <MHead icon={CalendarClock} title="Auto-Set Timetable" subtitle={`Generate default schedule for ${activeClass}`} color="bg-emerald-600" onClose={() => setShowAutoSet(false)} />
@@ -9203,6 +9246,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                   staffList={staffList}
                   classRolls={classRolls}
                   timetable={appState.timetable}
+                    classSessions={appState.classSessions || []}
                   dispatch={dispatch}
                   showToast={showToast}
                   tenantId={tenantId}
@@ -9579,6 +9623,9 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
       </AppCtx.Provider>
   );
 }
+
+
+
 
 
 
