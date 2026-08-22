@@ -471,7 +471,7 @@ export default function TenantApp() {
   const syncLabel =
     syncPhase === "error" ? "Offline - Changes saved locally"
     : syncPhase === "pushing" ? "Saving..." :
-    syncPhase === "error" ? "Offline" :
+    syncPhase === "pulling" ? "Syncing..." :
     lastSyncAt ? `Synced ${Math.max(1, Math.round((Date.now() - lastSyncAt) / 1000))}s ago` : "Synced";
 
   const SyncIcon = syncPhase === "error" ? CloudOff : syncPhase === "pushing" ? CloudUpload : Cloud;

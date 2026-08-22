@@ -58,7 +58,7 @@ export default function SchoolsListPage() {
       toast({ title: "Error loading schools", description: schoolsRes.error.message, variant: "destructive" }); return;
     }
     
-    const tenantsMap = new Map((tenantsRes.data || []).map((t: any) => [t.id, { status: t.status, tenant_code: t.tenant_code }]));
+    const tenantsMap = new Map((tenantsRes.data || []).map((t: any) => [t.id, { status: (t as any).status, tenant_code: (t as any).tenant_code }]));
     const pendingSet = new Set((delReqsRes.data || []).map((d: any) => d.tenant_id));
 
     const schoolsData = (schoolsRes.data as any[])?.map((s) => {

@@ -225,7 +225,7 @@ export async function getSchoolProfile(schoolId: string | null): Promise<School>
     .eq("id", actualId)
     .single();
   throwIfError(error, "getSchoolProfile");
-  return data as School;
+  return data as unknown as School;
 }
 
 export async function updateSchoolProfile(
@@ -243,7 +243,7 @@ export async function updateSchoolProfile(
     .select()
     .single();
   throwIfError(error, "updateSchoolProfile");
-  return data as School;
+  return data as unknown as School;
 }
 
 // ─── Students ─────────────────────────────────────────────────────────
@@ -823,7 +823,7 @@ export async function getTeacherClasses(
   const allIds = Array.from(new Set([...classTeacherIds, ...assignedIds]));
 
   // Also pull by class_teacher_id column
-  const queries: Promise<Class[]>[] = [];
+  const queries: any[] = [];
 
   // by class_teacher_id column
   queries.push(

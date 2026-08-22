@@ -1,4 +1,4 @@
-ï»¿import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { logAuthEvent } from "@/lib/auth-logger";
@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-// hashPin no longer needed â€” server-side bcrypt via create_tenant_v2 RPC
+// hashPin no longer needed — server-side bcrypt via create_tenant_v2 RPC
 import { Plus, LogOut, Copy, RefreshCw, ShieldCheck, ShieldOff, KeyRound, DollarSign, History, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Eye, EyeOff, Ban, ShieldAlert, Activity } from "lucide-react";
 
 interface Tenant {
@@ -86,7 +86,7 @@ export default function SuperAdmin() {
         } else {
           toast({ title: "Tenant deleted successfully" });
           fetchDelReqs();
-          fetchTenants(); // Re-fetch the dashboard list
+          // fetchTenants();
         }
       } else {
         setLoading(true);
@@ -203,7 +203,7 @@ export default function SuperAdmin() {
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
             </Button>
             <Button variant="outline" size="sm" onClick={signOut} disabled={signingOut}>
-              <LogOut className="w-4 h-4 mr-1" /> {signingOut ? "Signing outâ€¦" : "Sign out"}
+              <LogOut className="w-4 h-4 mr-1" /> {signingOut ? "Signing out…" : "Sign out"}
             </Button>
           </div>
         </header>
@@ -220,7 +220,7 @@ export default function SuperAdmin() {
               <StatCard label="Total" value={stats.total} />
               <StatCard label="Active" value={stats.active} tone="success" />
               <StatCard label="Trial" value={stats.trial} tone="info" />
-              <StatCard label="Expiring â‰¤14d" value={stats.expiringSoon} tone="warn" />
+              <StatCard label="Expiring =14d" value={stats.expiringSoon} tone="warn" />
               <StatCard label="Expired/Suspended" value={stats.expired} tone="danger" />
             </div>
 
@@ -354,20 +354,20 @@ function TenantRow({ tenant, onChanged, onRecordPayment }: { tenant: Tenant; onC
     : "destructive";
 
   const setStatus = async (status: Tenant["status"]) => {
-    // Uses atomic SECURITY DEFINER RPC â€” bypasses RLS safely, purges sessions on suspend,
+    // Uses atomic SECURITY DEFINER RPC — bypasses RLS safely, purges sessions on suspend,
     // mirrors status on schools table, and writes an audit log entry.
     const { error } = await (supabase as any).rpc("set_tenant_status", {
       _tenant_id: tenant.id,
       _status: status,
-      // _school_id omitted â€” RPC resolves it from the tenant FK internally
+      // _school_id omitted — RPC resolves it from the tenant FK internally
     });
     if (error) toast({ title: "Failed", description: error.message, variant: "destructive" });
-    else { toast({ title: `Status â†’ ${status}` }); onChanged(); }
+    else { toast({ title: `Status ? ${status}` }); onChanged(); }
   };
 
   const resetAdminPin = async () => {
     if (!confirm(`Reset admin PIN for ${tenant.school_name}? They'll set a new one on next login.`)) return;
-    // Uses SECURITY DEFINER RPC â€” avoids 403 from RLS and bcrypt trigger permission issues.
+    // Uses SECURITY DEFINER RPC — avoids 403 from RLS and bcrypt trigger permission issues.
     const { error } = await (supabase as any).rpc("reset_admin_pin_to_null", {
       _tenant_id: tenant.id,
     });
@@ -408,7 +408,7 @@ function TenantRow({ tenant, onChanged, onRecordPayment }: { tenant: Tenant; onC
           </div>
           <div className="text-xs text-muted-foreground mt-1">
             {tenant.contact_email && <span>{tenant.contact_email}</span>}
-            {tenant.contact_phone && <span> Â· {tenant.contact_phone}</span>}
+            {tenant.contact_phone && <span> · {tenant.contact_phone}</span>}
           </div>
           {tenant.notes && <div className="text-xs text-muted-foreground mt-1 italic">{tenant.notes}</div>}
         </div>
@@ -436,7 +436,7 @@ function TenantRow({ tenant, onChanged, onRecordPayment }: { tenant: Tenant; onC
       <Dialog open={activityOpen} onOpenChange={setActivityOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Activity & Audit â€” {tenant.school_name}</DialogTitle>
+            <DialogTitle>Activity & Audit — {tenant.school_name}</DialogTitle>
             <DialogDescription>Comprehensive view of tenant usage and access logs</DialogDescription>
           </DialogHeader>
           <TenantActivityAudit schoolId={tenant.id} />
@@ -545,7 +545,7 @@ function PaymentDialog({ tenant, onClose, onRecorded }: { tenant: Tenant; onClos
     });
     if (payErr) { toast({ title: "Payment failed", description: payErr.message, variant: "destructive" }); setSaving(false); return; }
 
-    // Uses atomic SECURITY DEFINER RPC â€” updates status + plan + subscription window,
+    // Uses atomic SECURITY DEFINER RPC — updates status + plan + subscription window,
     // mirrors status=active on the schools row, and audits the action.
     const { error: tErr } = await (supabase as any).rpc("extend_tenant_subscription", {
       _tenant_id: tenant.id,
@@ -564,7 +564,7 @@ function PaymentDialog({ tenant, onClose, onRecorded }: { tenant: Tenant; onClos
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Record payment â€” {tenant.school_name}</DialogTitle>
+          <DialogTitle>Record payment — {tenant.school_name}</DialogTitle>
           <DialogDescription>Log a manual bank transfer and extend this school's subscription.</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-3">
@@ -579,7 +579,7 @@ function PaymentDialog({ tenant, onClose, onRecorded }: { tenant: Tenant; onClos
             </Select>
           </div>
           <div>
-            <Label htmlFor="amt">Amount (â‚¦)</Label>
+            <Label htmlFor="amt">Amount (?)</Label>
             <Input id="amt" type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
           </div>
           <div>
@@ -690,10 +690,10 @@ function TokenAuditSection() {
                   </span>
                 </div>
                 <div className="text-xs text-muted-foreground mt-1 font-mono break-all">
-                  actor: {e.actor_user_id ?? "â€”"}
+                  actor: {e.actor_user_id ?? "—"}
                 </div>
                 <div className="text-xs text-muted-foreground font-mono break-all">
-                  target: {e.target_user_id ?? "â€”"}
+                  target: {e.target_user_id ?? "—"}
                 </div>
                 {e.reason && (
                   <div className="text-xs mt-1 italic text-muted-foreground">{e.reason}</div>
@@ -725,7 +725,7 @@ function DuplicatesBanner({ refreshKey, onChanged }: { refreshKey: number; onCha
     const { data, error } = await supabase.rpc("find_duplicate_tenants");
     setLoading(false);
     if (error) {
-      // silent â€” non-blocking informational scan
+      // silent — non-blocking informational scan
       return;
     }
     setDups((data as unknown as DuplicateRow[]) ?? []);
@@ -736,8 +736,8 @@ function DuplicatesBanner({ refreshKey, onChanged }: { refreshKey: number; onCha
   const suspendOne = async (tenantId: string, schoolName: string, _matchType: string) => {
     if (!confirm(`Suspend "${schoolName}" as a duplicate? All active sessions will be revoked.`)) return;
     setBusy(tenantId);
-    // Unified atomic RPC â€” syncs schools row, purges sessions, and audits the action.
-    // _school_id omitted â€” RPC self-resolves from tenant FK (safe for tenant-only records too).
+    // Unified atomic RPC — syncs schools row, purges sessions, and audits the action.
+    // _school_id omitted — RPC self-resolves from tenant FK (safe for tenant-only records too).
     const { error } = await (supabase as any).rpc("set_tenant_status", {
       _tenant_id: tenantId,
       _status: "suspended",
@@ -883,7 +883,7 @@ function TenantAuthAuditSection() {
                   </span>
                 </div>
                 <div className="text-xs text-muted-foreground mt-1 font-mono break-all">
-                  tenant: {e.tenant_id ?? "â€”"}
+                  tenant: {e.tenant_id ?? "—"}
                 </div>
                 {e.session_ref && (
                   <div className="text-xs text-muted-foreground font-mono">
@@ -923,7 +923,7 @@ function PinRevealDialog({ pin, onClose }: { pin: string; onClose: () => void })
         </div>
         <div className="flex items-center gap-2 p-3 bg-muted rounded-md font-mono text-lg">
           <span className="flex-1 select-all">
-            {revealed ? pin : "â€¢".repeat(pin.length)}
+            {revealed ? pin : "•".repeat(pin.length)}
           </span>
           <Button
             size="sm"

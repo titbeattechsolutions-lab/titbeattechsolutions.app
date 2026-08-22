@@ -11,9 +11,9 @@ export default function StudentVirtualHubPage() {
   const [virtualAttendance, setVirtualAttendance] = useState<Record<string, string[]>>({});
 
   const fetchAppState = async () => {
-    if (!profile?.tenant_id) return;
+    if (!(profile as any)?.tenant_id) return;
     try {
-      const { data, error } = await supabase.from('app_state')
+      const { data, error } = await (supabase as any).from('app_state')
         .select('data')
         .eq('tenant_id', profile.tenant_id)
         .single();
@@ -31,19 +31,19 @@ export default function StudentVirtualHubPage() {
   useEffect(() => {
     fetchAppState();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.tenant_id]);
+  }, [(profile as any)?.tenant_id]);
 
-  const myClass = profile?.grade_level || "";
+  const myClass = (profile as any)?.grade_level || "";
   const myClasses = virtualClasses.filter((c: any) => c.targetClass === myClass || c.targetClass === "All");
   
-  const studentName = profile?.firstName + " " + (profile?.lastName || "");
+  const studentName = (profile as any)?.firstName + " " + ((profile as any)?.lastName || "");
 
   const handleJoin = async (vc: any) => {
     // Attempt to log attendance to Supabase
     try {
-      const { data, error } = await supabase.from('app_state')
+      const { data, error } = await (supabase as any).from('app_state')
         .select('data')
-        .eq('tenant_id', profile?.tenant_id)
+        .eq('tenant_id', (profile as any)?.tenant_id)
         .single();
       
       if (data && !error) {
@@ -52,9 +52,9 @@ export default function StudentVirtualHubPage() {
         if (!currentAtt[vc.id]) currentAtt[vc.id] = [];
         if (!currentAtt[vc.id].includes(studentName)) {
           currentAtt[vc.id].push(studentName);
-          await supabase.from('app_state')
+          await (supabase as any).from('app_state')
             .update({ data: { ...payload, virtualAttendance: currentAtt } })
-            .eq('tenant_id', profile?.tenant_id);
+            .eq('tenant_id', (profile as any)?.tenant_id);
         }
       }
     } catch (e) {

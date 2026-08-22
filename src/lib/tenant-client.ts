@@ -39,7 +39,7 @@ export function clearTenantSession() {
 
 /** Verify school PIN. Returns session info (without admin flag) or null. */
 export async function verifySchoolPin(tenantCode: string, pin: string): Promise<Omit<TenantSession, "isAdmin"> | null> {
-  const { data, error } = await supabase.rpc("verify_school_pin_v4", { _tenant_code: tenantCode, _pin: pin });
+  const { data, error } = await (supabase as any).rpc("verify_school_pin_v4", { _tenant_code: tenantCode, _pin: pin });
   if (error || !data || data.length === 0) return null;
   const row = data[0];
   const session = {
@@ -145,7 +145,7 @@ export async function checkTenantStatus(
 }
 
 export async function requestCloudDeletion(session: TenantSession): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase.rpc("request_tenant_deletion", {
+  const { error } = await (supabase as any).rpc("request_tenant_deletion", {
     _session_token: session.sessionToken,
   });
   if (error) return { success: false, error: error.message };
@@ -153,7 +153,7 @@ export async function requestCloudDeletion(session: TenantSession): Promise<{ su
 }
 
 export async function cancelCloudDeletion(session: TenantSession): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase.rpc("cancel_tenant_deletion", {
+  const { error } = await (supabase as any).rpc("cancel_tenant_deletion", {
     _session_token: session.sessionToken,
   });
   if (error) return { success: false, error: error.message };
@@ -161,7 +161,7 @@ export async function cancelCloudDeletion(session: TenantSession): Promise<{ suc
 }
 
 export async function fetchCloudDeletionStatus(session: TenantSession): Promise<{ status: string | null; requestedAt: string | null }> {
-  const { data, error } = await supabase.rpc("fetch_deletion_request_status", {
+  const { data, error } = await (supabase as any).rpc("fetch_deletion_request_status", {
     _session_token: session.sessionToken,
   });
   if (error || !data || data.length === 0) return { status: null, requestedAt: null };
@@ -169,6 +169,6 @@ export async function fetchCloudDeletionStatus(session: TenantSession): Promise<
 }
 
 export async function acceptNdprConsent(sessionToken: string): Promise<boolean> {
-  const { error } = await supabase.rpc("accept_ndpr_consent", { _session_token: sessionToken });
+  const { error } = await (supabase as any).rpc("accept_ndpr_consent", { _session_token: sessionToken });
   return !error;
 }

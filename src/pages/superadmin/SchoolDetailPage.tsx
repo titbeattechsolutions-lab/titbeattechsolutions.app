@@ -448,7 +448,7 @@ export default function SchoolDetailPage() {
                     <DialogDescription>Viewing auth logs for {school.name}</DialogDescription>
                   </DialogHeader>
                   <div className="flex-1 min-h-0 overflow-y-auto">
-                    <TenantActivityAudit tenantId={school.tenant_id} />
+                    <TenantActivityAudit schoolId={school.tenant_id} />
                   </div>
                 </DialogContent>
               </Dialog>
