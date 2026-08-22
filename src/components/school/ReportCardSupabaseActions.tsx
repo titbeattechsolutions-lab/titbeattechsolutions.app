@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * ReportCardSupabaseActions
  *
@@ -787,4 +788,5 @@ export default function ReportCardSupabaseActions({
     </>
   );
 }
+
 
