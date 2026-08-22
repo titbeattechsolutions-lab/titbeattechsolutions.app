@@ -6582,6 +6582,7 @@ function TimetableView({
   const [myOnly, setMyOnly] = useState(false);
   const [filterTeacher, setFilterTeacher] = useState<string>("");
   const [showAutoSet, setShowAutoSet] = useState(false);
+  const [logFilterClass, setLogFilterClass] = useState<string>("All");
 
   useEffect(() => {
     if (!activeClass && allClasses.length) setActiveClass(allClasses[0]);
@@ -6824,7 +6825,20 @@ function TimetableView({
         {/* Admin Class Session Logs */}
         {isAdmin && classSessions && classSessions.length > 0 && (
           <Card className="p-4 mt-6">
-            <h3 className="font-black text-slate-800 mb-4">Today's Class Sessions Activity Log</h3>
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+                <h3 className="font-black text-slate-800">Today's Class Sessions Activity Log</h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase">Filter:</span>
+                  <select 
+                    value={logFilterClass} 
+                    onChange={e => setLogFilterClass(e.target.value)}
+                    className="text-xs font-bold text-slate-700 bg-slate-50 border-2 border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-blue-500"
+                  >
+                    <option value="All">All Classes</option>
+                    {allClasses.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left">
                 <thead className="text-slate-400 bg-slate-50 uppercase font-black">
@@ -6837,7 +6851,7 @@ function TimetableView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {classSessions.filter(s => s.date === today()).sort((a,b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()).map(s => {
+                  {classSessions.filter(s => s.date === today() && (logFilterClass === "All" || s.className === logFilterClass)).sort((a,b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()).map(s => {
                     let duration = "Ongoing";
                     if (s.endTime) {
                       const diff = new Date(s.endTime).getTime() - new Date(s.startTime).getTime();
@@ -9624,6 +9638,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
       </AppCtx.Provider>
   );
 }
+
+
 
 
 
