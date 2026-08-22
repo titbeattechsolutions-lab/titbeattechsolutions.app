@@ -5067,7 +5067,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                     ["Bin (deleted)",  state.bin.length],
                     ["Attendance",     state.attendance.length],
                     ["Staff Accounts", state.staffList.length],
-                    ["Class Rolls",    Object.values(appState.classRolls).reduce((a, b) => a + b.length, 0)],
+                    ["Class Rolls",    Object.values(state.classRolls).reduce((a, b) => a + b.length, 0)],
                     ["Activity Logs",  state.logs.length],
                   ] as const).map(([l, v]) => (
                     <div key={l} className="flex items-center justify-between">
@@ -5725,7 +5725,7 @@ const AttendanceTab = memo(() => {
           if (result?.ids?.[0]) {
             // Patch the local roll entry with the real DB UUID so token gen works
             
-              const roll = (appState.classRolls[rollClass] || []).map((s: any) =>
+              const roll = (state.classRolls[rollClass] || []).map((s: any) =>
                 s.id === localId ? { ...s, id: result.ids[0] } : s
               );
               dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: roll, actor: "System" });
@@ -5771,7 +5771,7 @@ const AttendanceTab = memo(() => {
         }))).then((result) => {
           if (result?.ids?.length) {
             
-              const roll = (appState.classRolls[rollClass] || []).map((s: any) => {
+              const roll = (state.classRolls[rollClass] || []).map((s: any) => {
                 const idx = localIds.indexOf(s.id);
                 return idx !== -1 && result.ids[idx] ? { ...s, id: result.ids[idx] } : s;
               });
