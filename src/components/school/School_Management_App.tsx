@@ -207,6 +207,16 @@ interface PayrollRecord {
   status: "paid";
   paidAt: string;
 }
+interface ClassSession {
+  id: string;
+  subject: string;
+  className: string;
+  teacherName: string;
+  startTime: string;
+  endTime: string | null;
+  date: string;
+}
+
 interface AppState {
   entries: Entry[];
   bin: BinEntry[];
@@ -6423,7 +6433,7 @@ const TERM_LABEL_TO_SUPABASE: Record<string, string> = {
 };
 
 function TimetableView({
-  isAdmin, currentActor, staffList, classRolls, timetable, dispatch, showToast,
+  isAdmin, currentActor, staffList, classRolls, timetable, classSessions, dispatch, showToast,
   tenantId, schoolSettings,
 }: {
   isAdmin: boolean;
@@ -6726,32 +6736,43 @@ function TimetableView({
                     const c = cellOf(d, p.id);
                     const mine = c?.teacherName && c.teacherName === currentActor;
                     const dim = (!isAdmin && myOnly && !mine) || (isAdmin && filterTeacher !== "" && c?.teacherName !== filterTeacher);
-                    return (
-                      <td key={d} className="align-top">
-                        <button
-                          disabled={!isAdmin}
-                          onClick={() => isAdmin && setEditing({
-                            key: ttType === "class" ? `class|${activeClass}|${d}|${p.id}` : `${ttType}|${activeClass}|${d}|${p.id}`,
-                            subject: c?.subject || "",
-                            teacherName: c?.teacherName || "",
-                          })}
-                          className={`w-full min-h-[48px] sm:min-h-[56px] p-1 sm:p-2 rounded-lg text-left transition-all border-2 text-[10px] sm:text-xs ${
-                            dim ? "opacity-30" :
-                            mine ? "bg-emerald-50 border-emerald-300" :
-                            c ? "bg-blue-50 border-blue-100" : "bg-slate-50 border-dashed border-slate-200"
-                          } ${isAdmin ? "hover:border-blue-400 cursor-pointer" : "cursor-default"}`}
-                        >
-                          {c ? (
-                            <>
-                              <p className="font-black text-slate-800 leading-tight line-clamp-1">{c.subject || "—"}</p>
-                              {c.teacherName && <p className="text-[9px] text-slate-500 mt-0.5 truncate">{c.teacherName}</p>}
-                            </>
-                          ) : (
-                            <p className="text-[9px] text-slate-400 italic">{isAdmin ? "Tap to set" : "—"}</p>
-                          )}
-                        </button>
-                      </td>
-                    );
+                    const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'short' });
+                      const isToday = d === todayStr;
+                      return (
+                        <td key={d} className="align-top">
+                          <div className="relative h-full flex flex-col">
+                            <button
+                              disabled={!isAdmin}
+                              onClick={() => isAdmin && setEditing({
+                                key: ttType === "class" ? `class|${activeClass}|${d}|${p.id}` : `${ttType}|${activeClass}|${d}|${p.id}`,
+                                subject: c?.subject || "",
+                                teacherName: c?.teacherName || "",
+                              })}
+                              className={`w-full flex-1 min-h-[48px] sm:min-h-[56px] p-1 sm:p-2 rounded-lg text-left transition-all border-2 text-[10px] sm:text-xs ${dim ? "opacity-30" : mine ? "bg-emerald-50 border-emerald-300" : c ? "bg-blue-50 border-blue-100" : "bg-slate-50 border-dashed border-slate-200"} ${isAdmin ? "hover:border-blue-400 cursor-pointer" : "cursor-default"}`}
+                            >
+                              {c ? (
+                                <>
+                                  <p className="font-black text-slate-800 leading-tight line-clamp-1">{c.subject || "—"}</p>
+                                  {c.teacherName && <p className="text-[9px] text-slate-500 mt-0.5 truncate">{c.teacherName}</p>}
+                                </>
+                              ) : (
+                                <p className="text-[9px] text-slate-400 italic">{isAdmin ? "Tap to set" : "—"}</p>
+                              )}
+                            </button>
+                            
+                            {isToday && mine && c && ttType === "class" && (() => {
+                              const cs = (classSessions || []).find(s => s.date === today() && s.className === activeClass && s.subject === c.subject && s.teacherName === currentActor);
+                              if (cs && cs.endTime) {
+                                return <div className="mt-1 text-[9px] font-bold text-center text-emerald-700 bg-emerald-100 py-1 rounded-md border border-emerald-300">Class Done</div>;
+                              }
+                              if (cs && !cs.endTime) {
+                                return <button onClick={() => dispatch({ type: "END_CLASS_SESSION", payload: { id: cs.id, endTime: new Date().toISOString() } })} className="mt-1 text-[9px] font-bold text-center text-white bg-red-500 py-1 rounded-md w-full hover:bg-red-600 transition-colors animate-pulse">End Class</button>;
+                              }
+                              return <button onClick={() => dispatch({ type: "START_CLASS_SESSION", payload: { id: uid(), subject: c.subject, className: activeClass, teacherName: currentActor, date: today(), startTime: new Date().toISOString(), endTime: null } })} className="mt-1 text-[9px] font-bold text-center text-white bg-blue-500 py-1 rounded-md w-full hover:bg-blue-600 transition-colors">Start Class</button>;
+                            })()}
+                          </div>
+                        </td>
+                      );
                   })}
                 </tr>
               );})}
