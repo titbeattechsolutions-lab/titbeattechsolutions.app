@@ -20,6 +20,7 @@ import TeacherProfilePage from "./pages/teacher/ProfilePage";
 import StudentPortal from "./pages/student/StudentPortal";
 import StudentProfilePage from "./pages/student/ProfilePage";
 import StudentTimetablePage from "./pages/student/TimetablePage";
+import StudentVirtualHubPage from "./pages/student/StudentVirtualHubPage";
 import SuperadminLayout from "./layouts/SuperadminLayout";
 import SchoolsListPage from "./pages/superadmin/SchoolsListPage";
 import SchoolDetailPage from "./pages/superadmin/SchoolDetailPage";
@@ -100,6 +101,7 @@ const App = () => (
               <Route index element={<Navigate to="timetable" replace />} />
               <Route path="timetable" element={<StudentTimetablePage />} />
               <Route path="profile"   element={<StudentProfilePage />} />
+              <Route path="virtual"   element={<StudentVirtualHubPage />} />
             </Route>
             {/* Superadmin panel (new school-layer panel) */}
             <Route

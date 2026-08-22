@@ -207,6 +207,18 @@ interface PayrollRecord {
   status: "paid";
   paidAt: string;
 }
+interface VirtualClass {
+  id: string;
+  topic: string;
+  subject: string;
+  targetClass: string;
+  scheduledTime: string;
+  meetingLink: string;
+  description: string;
+  createdBy: string;
+  createdAt: string;
+}
+
 interface ClassSession {
   id: string;
   subject: string;
@@ -7264,6 +7276,132 @@ function useReminderChecker(appState: AppState, dispatch: any, isAdmin: boolean,
   }, [appState.schoolSettings, appState.timetable, appState.notifications, isAdmin, currentActor, dispatch]);
 }
 
+function VirtualHubView({
+  isAdmin, currentActor, virtualClasses, virtualAttendance, dispatch, showToast
+}: {
+  isAdmin: boolean;
+  currentActor: string;
+  virtualClasses: VirtualClass[];
+  virtualAttendance: Record<string, string[]>;
+  dispatch: React.Dispatch<any>;
+  showToast: (msg: string, type?: string) => void;
+}) {
+  const [form, setForm] = useState({ topic: "", subject: "", targetClass: "SS 3", scheduledTime: "", meetingLink: "", description: "" });
+  const [showForm, setShowForm] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.topic || !form.subject || !form.scheduledTime || !form.meetingLink) {
+      return showToast("Please fill all required fields", "error");
+    }
+    dispatch({ type: "ADD_VIRTUAL_CLASS", payload: {
+      id: uid(),
+      ...form,
+      createdBy: currentActor,
+      createdAt: new Date().toISOString()
+    }});
+    showToast("Virtual class scheduled!");
+    setShowForm(false);
+    setForm({ topic: "", subject: "", targetClass: "SS 3", scheduledTime: "", meetingLink: "", description: "" });
+  };
+
+  const myClasses = isAdmin ? virtualClasses : virtualClasses.filter(c => c.createdBy === currentActor);
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+        <div>
+          <h2 className="text-xl font-black text-slate-900 flex items-center gap-2"><Video className="text-indigo-600" /> Virtual Revision Hub</h2>
+          <p className="text-sm text-slate-500 mt-1">Schedule and manage online revision classes for your students.</p>
+        </div>
+        <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl text-sm flex items-center gap-2 transition-colors">
+          {showForm ? <X size={16} /> : <PlusCircle size={16} />}
+          {showForm ? "Cancel" : "Schedule Class"}
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4 animate-in fade-in slide-in-from-top-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Topic (Required)">
+              <input required value={form.topic} onChange={e=>setForm({...form, topic: e.target.value})} placeholder="e.g. Calculus Revision" className="w-full px-4 py-2.5 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-indigo-500 outline-none transition-all" />
+            </Field>
+            <Field label="Subject (Required)">
+              <input required value={form.subject} onChange={e=>setForm({...form, subject: e.target.value})} placeholder="e.g. Mathematics" className="w-full px-4 py-2.5 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-indigo-500 outline-none transition-all" />
+            </Field>
+            <Field label="Target Class">
+              <select value={form.targetClass} onChange={e=>setForm({...form, targetClass: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-indigo-500 outline-none transition-all">
+                {ALL_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </Field>
+            <Field label="Scheduled Time (Required)">
+              <input type="datetime-local" required value={form.scheduledTime} onChange={e=>setForm({...form, scheduledTime: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-indigo-500 outline-none transition-all" />
+            </Field>
+            <Field label="Meeting Link (Zoom / Google Meet)">
+              <input required type="url" value={form.meetingLink} onChange={e=>setForm({...form, meetingLink: e.target.value})} placeholder="https://meet.google.com/..." className="w-full px-4 py-2.5 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-indigo-500 outline-none transition-all" />
+            </Field>
+            <Field label="Description / Notes (Optional)">
+              <input value={form.description} onChange={e=>setForm({...form, description: e.target.value})} placeholder="Bring your past questions" className="w-full px-4 py-2.5 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-indigo-500 outline-none transition-all" />
+            </Field>
+          </div>
+          <div className="pt-2 flex justify-end">
+            <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-colors">
+              Save Scheduled Class
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="space-y-3">
+        {myClasses.length === 0 ? (
+          <div className="text-center py-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+            <Video className="mx-auto text-slate-300 mb-3" size={32} />
+            <p className="text-sm font-bold text-slate-500">No virtual classes scheduled</p>
+          </div>
+        ) : (
+          myClasses.sort((a,b)=>new Date(b.scheduledTime).getTime() - new Date(a.scheduledTime).getTime()).map(vc => {
+            const isPast = new Date(vc.scheduledTime).getTime() < Date.now();
+            const attendanceList = virtualAttendance[vc.id] || [];
+            return (
+              <div key={vc.id} className={`bg-white p-5 rounded-2xl shadow-sm border flex flex-col sm:flex-row gap-5 ${isPast ? 'border-slate-200 opacity-75' : 'border-indigo-100'}`}>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${isPast ? 'bg-slate-100 text-slate-600' : 'bg-indigo-100 text-indigo-700'}`}>{isPast ? 'Completed' : 'Upcoming'}</span>
+                    <span className="text-xs font-bold text-slate-500">{new Date(vc.scheduledTime).toLocaleString()}</span>
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900">{vc.topic}</h3>
+                  <p className="text-sm font-bold text-indigo-600">{vc.subject} <span className="text-slate-400">({vc.targetClass})</span></p>
+                  {vc.description && <p className="text-sm text-slate-600 mt-2">{vc.description}</p>}
+                  
+                  <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-4">
+                    <div className="text-sm">
+                      <span className="font-bold text-slate-700">Attendance:</span> <span className="text-indigo-600 font-black bg-indigo-50 px-2 py-0.5 rounded-md">{attendanceList.length} students</span>
+                    </div>
+                    {isAdmin && <span className="text-xs text-slate-400 font-bold ml-auto">By {vc.createdBy}</span>}
+                  </div>
+                </div>
+                
+                <div className="flex sm:flex-col justify-end sm:justify-start gap-2 border-t sm:border-t-0 sm:border-l border-slate-100 pt-4 sm:pt-0 sm:pl-5">
+                  <a href={vc.meetingLink} target="_blank" rel="noreferrer" className="flex-1 sm:flex-none text-center bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold px-4 py-2 rounded-xl text-sm transition-colors border border-emerald-200">
+                    Open Link
+                  </a>
+                  <button onClick={() => {
+                    if (confirm("Delete this scheduled class?")) {
+                      dispatch({ type: "DELETE_VIRTUAL_CLASS", payload: vc.id });
+                    }
+                  }} className="text-red-500 hover:bg-red-50 font-bold px-4 py-2 rounded-xl text-sm transition-colors border border-transparent">
+                    Delete
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Main App
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenantPlan, polledData, onLocalEdit, onStateChange }: { onTenantSignOut?: () => void; tenantId?: string; tenantSchoolName?: string; tenantPlan?: string; polledData?: any; onLocalEdit?: (state: any) => void; onStateChange?: (state: any) => void } = {}) {
@@ -7634,6 +7772,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     { id:"fees",       label:"Fees",       icon:DollarSign,       show:isAdmin||can("fees"),                  primary:false },
     { id:"inbox",      label:"Inbox",      icon:Inbox,            show:true,                                  primary:false },
     { id:"timetable",  label:"Timetable",  icon:CalendarClock,    show:true,                                  primary:false },
+      { id:"virtual_hub", label:"Virtual Hub", icon:Video,            show:true,                                  primary:false },
     { id:"attendance", label:"Attendance", icon:CalendarDays,     show:can("scoreEntry")||isAdmin,            primary:false },
     { id:"database",   label:"Records",    icon:Database,         show:isAdmin||can("manageRecords")||can("scoreEntry"), primary:true },
     { id:"students",   label:"Directory",  icon:Users,            show:isAdmin||can("manageRecords"), primary:true },

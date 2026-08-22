@@ -6,12 +6,13 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CalendarClock, UserCircle, Menu, X, LogOut, GraduationCap } from "lucide-react";
+import { CalendarClock, UserCircle, Menu, X, LogOut, GraduationCap, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { to: "/student/timetable", label: "Timetable", icon: CalendarClock },
   { to: "/student/profile",   label: "Profile",   icon: UserCircle },
+  { to: "/student/virtual",   label: "Virtual Hub", icon: Video },
 ];
 
 export default function StudentLayout({ schoolName, schoolLogo }: { schoolName?: string; schoolLogo?: string | null }) {
