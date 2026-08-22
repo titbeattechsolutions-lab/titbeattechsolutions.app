@@ -6801,14 +6801,14 @@ function TimetableView({
                             </button>
                             
                             {(mine || isAdmin) && c && ttType === "class" && (() => {
-                              const cs = (classSessions || []).find(s => s.date === today() && s.className === activeClass && s.subject === c.subject);
+                              const cs = (classSessions || []).find(s => s.date === today() && s.className === activeClass && s.day === d && s.periodId === p.id);
                               if (cs && cs.endTime) {
                                 return <div className="mt-1 text-[9px] font-bold text-center text-emerald-700 bg-emerald-100 py-1 rounded-md border border-emerald-300">Class Done</div>;
                               }
                               if (cs && !cs.endTime) {
                                 return <button onClick={() => dispatch({ type: "END_CLASS_SESSION", payload: { id: cs.id, endTime: new Date().toISOString() } })} className="mt-1 text-[9px] font-bold text-center text-white bg-red-500 py-1 rounded-md w-full hover:bg-red-600 transition-colors animate-pulse">End Class</button>;
                               }
-                              return <button onClick={() => dispatch({ type: "START_CLASS_SESSION", payload: { id: uid(), subject: c.subject, className: activeClass, teacherName: (c.teacherName || currentActor), date: today(), startTime: new Date().toISOString(), endTime: null } })} className="mt-1 text-[9px] font-bold text-center text-white bg-blue-500 py-1 rounded-md w-full hover:bg-blue-600 transition-colors">Start Class</button>;
+                              return <button onClick={() => dispatch({ type: "START_CLASS_SESSION", payload: { id: uid(), subject: c.subject, className: activeClass, day: d, periodId: p.id, teacherName: (c.teacherName || currentActor), date: today(), startTime: new Date().toISOString(), endTime: null } })} className="mt-1 text-[9px] font-bold text-center text-white bg-blue-500 py-1 rounded-md w-full hover:bg-blue-600 transition-colors">Start Class</button>;
                             })()}
                           </div>
                         </td>
@@ -6848,6 +6848,7 @@ function TimetableView({
                         <td className="px-3 py-2 font-bold text-slate-600">
                           {new Date(s.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                           {s.endTime && " - " + new Date(s.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          {s.day && s.periodId && <span className="block text-[9px] uppercase text-slate-400">{s.day} / {s.periodId}</span>}
                         </td>
                         <td className="px-3 py-2 font-bold text-slate-700">{s.className}</td>
                         <td className="px-3 py-2 text-indigo-600 font-bold">{s.subject}</td>
@@ -9623,6 +9624,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
       </AppCtx.Provider>
   );
 }
+
+
 
 
 
