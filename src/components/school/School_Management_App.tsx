@@ -9181,7 +9181,18 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                 )
               )}
 
+                            {/* VIRTUAL HUB */}
               {/* ATTENDANCE */}
+              {activeTab === "virtual_hub" && (
+                <VirtualHubView
+                  isAdmin={isAdmin}
+                  currentActor={currentActor}
+                  virtualClasses={state.virtualClasses || []}
+                  virtualAttendance={state.virtualAttendance || {}}
+                  dispatch={dispatch}
+                  showToast={showToast}
+                />
+              )}
               {activeTab === "attendance" && (can("scoreEntry") || isAdmin) && <AttendanceTab />}
 
               {/* TIMETABLE */}
@@ -9568,6 +9579,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
       </AppCtx.Provider>
   );
 }
+
 
 
 
