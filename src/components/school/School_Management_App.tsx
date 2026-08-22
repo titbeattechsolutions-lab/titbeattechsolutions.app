@@ -9187,8 +9187,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                 <VirtualHubView
                   isAdmin={isAdmin}
                   currentActor={currentActor}
-                  virtualClasses={state.virtualClasses || []}
-                  virtualAttendance={state.virtualAttendance || {}}
+                  virtualClasses={appState.virtualClasses || []}
+                  virtualAttendance={appState.virtualAttendance || {}}
                   dispatch={dispatch}
                   showToast={showToast}
                 />
@@ -9579,6 +9579,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
       </AppCtx.Provider>
   );
 }
+
 
 
 
