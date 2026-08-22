@@ -1222,23 +1222,52 @@ function appReducer(state: AppState, action: any): AppState {
         schoolSettings: { ...state.schoolSettings, ...(action.payload.schoolSettings || {}) },
         logs: mergedLogs, notifications: mergedNotifications,
         staffSignIns: mergedStaffSignIns, staffList: mergedStaffList, 
-        attendance: mergedAttendance, entries: mergedEntries, bin: mergedBin 
-      };
-    }
+        attendance: mergedAttendance, entries: mergedEntries, bin: mergedBin,
+          classSessions: action.payload.classSessions || state.classSessions || [],
+          virtualClasses: action.payload.virtualClasses || state.virtualClasses || [],
+          virtualAttendance: {...(state.virtualAttendance || {}), ...(action.payload.virtualAttendance || {})}
+        };
+      }
     case "HARD_RESET": {
-      // Unconditional clean-slate reset. Used exclusively for tenant switching.
-      // Unlike REPLACE_ALL (which merges for cross-device sync), this wipes ALL
-      // existing state and replaces it with the payload. Never use for normal sync.
-      return {
-        ...EMPTY_STATE,
-        ...(action.payload || {}),
-        schoolSettings: {
-          name: "", motto: "", session: "", term: "", resumptionDate: "",
-          ...(action.payload?.schoolSettings || {}),
-        },
-      };
-    }
-    case "__HYDRATE__":
+        // Unconditional clean-slate reset. Used exclusively for tenant switching.
+        // Unlike REPLACE_ALL (which merges for cross-device sync), this wipes ALL
+        // existing state and replaces it with the payload. Never use for normal sync.
+        return {
+          ...EMPTY_STATE,
+          ...(action.payload || {}),
+          schoolSettings: {
+            name: "", motto: "", session: "", term: "", resumptionDate: "",
+            ...(action.payload?.schoolSettings || {}),
+          },
+          classSessions: action.payload?.classSessions || [],
+          virtualClasses: action.payload?.virtualClasses || [],
+          virtualAttendance: action.payload?.virtualAttendance || {}
+        };
+      }
+    case "START_CLASS_SESSION":
+        return { ...state, classSessions: [action.payload, ...(state.classSessions || [])] };
+      case "END_CLASS_SESSION":
+        return { 
+          ...state, 
+          classSessions: (state.classSessions || []).map(cs => 
+            cs.id === action.payload.id ? { ...cs, endTime: action.payload.endTime } : cs
+          ) 
+        };
+      case "ADD_VIRTUAL_CLASS":
+        return { ...state, virtualClasses: [...(state.virtualClasses || []), action.payload] };
+      case "DELETE_VIRTUAL_CLASS":
+        return { ...state, virtualClasses: (state.virtualClasses || []).filter(c => c.id !== action.payload) };
+      case "LOG_VIRTUAL_ATTENDANCE": {
+        const currentAtt = state.virtualAttendance || {};
+        return { 
+          ...state, 
+          virtualAttendance: { 
+            ...currentAtt, 
+            [action.payload.classId]: [...(currentAtt[action.payload.classId] || []), action.payload.studentName].filter((v,i,a)=>a.indexOf(v)===i) 
+          } 
+        };
+      }
+      case "__HYDRATE__":
       return { ...state, [action.key]: action.value };
     default:
       return state;
