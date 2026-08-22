@@ -832,7 +832,7 @@ export async function getTeacherClasses(
       .select("*")
       .eq("school_id", sid)
       .eq("class_teacher_id", teacher.id)
-      .then(({ data, error }: { data: Class[] | null; error: unknown }) => {
+      .then(({ data, error }: any) => {
         throwIfError(error, "getTeacherClasses:class_teacher_id");
         return data ?? [];
       })
@@ -846,7 +846,7 @@ export async function getTeacherClasses(
         .select("*")
         .eq("school_id", sid)
         .in("id", allIds)
-        .then(({ data, error }: { data: Class[] | null; error: unknown }) => {
+        .then(({ data, error }: any) => {
           throwIfError(error, "getTeacherClasses:class_ids");
           return data ?? [];
         })
@@ -1042,7 +1042,7 @@ export async function fetchResultCheckerTokens(schoolId: string | null): Promise
   const actualId = sRow?.id || sid;
 
   const { data, error } = await db()
-    .from("result_checker_tokens")
+    .from("result_checker_tokens" as any)
     .select("*, students(first_name,last_name,class_name)")
     .eq("school_id", actualId)
     .order("created_at", { ascending: false });
@@ -1133,13 +1133,13 @@ export async function generateTokensForClass(
     token: generatePin(),
   }));
 
-  const { error } = await db().from("result_checker_tokens").insert(payload);
+  const { error } = await db().from("result_checker_tokens" as any).insert(payload);
   throwIfError(error, "generateTokensForClass");
 }
 
 export async function revokeToken(tokenId: string): Promise<void> {
   const { error } = await db()
-    .from("result_checker_tokens")
+    .from("result_checker_tokens" as any)
     .delete()
     .eq("id", tokenId);
   throwIfError(error, "revokeToken");
