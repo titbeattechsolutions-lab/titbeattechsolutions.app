@@ -6800,7 +6800,7 @@ function TimetableView({
                               )}
                             </button>
                             
-                            {isToday && mine && c && ttType === "class" && (() => {
+                            {(mine || isAdmin) && c && ttType === "class" && (() => {
                               const cs = (classSessions || []).find(s => s.date === today() && s.className === activeClass && s.subject === c.subject && s.teacherName === currentActor);
                               if (cs && cs.endTime) {
                                 return <div className="mt-1 text-[9px] font-bold text-center text-emerald-700 bg-emerald-100 py-1 rounded-md border border-emerald-300">Class Done</div>;
@@ -9579,6 +9579,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
       </AppCtx.Provider>
   );
 }
+
 
 
 
