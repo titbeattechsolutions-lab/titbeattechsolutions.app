@@ -7387,7 +7387,7 @@ function VirtualHubView({
             <p className="text-sm font-bold text-slate-500">No virtual classes scheduled</p>
           </div>
         ) : (
-          myClasses.sort((a,b)=>new Date(b.scheduledTime).getTime() - new Date(a.scheduledTime).getTime()).map(vc => {
+          [...myClasses].sort((a,b)=>new Date(b.scheduledTime).getTime() - new Date(a.scheduledTime).getTime()).map(vc => {
             const isPast = new Date(vc.scheduledTime).getTime() < Date.now();
             const attendanceList = virtualAttendance[vc.id] || [];
             return (
@@ -9579,6 +9579,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
       </AppCtx.Provider>
   );
 }
+
 
 
 
