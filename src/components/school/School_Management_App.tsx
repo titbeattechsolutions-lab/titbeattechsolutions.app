@@ -168,7 +168,9 @@ interface SchoolSettings {
   adminUsername?: string;
   salaryDay?: number;
   salaryReminderEnabled?: boolean;
-}
+    allowedLoginStart?: string;
+    allowedLoginEnd?: string;
+  }
 interface TimetableCell { subject: string; teacherName: string }
 interface TimetableState {
   periods: { id: string; label: string; start: string; end: string }[];
@@ -5222,8 +5224,41 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                   </Btn>
                 )}
                 
-                <Btn variant="outline" size="lg" className="w-full border-emerald-200 text-emerald-600 hover:bg-emerald-50 mt-2" onClick={async () => {
-                  let st = "";
+                <div className="pt-6 mt-6 border-t border-slate-100 space-y-4">
+                    <div>
+                      <p className="text-sm font-black uppercase text-slate-700">Staff Login Restrictions</p>
+                      <p className="text-xs text-slate-400 mt-0.5">Restrict when staff can log into the app. Leave blank to allow 24/7 access.</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Field label="Allowed From (e.g. 07:00)">
+                        <input
+                          type="time"
+                          value={draft.allowedLoginStart || ""}
+                          onChange={e => {
+                            setDraft(p => ({ ...p, allowedLoginStart: e.target.value }));
+                            dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { allowedLoginStart: e.target.value } });
+                            showToast("Login start time updated");
+                          }}
+                          className="w-full px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-blue-500 outline-none transition-all"
+                        />
+                      </Field>
+                      <Field label="Allowed Until (e.g. 16:00)">
+                        <input
+                          type="time"
+                          value={draft.allowedLoginEnd || ""}
+                          onChange={e => {
+                            setDraft(p => ({ ...p, allowedLoginEnd: e.target.value }));
+                            dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { allowedLoginEnd: e.target.value } });
+                            showToast("Login end time updated");
+                          }}
+                          className="w-full px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-blue-500 outline-none transition-all"
+                        />
+                      </Field>
+                    </div>
+                  </div>
+                  
+                  <Btn variant="outline" size="lg" className="w-full border-emerald-200 text-emerald-600 hover:bg-emerald-50 mt-2" onClick={async () => {
+                    let st = "";
                   try { const r = sessionStorage.getItem("schoolapp_tenant_session_v2"); if (r) st = JSON.parse(r).sessionToken; } catch {}
                   if (!st) return showToast("Session error. Please re-login.", "error");
                   
@@ -7625,7 +7660,16 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     if (!s) return setLoginErr("Invalid Staff ID or PIN.");
     if (s.status === "revoked") return setLoginErr("Your access has been revoked. Contact admin.");
 
-    const pinOk = await verifyPIN(loginPass, s.pin);
+    const { allowedLoginStart, allowedLoginEnd } = appState.schoolSettings || {};
+      if (allowedLoginStart && allowedLoginEnd) {
+        const now = new Date();
+        const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+        if (currentTime < allowedLoginStart || currentTime > allowedLoginEnd) {
+          return setLoginErr(`Login restricted: Access only permitted between ${allowedLoginStart} and ${allowedLoginEnd}.`);
+        }
+      }
+
+      const pinOk = await verifyPIN(loginPass, s.pin);
     if (!pinOk) return setLoginErr("Invalid name or PIN.");
 
     // Migrate plain PIN to hash on first successful login
