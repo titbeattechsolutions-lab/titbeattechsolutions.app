@@ -364,7 +364,9 @@ export default function TenantApp() {
     const pollStatus = async () => {
       const liveStatus = await checkTenantStatus(session);
 
-      if (liveStatus === null || liveStatus === "suspended") {
+        if (liveStatus === "offline") return; // Keep session alive if offline
+
+        if (liveStatus === null || liveStatus === "suspended") {
         // Session was purged or tenant was suspended — force logout immediately.
         clearTenantSession();
         clearAppState();

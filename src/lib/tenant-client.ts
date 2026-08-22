@@ -121,14 +121,25 @@ export function daysRemaining(session: TenantSession): number | null {
  */
 export async function checkTenantStatus(
   session: TenantSession
-): Promise<"active" | "trial" | "suspended" | "expired" | null> {
+): Promise<"active" | "trial" | "suspended" | "expired" | "offline" | null> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return "offline";
+  }
   try {
     const { data, error } = await supabase.rpc("check_tenant_session_status", {
       _session_token: session.sessionToken,
     });
-    if (error) return null;
+    if (error) {
+      if (error.message?.includes("Failed to fetch") || error.message?.includes("NetworkError") || error.code === "PGRST000") {
+        return "offline";
+      }
+      return null;
+    }
     return (data as "active" | "trial" | "suspended" | "expired" | null) ?? null;
-  } catch {
+  } catch (err: any) {
+    if (err?.message?.includes("Failed to fetch") || err?.message?.includes("NetworkError")) {
+      return "offline";
+    }
     return null;
   }
 }
