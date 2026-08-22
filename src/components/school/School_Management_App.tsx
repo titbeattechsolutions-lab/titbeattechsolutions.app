@@ -3978,7 +3978,7 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
   // Calculate unique classes
   const classesList = useMemo(() => {
     return Array.from(new Set([
-      ...Object.keys(state.classRolls),
+      ...Object.keys(appState.classRolls),
       ...state.entries.map(e => e.studentClass),
       ...state.attendance.map(a => a.studentClass)
     ])).filter(Boolean).sort();
@@ -4051,8 +4051,8 @@ const PromotionWizard = memo(({ onClose, tenantId }: { onClose: () => void; tena
           }
         } catch (e) {
           const grouped: Record<string, any[]> = {};
-          Object.keys(state.classRolls).forEach(c => {
-            grouped[c] = (state.classRolls[c] || []).map(s => ({
+          Object.keys(appState.classRolls).forEach(c => {
+            grouped[c] = (appState.classRolls[c] || []).map(s => ({
               id: s.id,
               first_name: s.name.split(" ")[0] || "",
               last_name: s.name.split(" ").slice(1).join(" ") || "",
@@ -5066,7 +5066,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                     ["Bin (deleted)",  state.bin.length],
                     ["Attendance",     state.attendance.length],
                     ["Staff Accounts", state.staffList.length],
-                    ["Class Rolls",    Object.values(state.classRolls).reduce((a, b) => a + b.length, 0)],
+                    ["Class Rolls",    Object.values(appState.classRolls).reduce((a, b) => a + b.length, 0)],
                     ["Activity Logs",  state.logs.length],
                   ] as const).map(([l, v]) => (
                     <div key={l} className="flex items-center justify-between">
@@ -5094,7 +5094,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                       const classes = [...new Set(state.entries.map(e => e.studentClass))];
                       showToast(`Exporting ${classes.length} class${classes.length!==1?"es":""}…`);
                       for (const cls of classes) {
-                        await exportClassToExcel(cls, state.schoolSettings.session, state.schoolSettings.term, state.entries, state.attendance, state.schoolSettings.grading_scale);
+                        await exportClassToExcel(cls, state.schoolSettings.session, state.schoolSettings.term, state.entries, state.attendance, (state.schoolSettings as any).grading_scale);
                       }
                       showToast("All classes exported!");
                     }}>
@@ -5162,7 +5162,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      style={{ WebkitTextSecurity: "disc" }}
+                      style={{ WebkitTextSecurity: "disc" as any }}
                       value={clearPin}
                       maxLength={32}
                       placeholder="Admin PIN"
@@ -5637,7 +5637,7 @@ const AttendanceTab = memo(() => {
     
     // Check Limits
     const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
-    const currentTotalStudents = getTrueStudentCount(state);
+    const currentTotalStudents = getTrueStudentCount(appState);
     const existing = classRolls[rollClass] || [];
     const existingNames = new Set(existing.map(s => s.name.toLowerCase()));
     const newStudents = csvPreview
@@ -5646,7 +5646,7 @@ const AttendanceTab = memo(() => {
     const dupes = csvPreview.length - newStudents.length;
     if (!newStudents.length) { showToast("All students already in roll", "warning"); return; }
     
-    const projectedTotal = getTrueStudentCount(state, newStudents.map(s => s.name));
+    const projectedTotal = getTrueStudentCount(appState, newStudents.map(s => s.name));
     if (projectedTotal > limit) {
       const available = Math.max(0, limit - currentTotalStudents);
       return showToast(`Can only add ${available} more student${available !== 1 ? 's' : ''} on the ${tenantPlan || "trial"} tier (limit: ${limit}). Please upgrade.`, "error");
@@ -5695,7 +5695,7 @@ const AttendanceTab = memo(() => {
     if (!rollClass) return showToast("Select a class", "error");
     
     const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
-    const projectedTotal = getTrueStudentCount(state, [newName || student?.name || ""]);
+    const projectedTotal = getTrueStudentCount(appState, [newName || student?.name || ""]);
     if (projectedTotal > limit) {
       return showToast(`Student limit reached (${limit}) for the ${tenantPlan || "trial"} tier. Please upgrade.`, "error");
     }
@@ -5723,12 +5723,11 @@ const AttendanceTab = memo(() => {
         }]).then((result) => {
           if (result?.ids?.[0]) {
             // Patch the local roll entry with the real DB UUID so token gen works
-            dispatch((state: any) => {
-              const roll = (state.classRolls[rollClass] || []).map((s: any) =>
+            dispatch((() => {
+              const roll = (appState.classRolls[rollClass] || []).map((s: any) =>
                 s.id === localId ? { ...s, id: result.ids[0] } : s
               );
-              return { type: "SAVE_CLASS_ROLL", className: rollClass, students: roll, actor: "System" };
-            });
+              return { type: "SAVE_CLASS_ROLL", className: rollClass, students: roll, actor: "System" }; })());
           }
         }).catch(console.error);
       });
@@ -5743,7 +5742,7 @@ const AttendanceTab = memo(() => {
     const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean);
     
     const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
-    const currentTotalStudents = getTrueStudentCount(state);
+    const currentTotalStudents = getTrueStudentCount(appState);
     const existing = classRolls[rollClass] || [];
     const existingNames = new Set(existing.map(s => s.name.toLowerCase()));
     const newStudents = lines
@@ -5751,7 +5750,7 @@ const AttendanceTab = memo(() => {
       .map(l => ({ id: uid(), name: l, admNo: "" }));
     if (!newStudents.length) return showToast("All students already in roll", "warning");
     
-    const projectedTotal = getTrueStudentCount(state, newStudents.map(s => s.name));
+    const projectedTotal = getTrueStudentCount(appState, newStudents.map(s => s.name));
     if (projectedTotal > limit) {
       const available = Math.max(0, limit - currentTotalStudents);
       return showToast(`Can only add ${available} more student${available !== 1 ? 's' : ''} on the ${tenantPlan || "trial"} tier (limit: ${limit}). Please upgrade.`, "error");
@@ -5770,13 +5769,12 @@ const AttendanceTab = memo(() => {
           class_name: rollClass,
         }))).then((result) => {
           if (result?.ids?.length) {
-            dispatch((state: any) => {
-              const roll = (state.classRolls[rollClass] || []).map((s: any) => {
+            dispatch((() => {
+              const roll = (appState.classRolls[rollClass] || []).map((s: any) => {
                 const idx = localIds.indexOf(s.id);
                 return idx !== -1 && result.ids[idx] ? { ...s, id: result.ids[idx] } : s;
               });
-              return { type: "SAVE_CLASS_ROLL", className: rollClass, students: roll, actor: "System" };
-            });
+              return { type: "SAVE_CLASS_ROLL", className: rollClass, students: roll, actor: "System" }; })());
           }
         }).catch(console.error);
       });
@@ -5788,7 +5786,7 @@ const AttendanceTab = memo(() => {
 
   const confirmStudent = (student: RollStudent) => {
     const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
-    const projectedTotal = getTrueStudentCount(state, [newName || student?.name || ""]);
+    const projectedTotal = getTrueStudentCount(appState, [newName || student?.name || ""]);
     if (projectedTotal > limit) {
       return showToast(`Student limit reached (${limit}) for the ${tenantPlan || "trial"} tier. Please upgrade.`, "error");
     }
@@ -7556,7 +7554,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
         target: '#tour-dashboard-hero',
         title: 'Welcome to School GradeFlow!',
         content: 'This is your Dashboard. Here you can see a high-level overview of your school\'s performance and quick statistics.',
-        disableBeacon: true,
+        // disableBeacon: true,
         placement: 'bottom',
       }
     ];
@@ -7567,7 +7565,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
         title: 'Staff Access',
         content: 'Manage staff profiles, assign classes and subjects, and control detailed feature-level access rights.',
         placement: 'bottom',
-        disableBeacon: true,
+        // disableBeacon: true,
       });
     }
 
@@ -7577,21 +7575,21 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
         title: 'Attendance & Enrollment',
         content: 'This is the Attendance tab. Every workflow starts here! You use this tab to enroll students into your classes.',
         placement: 'bottom',
-        disableBeacon: true,
+        // disableBeacon: true,
       });
       steps.push({
         target: '#tour-roll-card',
         title: 'Class Rolls',
         content: 'Select a class here to manage its roll. You can manually type names, import hundreds of students via CSV, or export the roll to Excel.',
         placement: 'top',
-        disableBeacon: true,
+        // disableBeacon: true,
       });
       steps.push({
         target: '#tour-records-header',
         title: 'Grade Entry',
         content: 'Once your students are enrolled, head to the Records tab to seamlessly input continuous assessments (CA) and exam scores!',
         placement: 'bottom',
-        disableBeacon: true,
+        // disableBeacon: true,
       });
     }
 
@@ -7601,7 +7599,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
         title: 'Report Cards',
         content: 'The Reports tab automatically generates and publishes end-of-term student report cards based on the scores you entered.',
         placement: 'bottom',
-        disableBeacon: true,
+        // disableBeacon: true,
       });
     }
 
@@ -7611,7 +7609,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
         title: 'Fees Tracker',
         content: 'Track fee payment records, generate receipts, and manage class structures dynamically.',
         placement: 'bottom',
-        disableBeacon: true,
+        // disableBeacon: true,
       });
     }
 
@@ -7620,7 +7618,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
       title: 'School Timetable',
       content: 'Define school hours, assign teachers to subject periods, and view schedules.',
       placement: 'bottom',
-      disableBeacon: true,
+      // disableBeacon: true,
     });
 
     if (isAdmin) {
@@ -7629,14 +7627,14 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
         title: 'Curriculum Resources',
         content: 'Access curriculum e-notes, syllabus documents, and education board standards.',
         placement: 'bottom',
-        disableBeacon: true,
+        // disableBeacon: true,
       });
       steps.push({
         target: '#tour-settings-header',
         title: 'School Settings',
         content: 'Finally, the Settings tab lets you control your school\'s identity, grading system (e.g. WAEC standard), and academic term.',
         placement: 'bottom',
-        disableBeacon: true,
+        // disableBeacon: true,
       });
     }
 
@@ -7905,7 +7903,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     )) return showToast(`${subject} already exists for ${studentName}.`, "error");
     const ca = parseFloat(caScore) || 0, ex = parseFloat(examScore) || 0;
     const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
-    if (getTrueStudentCount(state, [studentName]) > limit) return showToast(`Student limit reached (${limit}). Please upgrade.`, "error");
+    if (getTrueStudentCount(appState, [studentName]) > limit) return showToast(`Student limit reached (${limit}). Please upgrade.`, "error");
     if (ca < 0 || ca > 40) return showToast("CA score must be 0–40", "error");
     if (ex < 0 || ex > 60) return showToast("Exam score must be 0–60", "error");
     dispatch({
@@ -7922,7 +7920,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     showToast("Score saved — form refreshed");
     // Full refresh: clear name, class, subject and scores
     setScoreForm({ studentName: "", studentClass: "", subject: "", caScore: "", examScore: "" });
-  }, [scoreForm, entries, showToast, schoolSettings.term, schoolSettings.session, isAdmin, auth.user, tenantPlan, state, dispatch]);
+  }, [scoreForm, entries, showToast, schoolSettings.term, schoolSettings.session, isAdmin, auth.user, tenantPlan, appState, dispatch]);
 
   // Save CA-only draft (exam pending). Drafts are scoped to the current term/session.
   const saveCADraft = useCallback(() => {
@@ -7962,7 +7960,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     if (!d) return;
     const ex = parseFloat(examStr);
     const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
-    if (getTrueStudentCount(state, [d.studentName]) > limit) return showToast(`Student limit reached (${limit}). Please upgrade.`, "error");
+    if (getTrueStudentCount(appState, [d.studentName]) > limit) return showToast(`Student limit reached (${limit}). Please upgrade.`, "error");
     if (isNaN(ex) || ex < 0 || ex > 60) return showToast("Exam score must be 0–60", "error");
     if (entries.some(e =>
       e.studentName.toLowerCase().trim() === d.studentName.toLowerCase().trim() &&
@@ -7982,7 +7980,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     });
     setCaDrafts(p => p.filter(x => x.id !== draftId));
     showToast(`${d.subject} finalized for ${d.studentName}`);
-  }, [caDrafts, entries, showToast, isAdmin, auth.user, tenantPlan, state, dispatch]);
+  }, [caDrafts, entries, showToast, isAdmin, auth.user, tenantPlan, appState, dispatch]);
 
   const deleteDraft = useCallback((draftId: string) => {
     setCaDrafts(p => p.filter(x => x.id !== draftId));
@@ -8152,12 +8150,12 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
         {/* Note: This block is technically unreachable since SchoolLock guarantees admin PIN exists. Maintained for safety. */}
         <div className="space-y-4">
           <Field label="New Admin PIN" error={setupErr}>
-            <input type="text" style={{ WebkitTextSecurity: "disc" }} maxLength={32} value={setupPin.nxt}
+            <input type="text" style={{ WebkitTextSecurity: "disc" as any }} maxLength={32} value={setupPin.nxt}
               onChange={e => { setSetupPin(p => ({ ...p, nxt: e.target.value })); setSetupErr(""); }}
               placeholder="Min 4 characters" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-blue-500 outline-none" />
           </Field>
           <Field label="Confirm PIN">
-            <input type="text" style={{ WebkitTextSecurity: "disc" }} maxLength={32} value={setupPin.cnf}
+            <input type="text" style={{ WebkitTextSecurity: "disc" as any }} maxLength={32} value={setupPin.cnf}
               onChange={e => { setSetupPin(p => ({ ...p, cnf: e.target.value })); setSetupErr(""); }}
               placeholder="Re-enter password" className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-center text-xl tracking-[0.5em] focus:border-blue-500 outline-none" />
           </Field>
@@ -8192,7 +8190,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
           <Field label="Password / PIN" error={loginErr}>
             <input
               type="text"
-              style={{ WebkitTextSecurity: "disc" }}
+              style={{ WebkitTextSecurity: "disc" as any }}
               value={loginPass}
               onChange={e => { setLoginPass(e.target.value); setLoginErr(""); }}
               onKeyDown={e => e.key === "Enter" && doLogin()}
@@ -8219,7 +8217,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
   return (
     <AppCtx.Provider value={ctxValue}>
       <div className="flex h-screen overflow-hidden bg-slate-100">
-        <Joyride
+        {/* @ts-ignore */} <Joyride
           steps={tourSteps}
           run={runTour}
           stepIndex={tourIndex}
@@ -8700,7 +8698,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                               session: schoolSettings.session,
                               term: schoolSettings.term,
                               schoolName: schoolSettings.name || "School",
-                              gradingScale: schoolSettings.grading_scale || [],
+                              gradingScale: (schoolSettings as any).grading_scale || [],
                               entries: entries,
                               XLSX: (window as any).XLSX
                             });
@@ -8881,7 +8879,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                       {rpClass !== "All" && filteredStudents.length > 0 && can("printReports") && (
                         <Btn variant="outline" size="sm" onClick={async () => {
                           showToast(`Exporting ${rpClass}…`);
-                          await exportClassToExcel(rpClass, schoolSettings.session, schoolSettings.term, entries, attendance, schoolSettings.grading_scale);
+                          await exportClassToExcel(rpClass, schoolSettings.session, schoolSettings.term, entries, attendance, (schoolSettings as any).grading_scale);
                           showToast(`${rpClass} exported to Excel`);
                         }}>
                           📊 Export {rpClass}
@@ -9569,6 +9567,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
       </AppCtx.Provider>
   );
 }
+
 
 
 
