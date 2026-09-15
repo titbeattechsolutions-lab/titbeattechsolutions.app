@@ -26,6 +26,9 @@ import { verifyAdminPin, setAdminPin, loadTenantSession, requestCloudDeletion as
 import { exportToCSV } from "@/lib/exportUtils";
 import { normalizeClassName, STANDARD_PROGRESSION, STANDARD_DISPLAY_NAMES } from "@/lib/promotionUtils";
 import { getOrdinal } from "@/lib/school-helpers";
+import { registerLocalBiometric, hasLocalBiometric, verifyLocalBiometric, isLocalBiometricsSupported } from "@/lib/local-biometrics";
+import { enqueueSessionEvent } from "@/lib/session-event-queue";
+import { cacheAdminPinHash, verifyAdminPinOffline, hasAdminPinCache } from "@/lib/admin-pin-cache";
 import { Joyride, CallBackProps, STATUS, Step, EVENTS, ACTIONS, TooltipRenderProps } from 'react-joyride';
 import { jsPDF } from "jspdf";
 
@@ -8286,9 +8289,16 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
   const [loginId, setLoginId] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [loginErr, setLoginErr] = useState("");
+  const [showPassFallback, setShowPassFallback] = useState(false);
+  const [bioSupported, setBioSupported] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotStep, setForgotStep] = useState(1);
   const [forgotInput, setForgotInput] = useState("");
+
+  // Async check: does this device have a platform biometric authenticator?
+  useEffect(() => {
+    isLocalBiometricsSupported().then(setBioSupported).catch(() => setBioSupported(false));
+  }, []);
   const [dbSearch, setDbSearch] = useState("");
   const [dbClass,  setDbClass]  = useState("");
   const [dbDate,   setDbDate]   = useState("");
@@ -8613,23 +8623,67 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
 
     if (loginId.toLowerCase() === expectedAdminUsername.toLowerCase()) {
       if (!loginPass) return setLoginErr("Enter a password");
-      
+
       const session = loadTenantSession();
       if (!session) return setLoginErr("Session error. Please re-login.");
-      
+
+      const isOnline = typeof navigator !== "undefined" && navigator.onLine;
+
+      if (!isOnline) {
+        // ── Offline path: verify against local cached hash ────────────────
+        if (!hasAdminPinCache(session.tenantId)) {
+          return setLoginErr(
+            "You are offline and no cached admin credentials exist on this device. " +
+            "Please connect to the internet to log in as admin at least once to enable offline access."
+          );
+        }
+        const offlineResult = await verifyAdminPinOffline(session.tenantId, loginPass);
+        if (offlineResult === "expired") {
+          return setLoginErr(
+            "Your offline admin access has expired (7 days). Please connect to the internet to refresh."
+          );
+        }
+        if (offlineResult !== "match") {
+          return setLoginErr("Incorrect password.");
+        }
+        // Offline auth succeeded — proceed without Supabase
+        setAuth({ loggedIn: true, user: null });
+        setActiveTab("dashboard");
+        logSignIn("Admin", "Administrator");
+        // Queue session event for replay when back online
+        enqueueSessionEvent({
+          sessionToken: session.sessionToken,
+          staffMemberId: "admin",
+          staffName: "Admin",
+          role: "Administrator",
+          action: "login",
+          occurredAt: new Date().toISOString(),
+        });
+        return;
+      }
+
+      // ── Online path: verify via Supabase (existing behaviour) ─────────
       const ok = await verifyAdminPin(session, loginPass);
       if (!ok) return setLoginErr("Incorrect password.");
-      
+
+      // Cache PIN hash for future offline use (fire-and-forget)
+      cacheAdminPinHash(session.tenantId, loginPass).catch(() => {});
+
       setAuth({ loggedIn: true, user: null });
       setActiveTab("dashboard");
       logSignIn("Admin", "Administrator");
-      
+
+      // Enqueue session event (drains immediately if online, persisted if transient failure)
       let st = "";
       try { const r = sessionStorage.getItem("schoolapp_tenant_session_v2"); if (r) st = JSON.parse(r).sessionToken; } catch {}
       if (st) {
-        import("@/integrations/supabase/client").then(async ({ supabase }) => {
-          const { error } = await supabase.rpc("log_staff_session_event", { _session_token: st, _staff_member_id: "admin", _staff_name: "Admin", _role: "Administrator", _action: "login" });
-          if (error) console.error("Failed to log staff session event:", error);
+        enqueueSessionEvent({
+          sessionToken: st,
+          staffMemberId: "admin",
+          staffName: "Admin",
+          role: "Administrator",
+          action: "login",
+          occurredAt: new Date().toISOString(),
         });
       }
       return;
@@ -8645,7 +8699,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
           const now = new Date();
           const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
           let isAllowed = false;
-          
+
           if (allowedLoginStart <= allowedLoginEnd) {
             // Normal day shift (e.g. 07:00 to 16:00)
             isAllowed = currentTime >= allowedLoginStart && currentTime <= allowedLoginEnd;
@@ -8653,7 +8707,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
             // Overnight shift (e.g. 22:00 to 06:00)
             isAllowed = currentTime >= allowedLoginStart || currentTime <= allowedLoginEnd;
           }
-          
+
           if (!isAllowed) {
             return setLoginErr(`Login restricted: Access only permitted between ${allowedLoginStart} and ${allowedLoginEnd}. (Admin bypass enabled)`);
           }
@@ -8671,13 +8725,18 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     setAuth({ loggedIn: true, user: s });
     setActiveTab("dashboard");
     logSignIn(s.name, s.role);
-    
+
+    // Enqueue session event — replayed when back online if device is currently offline
     let st = "";
     try { const r = sessionStorage.getItem("schoolapp_tenant_session_v2"); if (r) st = JSON.parse(r).sessionToken; } catch {}
     if (st) {
-      import("@/integrations/supabase/client").then(async ({ supabase }) => {
-        const { error } = await supabase.rpc("log_staff_session_event", { _session_token: st, _staff_member_id: s.id, _staff_name: s.name, _role: s.role, _action: "login" });
-        if (error) console.error("Failed to log staff session event:", error);
+      enqueueSessionEvent({
+        sessionToken: st,
+        staffMemberId: s.id,
+        staffName: s.name,
+        role: s.role,
+        action: "login",
+        occurredAt: new Date().toISOString(),
       });
     }
     if (s.status === "restricted") showToast("Account restricted — limited access.", "warning");
@@ -8997,24 +9056,69 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Staff Authentication</p>
         </div>
         <div className="space-y-4">
-          <Inp label="Staff ID / Username" value={loginId} onChange={(e: any) => { setLoginId(e.target.value); setLoginErr(""); }} placeholder="" autoComplete="off" />
-          <Field label="Password / PIN" error={loginErr}>
-            <input
-              type="text"
-              style={{ WebkitTextSecurity: "disc" as any }}
-              value={loginPass}
-              onChange={e => { setLoginPass(e.target.value); setLoginErr(""); }}
-              onKeyDown={e => e.key === "Enter" && doLogin()}
-              placeholder="••••••••"
-              className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-semibold text-sm focus:border-blue-500 focus:bg-white outline-none transition-all"
-            />
-          </Field>
-          <div className="text-right -mt-1">
-            <button onClick={() => setForgotOpen(true)} className="text-xs font-black uppercase text-blue-500 hover:text-blue-700 transition-colors">
-              Forgot Password?
-            </button>
-          </div>
-          <Btn variant="primary" size="lg" className="w-full" onClick={doLogin}>Launch Portal</Btn>
+          <Inp label="Staff ID / Username" value={loginId} onChange={(e: any) => { setLoginId(e.target.value); setLoginErr(""); setShowPassFallback(false); }} placeholder="" autoComplete="off" />
+          
+          {loginId && hasLocalBiometric(loginId) && !showPassFallback ? (
+            <div className="mt-4">
+              <Btn 
+                variant="primary" 
+                size="lg" 
+                className="w-full flex items-center justify-center gap-2"
+                onClick={async () => {
+                  try {
+                    const verified = await verifyLocalBiometric(loginId);
+                    if (verified) {
+                      // We bypass password since biometric verified them
+                      // Find staff or admin
+                      const expectedAdminUsername = appState.schoolSettings?.adminUsername || "admin";
+                      if (loginId.toLowerCase() === expectedAdminUsername.toLowerCase()) {
+                        setAuth({ loggedIn: true, user: null });
+                        logSignIn("School Admin", "admin");
+                        return;
+                      }
+                      const s = staffList.find(st => st.staffCode?.toLowerCase() === loginId.toLowerCase());
+                      if (s) {
+                        if (s.status === "revoked") return setLoginErr("Your access has been revoked.");
+                        setAuth({ loggedIn: true, user: { id: s.id, name: s.name, role: s.role, status: s.status } });
+                        logSignIn(s.name, s.role);
+                      }
+                    }
+                  } catch (err: any) {
+                    setLoginErr(err.message || "Biometric login failed");
+                  }
+                }}
+              >
+                <Shield size={20} />
+                Sign in with Face ID / Fingerprint
+              </Btn>
+              {loginErr && <p className="text-xs text-red-500 text-center mt-1">{loginErr}</p>}
+              <div className="text-center mt-3">
+                <button onClick={() => setShowPassFallback(true)} className="text-xs text-blue-500 font-bold hover:underline">
+                  Use password instead
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <Field label="Password / PIN" error={loginErr}>
+                <input
+                  type="text"
+                  style={{ WebkitTextSecurity: "disc" as any }}
+                  value={loginPass}
+                  onChange={e => { setLoginPass(e.target.value); setLoginErr(""); }}
+                  onKeyDown={e => e.key === "Enter" && doLogin()}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-semibold text-sm focus:border-blue-500 focus:bg-white outline-none transition-all"
+                />
+              </Field>
+              <div className="text-right -mt-1">
+                <button onClick={() => setForgotOpen(true)} className="text-xs font-black uppercase text-blue-500 hover:text-blue-700 transition-colors">
+                  Forgot Password?
+                </button>
+              </div>
+              <Btn variant="primary" size="lg" className="w-full" onClick={doLogin}>Launch Portal</Btn>
+            </>
+          )}
           <p className="text-xs text-slate-400 text-center">
             Admin: <code className="font-black bg-slate-100 px-1 rounded">admin</code> + your private PIN · Staff: full name + assigned PIN
           </p>
@@ -9086,6 +9190,38 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
             ))}
           </nav>
           <div className="p-3 border-t border-slate-100 space-y-1">
+            {(() => {
+              // Use staffCode (matching the login screen key) not UUID
+              const bioKey = isAdmin ? (appState.schoolSettings?.adminUsername || "admin") : (auth.user!.staffCode || auth.user!.id);
+              const enrolled = hasLocalBiometric(bioKey);
+              return (
+                <>
+                  {bioSupported && !enrolled && (
+                    <button onClick={async () => {
+                      const name = isAdmin ? "School Admin" : auth.user!.name;
+                      try {
+                        await registerLocalBiometric(bioKey, name);
+                        showToast("Biometric login enabled successfully!", "success");
+                      } catch (e: any) {
+                        showToast(e.message || "Failed to enable biometrics", "error");
+                      }
+                    }}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-indigo-500 hover:bg-indigo-50 transition-all font-bold text-sm group">
+                      <Shield size={18} className="group-hover:scale-110 transition-transform" />Enable Face ID
+                    </button>
+                  )}
+                  {enrolled && (
+                    <button onClick={() => {
+                      localStorage.removeItem(`biometric_cred_${bioKey.toLowerCase()}`);
+                      showToast("Biometric login removed.", "success");
+                    }}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all font-bold text-sm group">
+                      <Shield size={18} className="group-hover:scale-110 transition-transform" />Remove Face ID
+                    </button>
+                  )}
+                </>
+              );
+            })()}
             <button onClick={() => { setActiveTab("dashboard"); setTourIndex(0); setTimeout(() => setRunTour(true), 300); }}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-sm group">
               <HelpCircle size={18} className="group-hover:rotate-12 transition-transform" />App Tour
@@ -9149,6 +9285,39 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                 </button>
               ))}
               <div className="pt-2 border-t border-slate-100 mt-1 space-y-1">
+                {(() => {
+                  const bioKey = isAdmin ? (appState.schoolSettings?.adminUsername || "admin") : (auth.user!.staffCode || auth.user!.id);
+                  const enrolled = hasLocalBiometric(bioKey);
+                  return (
+                    <>
+                      {bioSupported && !enrolled && (
+                        <button onClick={async () => {
+                          const name = isAdmin ? "School Admin" : auth.user!.name;
+                          try {
+                            await registerLocalBiometric(bioKey, name);
+                            showToast("Biometric login enabled successfully!", "success");
+                            setMenuOpen(false);
+                          } catch (e: any) {
+                            showToast(e.message || "Failed to enable biometrics", "error");
+                          }
+                        }}
+                          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-indigo-500 hover:bg-indigo-50 transition-all font-bold text-sm">
+                          <Shield size={18} />Enable Face ID / Fingerprint
+                        </button>
+                      )}
+                      {enrolled && (
+                        <button onClick={() => {
+                          localStorage.removeItem(`biometric_cred_${bioKey.toLowerCase()}`);
+                          showToast("Biometric login removed.", "success");
+                          setMenuOpen(false);
+                        }}
+                          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all font-bold text-sm">
+                          <Shield size={18} />Remove Face ID
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
                 <button onClick={() => { setActiveTab("dashboard"); setTourIndex(0); setMenuOpen(false); setTimeout(() => setRunTour(true), 300); }}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-sm">
                   <HelpCircle size={18} />App Tour
@@ -10375,14 +10544,18 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                   console.warn("[AuthLogger] Failed to parse tenant session from storage", err);
                 }
 
-                // 2. Fire and forget the RPC with basic error visibility
+                // 2. Enqueue session event (drains immediately if online, persisted if transient failure)
                 if (sessionToken) {
                   const sId = auth.user?.id ?? "admin";
                   const sName = auth.user?.name ?? "Admin";
                   const sRole = auth.user?.role ?? "Administrator";
-                  import("@/integrations/supabase/client").then(async ({ supabase }) => {
-                    const { error } = await supabase.rpc("log_staff_session_event", { _session_token: sessionToken, _staff_member_id: sId, _staff_name: sName, _role: sRole, _action: "logout" });
-                    if (error) console.error("Failed to log staff session event:", error);
+                  enqueueSessionEvent({
+                    sessionToken: sessionToken,
+                    staffMemberId: sId,
+                    staffName: sName,
+                    role: sRole,
+                    action: "logout",
+                    occurredAt: new Date().toISOString(),
                   });
                 }
 

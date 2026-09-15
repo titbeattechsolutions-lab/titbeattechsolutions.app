@@ -73,7 +73,13 @@ export default function TenantApp() {
 
   // 1. Initial Load & Offline Listener
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
+    const handleOnline = () => {
+      setIsOffline(false);
+      // Attempt to drain any offline-queued session events
+      import("@/lib/session-event-queue").then(({ drainSessionEventQueue }) => {
+        drainSessionEventQueue().catch(err => console.warn("Failed to drain session events:", err));
+      }).catch(() => {});
+    };
     const handleOffline = () => setIsOffline(true);
     const handleStorageFull = () => {
       toast({
@@ -85,6 +91,12 @@ export default function TenantApp() {
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     window.addEventListener("app_storage_full", handleStorageFull);
+    
+    // Also try to drain once on mount if we're online
+    if (navigator.onLine) {
+      handleOnline();
+    }
+    
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
