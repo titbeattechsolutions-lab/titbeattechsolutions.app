@@ -1101,6 +1101,25 @@ function appReducer(state: AppState, action: any): AppState {
         },
         logs: [mkLog("Class Roll Saved", `${action.students.length} student(s)`, action.className, "", action.actor || ""), ...state.logs].slice(0, 200),
       };
+    case "PATCH_ROLL_STUDENT_IDS": {
+      // Silently swap local temp UIDs for real Supabase UUIDs after a successful DB insert.
+      // Does NOT write a log entry — this is an internal bookkeeping operation, not a user action.
+      const currentRoll = state.classRolls[action.className] || [];
+      const localIdSet: Record<string, string> = {};
+      (action.localIds as string[]).forEach((lid: string, i: number) => {
+        localIdSet[lid] = (action.realIds as string[])[i];
+      });
+      const patchedRoll = currentRoll.map((s: RollStudent) =>
+        localIdSet[s.id] ? { ...s, id: localIdSet[s.id] } : s
+      );
+      return {
+        ...state,
+        classRolls: {
+          ...state.classRolls,
+          [action.className]: patchedRoll,
+        },
+      };
+    }
     case "DELETE_ROLL_STUDENT": {
       const roll = state.classRolls[action.className] || [];
       return {
@@ -2417,6 +2436,74 @@ const SETTINGS_SECTIONS = [
 const FEES_LS = "sf_fees_v2";
 const FEE_STRUCT_LS = "sf_fee_structure_v2";
 
+function createAdmNoGenerator(classRolls: Record<string, RollStudent[]>) {
+  const allAdmNos = new Set<string>();
+  Object.values(classRolls).forEach(roll => {
+    roll.forEach(s => {
+      if (s.admNo && !s.admNo.startsWith("AUTO-")) {
+        allAdmNos.add(s.admNo.toUpperCase());
+      }
+    });
+  });
+
+  const year = new Date().getFullYear();
+  let prefix = `ADM/${year}/`;
+  let maxNumber = 0;
+  let padding = 4;
+  
+  if (allAdmNos.size > 0) {
+    const prefixCounts: Record<string, number> = {};
+    const prefixMaxes: Record<string, number> = {};
+    const prefixPadding: Record<string, number> = {};
+
+    allAdmNos.forEach(adm => {
+      const match = adm.match(/^(.*?)([0-9]+)$/);
+      if (match) {
+        const pfx = match[1] || "";
+        const numStr = match[2];
+        const num = parseInt(numStr, 10);
+        prefixCounts[pfx] = (prefixCounts[pfx] || 0) + 1;
+        if ((prefixMaxes[pfx] || 0) <= num) {
+          prefixMaxes[pfx] = num;
+          prefixPadding[pfx] = numStr.length;
+        }
+      }
+    });
+
+    let bestPrefix = "";
+    let maxCount = 0;
+    for (const pfx in prefixCounts) {
+      if (prefixCounts[pfx] > maxCount) {
+        maxCount = prefixCounts[pfx];
+        bestPrefix = pfx;
+      }
+    }
+
+    if (bestPrefix) {
+      prefix = bestPrefix;
+      maxNumber = prefixMaxes[bestPrefix];
+      padding = prefixPadding[bestPrefix] || 4;
+    }
+  }
+
+  let nextNum = maxNumber + 1;
+
+  return function getNextAdmNo(): string {
+    let nextAdmNo = "";
+    do {
+      let numStr = nextNum.toString();
+      if (numStr.length < padding) {
+        numStr = numStr.padStart(padding, '0');
+      }
+      nextAdmNo = `${prefix}${numStr}`;
+      nextNum++;
+    } while (allAdmNos.has(nextAdmNo));
+    
+    allAdmNos.add(nextAdmNo);
+    return nextAdmNo;
+  };
+}
+
 function getOrAssignAdmNo(
   rollStudent: RollStudent | undefined, 
   className: string, 
@@ -2426,18 +2513,8 @@ function getOrAssignAdmNo(
 ): string {
   if (rollStudent?.admNo) return rollStudent.admNo;
   
-  let fallbackId = "";
-  if (!rollStudent) {
-    let hash = 0;
-    const str = `${className}::${studentName.trim().toLowerCase()}`;
-    for (let i = 0; i < str.length; i++) {
-      hash = (hash << 5) - hash + str.charCodeAt(i);
-      hash |= 0;
-    }
-    fallbackId = "H" + Math.abs(hash).toString(36);
-  }
-
-  const newAdmNo = `AUTO-${rollStudent?.id || fallbackId}`;
+  const gen = createAdmNoGenerator(classRolls);
+  const newAdmNo = gen();
   if (rollStudent) {
     const updatedRoll = (classRolls[className] || []).map(s => 
       s.id === rollStudent.id ? { ...s, admNo: newAdmNo } : s
@@ -2446,7 +2523,7 @@ function getOrAssignAdmNo(
       type: "SAVE_CLASS_ROLL", 
       className, 
       students: updatedRoll,
-      actor: "System Migration"
+      actor: "System"
     });
   }
   return newAdmNo;
@@ -5952,6 +6029,7 @@ const AttendanceTab = memo(() => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editAdmNo, setEditAdmNo] = useState("");
+  const [editGender, setEditGender] = useState<"male" | "female" | "">("");
   // CSV Import state
   const csvInputRef = useRef<HTMLInputElement>(null);
   const [csvImportMode, setCsvImportMode] = useState<"idle" | "preview" | "done">("idle");
@@ -5994,9 +6072,13 @@ const AttendanceTab = memo(() => {
     const currentTotalStudents = getTrueStudentCount(state);
     const existing = classRolls[rollClass] || [];
     const existingNames = new Set(existing.map(s => s.name.toLowerCase()));
+    const gen = createAdmNoGenerator(classRolls);
     const newStudents = csvPreview
       .filter(s => !existingNames.has(s.name.toLowerCase()))
-      .map(s => ({ id: uid(), name: s.name, admNo: s.admNo }));
+      .map(s => {
+        const localId = uid();
+        return { id: localId, name: s.name, admNo: s.admNo || gen() };
+      });
     const dupes = csvPreview.length - newStudents.length;
     if (!newStudents.length) { showToast("All students already in roll", "warning"); return; }
     
@@ -6010,13 +6092,18 @@ const AttendanceTab = memo(() => {
     
     // Phase 4 Roster Cutover Dual-Write
     if (tenantId) {
+      const localIds = newStudents.map(s => s.id);
       import("@/supabase/schoolService").then(({ bulkCreateStudents }) => {
         bulkCreateStudents(tenantId, newStudents.map(s => ({
           first_name: s.name.split(" ")[0] || "",
           last_name: s.name.split(" ").slice(1).join(" ") || "",
           admission_no: s.admNo,
           class_name: rollClass,
-        }))).catch(console.error);
+        }))).then((result) => {
+          if (result?.ids?.length) {
+            dispatch({ type: "PATCH_ROLL_STUDENT_IDS", className: rollClass, localIds, realIds: result.ids });
+          }
+        }).catch(console.error);
       });
     }
 
@@ -6037,12 +6124,30 @@ const AttendanceTab = memo(() => {
     return [...roll, ...suggested];
   }, [classRolls, rollClass, entries]);
 
-  const filteredRoll = useMemo(() =>
-    rollStudents.filter(s =>
+  const filteredRoll = useMemo(() => {
+    const filtered = rollStudents.filter(s =>
       s.name.toLowerCase().includes(rollSearch.toLowerCase()) ||
-      (s.admNo || "").includes(rollSearch)
-    ),
-  [rollStudents, rollSearch]);
+      (s.admNo || "").toLowerCase().includes(rollSearch.toLowerCase())
+    );
+    return [...filtered].sort((a, b) => {
+      // Suggested (unconfirmed) always sink to the bottom
+      if (a.suggested && !b.suggested) return 1;
+      if (!a.suggested && b.suggested) return -1;
+      // Both confirmed: sort by admission number alphanumerically
+      const admA = a.admNo || "";
+      const admB = b.admNo || "";
+      if (!admA && !admB) return a.name.localeCompare(b.name);
+      if (!admA) return 1;   // no adm no sinks below those that have one
+      if (!admB) return -1;
+      // Natural sort: split prefix from numeric suffix for correct numeric ordering
+      const matchA = admA.match(/^(.*?)(\d+)$/);
+      const matchB = admB.match(/^(.*?)(\d+)$/);
+      if (matchA && matchB && matchA[1] === matchB[1]) {
+        return parseInt(matchA[2], 10) - parseInt(matchB[2], 10);
+      }
+      return admA.localeCompare(admB);
+    });
+  }, [rollStudents, rollSearch]);
 
   const addStudent = () => {
     if (!newName.trim()) return showToast("Enter student name", "error");
@@ -6058,30 +6163,26 @@ const AttendanceTab = memo(() => {
     if (existing.find(s => s.name.toLowerCase() === newName.trim().toLowerCase()))
       return showToast("Student already exists", "error");
     const localId = uid();
+    const finalAdmNo = newAdmNo.trim() || createAdmNoGenerator(classRolls)();
     dispatch({
       type: "SAVE_CLASS_ROLL",
       className: rollClass,
-      students: [...existing, { id: localId, name: newName.trim(), admNo: newAdmNo.trim(), gender: newGender || undefined }],
+      students: [...existing, { id: localId, name: newName.trim(), admNo: finalAdmNo, gender: newGender || undefined }],
       actor: currentActor,
     });
 
-    // Phase 4 Roster Cutover Dual-Write — also patch local roll with real DB UUID
+    // Phase 4 Roster Cutover Dual-Write
     if (tenantId) {
       import("@/supabase/schoolService").then(({ bulkCreateStudents }) => {
         bulkCreateStudents(tenantId, [{
           first_name: newName.trim().split(" ")[0] || "",
           last_name: newName.trim().split(" ").slice(1).join(" ") || "",
-          admission_no: newAdmNo.trim(),
+          admission_no: finalAdmNo,
           class_name: rollClass,
           gender: newGender || undefined,
         }]).then((result) => {
           if (result?.ids?.[0]) {
-            // Patch the local roll entry with the real DB UUID so token gen works
-            
-              const roll = (state.classRolls[rollClass] || []).map((s: any) =>
-                s.id === localId ? { ...s, id: result.ids[0] } : s
-              );
-              dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: roll, actor: "System" });
+              dispatch({ type: "PATCH_ROLL_STUDENT_IDS", className: rollClass, localIds: [localId], realIds: [result.ids[0]] });
           }
         }).catch(console.error);
       });
@@ -6099,9 +6200,13 @@ const AttendanceTab = memo(() => {
     const currentTotalStudents = getTrueStudentCount(state);
     const existing = classRolls[rollClass] || [];
     const existingNames = new Set(existing.map(s => s.name.toLowerCase()));
+    const gen = createAdmNoGenerator(classRolls);
     const newStudents = lines
       .filter(l => !existingNames.has(l.toLowerCase()))
-      .map(l => ({ id: uid(), name: l, admNo: "" }));
+      .map(l => {
+        const localId = uid();
+        return { id: localId, name: l, admNo: gen() };
+      });
     if (!newStudents.length) return showToast("All students already in roll", "warning");
     
     const projectedTotal = getTrueStudentCount(state, newStudents.map(s => s.name));
@@ -6119,16 +6224,11 @@ const AttendanceTab = memo(() => {
         bulkCreateStudents(tenantId, newStudents.map(s => ({
           first_name: s.name.split(" ")[0] || "",
           last_name: s.name.split(" ").slice(1).join(" ") || "",
-          admission_no: "",
+          admission_no: s.admNo,
           class_name: rollClass,
         }))).then((result) => {
           if (result?.ids?.length) {
-            
-              const roll = (state.classRolls[rollClass] || []).map((s: any) => {
-                const idx = localIds.indexOf(s.id);
-                return idx !== -1 && result.ids[idx] ? { ...s, id: result.ids[idx] } : s;
-              });
-              dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: roll, actor: "System" });
+            dispatch({ type: "PATCH_ROLL_STUDENT_IDS", className: rollClass, localIds, realIds: result.ids });
           }
         }).catch(console.error);
       });
@@ -6140,24 +6240,43 @@ const AttendanceTab = memo(() => {
 
   const confirmStudent = (student: RollStudent) => {
     const limit = PLAN_LIMITS[tenantPlan?.toLowerCase() || "trial"] || 200;
-    const projectedTotal = getTrueStudentCount(state, [newName || "" || ""]);
+    const projectedTotal = getTrueStudentCount(state, [student.name]);
     if (projectedTotal > limit) {
       return showToast(`Student limit reached (${limit}) for the ${tenantPlan || "trial"} tier. Please upgrade.`, "error");
     }
     const existing = (classRolls[rollClass] || []);
+    const localId = uid();
+    const finalAdmNo = student.admNo || createAdmNoGenerator(classRolls)();
     dispatch({
       type: "SAVE_CLASS_ROLL",
       className: rollClass,
-      students: [...existing, { id: uid(), name: student.name, admNo: student.admNo || "" }],
+      students: [...existing, { id: localId, name: student.name, admNo: finalAdmNo }],
       actor: currentActor,
     });
+    
+    // Phase 4 Roster Cutover Dual-Write
+    if (tenantId) {
+      import("@/supabase/schoolService").then(({ bulkCreateStudents }) => {
+        bulkCreateStudents(tenantId, [{
+          first_name: student.name.split(" ")[0] || "",
+          last_name: student.name.split(" ").slice(1).join(" ") || "",
+          admission_no: finalAdmNo,
+          class_name: rollClass,
+        }]).then((result) => {
+          if (result?.ids?.[0]) {
+              dispatch({ type: "PATCH_ROLL_STUDENT_IDS", className: rollClass, localIds: [localId], realIds: [result.ids[0]] });
+          }
+        }).catch(console.error);
+      });
+    }
+
     showToast(`${student.name} added to roll`);
   };
 
   const saveEdit = (id: string) => {
     if (!editName.trim()) return;
     const roll = (classRolls[rollClass] || []).map(s =>
-      s.id === id ? { ...s, name: editName.trim(), admNo: editAdmNo.trim() } : s
+      s.id === id ? { ...s, name: editName.trim(), admNo: editAdmNo.trim(), gender: editGender || undefined } : s
     );
     dispatch({ type: "SAVE_CLASS_ROLL", className: rollClass, students: roll, actor: currentActor });
     setEditingId(null);
@@ -6476,6 +6595,12 @@ const AttendanceTab = memo(() => {
                             <input value={editAdmNo} onChange={e => setEditAdmNo(e.target.value)}
                               placeholder="Adm No."
                               className="w-28 px-3 py-2 bg-white border-2 border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500" />
+                            <select value={editGender} onChange={e => setEditGender(e.target.value as "male" | "female" | "")}
+                              className="w-28 px-3 py-2 bg-white border-2 border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500">
+                              <option value="">Gender…</option>
+                              <option value="male">Male</option>
+                              <option value="female">Female</option>
+                            </select>
                             <Btn size="sm" variant="success" onClick={() => saveEdit(s.id)}><Check size={13} />Save</Btn>
                             <Btn size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Btn>
                           </div>
@@ -6484,6 +6609,7 @@ const AttendanceTab = memo(() => {
                             <p className="font-black text-sm text-slate-900 truncate">{s.name}</p>
                             <p className="text-xs text-slate-400">
                               {s.admNo ? `Adm: ${s.admNo}` : "No adm no."}
+                              {s.gender && <span className="ml-2 capitalize">{s.gender}</span>}
                               {s.suggested && <span className="ml-2 text-blue-600 font-black">← from score entry</span>}
                             </p>
                           </div>
@@ -6494,7 +6620,7 @@ const AttendanceTab = memo(() => {
                               <Btn size="sm" variant="primary" onClick={() => confirmStudent(s)}><Check size={13} />Confirm</Btn>
                             ) : (
                               <>
-                                <button onClick={() => { setEditingId(s.id); setEditName(s.name); setEditAdmNo(s.admNo || ""); }}
+                                <button onClick={() => { setEditingId(s.id); setEditName(s.name); setEditAdmNo(s.admNo || ""); setEditGender((s.gender as "male" | "female" | "") || ""); }}
                                   className="p-2 rounded-xl bg-slate-100 text-slate-500 hover:bg-indigo-100 hover:text-indigo-600 transition-all">
                                   <Edit2 size={13} />
                                 </button>
@@ -8355,7 +8481,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     const steps: Step[] = [
       {
         target: '#tour-dashboard-hero',
-        title: 'Welcome to School GradeFlow!',
+        title: 'Welcome to Titbeat SchoolPro!',
         content: 'This is your Dashboard. Here you can see a high-level overview of your school\'s performance and quick statistics.',
         // disableBeacon: true,
         placement: 'bottom',

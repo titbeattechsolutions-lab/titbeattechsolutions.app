@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useId } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -83,16 +83,20 @@ const gradeColor = (g: string | null) => {
 };
 
 // ── Main Component ─────────────────────────────────────────────────────────────
-//  AutoStamp Component 
+// ── AutoStamp Component ─────────────────────────────────────────────────────────────
 function AutoStamp({ schoolName, date, color = "#1e40af" }: { schoolName: string; date: string; color?: string }) {
   const sn = (schoolName || "SCHOOL NAME").toUpperCase();
   const fs = sn.length > 45 ? 3.5 : sn.length > 35 ? 4.2 : sn.length > 28 ? 5.2 : sn.length > 20 ? 6.5 : 7.8;
+  const pathId = (useId ? useId().replace(/[^a-zA-Z0-9_-]/g, "rc") : Math.random().toString(36).substring(2, 9));
+  const topArcId = `top-arc-${pathId}`;
+  const bottomArcId = `bottom-arc-${pathId}`;
+
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', transform: 'rotate(-6deg)', opacity: 0.85, mixBlendMode: 'multiply' }}>
+    <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', transform: 'rotate(-6deg)', opacity: 0.85 }}>
       <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
         <defs>
-          <path id="top-arc-rc" d="M 11,50 A 39,39 0 1,1 89,50" fill="transparent" />
-          <path id="bottom-arc-rc" d="M 11,50 A 39,39 0 0,0 89,50" fill="transparent" />
+          <path id={topArcId} d="M 11,50 A 39,39 0 1,1 89,50" fill="transparent" />
+          <path id={bottomArcId} d="M 11,50 A 39,39 0 0,0 89,50" fill="transparent" />
         </defs>
         
         {/* Concentric Borders */}
@@ -102,12 +106,12 @@ function AutoStamp({ schoolName, date, color = "#1e40af" }: { schoolName: string
 
         {/* Dynamic Upper School Name Arc */}
         <text fill={color} fontSize={fs} fontWeight="bold" letterSpacing={sn.length > 35 ? "0.5" : "1"} textAnchor="middle">
-          <textPath href="#top-arc-rc" startOffset="50%">&#9733; {sn} &#9733;</textPath>
+          <textPath href={`#${topArcId}`} startOffset="50%">&#9733; {sn} &#9733;</textPath>
         </text>
 
         {/* Lower Institutional Descriptor Arc */}
         <text fill={color} fontSize="6" fontWeight="bold" letterSpacing="1.2" textAnchor="middle">
-          <textPath href="#bottom-arc-rc" startOffset="50%">OFFICIAL ACADEMIC REPORT</textPath>
+          <textPath href={`#${bottomArcId}`} startOffset="50%">OFFICIAL ACADEMIC REPORT</textPath>
         </text>
 
         {/* Center Inner Core: Status & Date */}
@@ -121,7 +125,7 @@ function AutoStamp({ schoolName, date, color = "#1e40af" }: { schoolName: string
       </svg>
     </div>
   );
-};
+}
 
 export default function ResultChecker() {
   const { schoolCode } = useParams<{ schoolCode: string }>();
@@ -663,10 +667,10 @@ export default function ResultChecker() {
                               </p>
                             )}
                           </div>
-                                                                              {role === "principal" && tpl.showStamp && (
+                          {role === "principal" && tpl.showStamp && (
                             <div style={{ width: 64, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                               {tpl.stampUrl ? (
-                                <img src={tpl.stampUrl} alt="Stamp" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                                <img src={tpl.stampUrl} alt="Stamp" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                               ) : (
                                 <AutoStamp schoolName={schoolSettings.name || "School"} date={new Date().toLocaleDateString('en-GB')} color={tpl.accentColor || "#1e40af"} />
                               )}
@@ -676,6 +680,20 @@ export default function ResultChecker() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {/* Standalone Official Seal if principal remarks are hidden but showStamp is enabled */}
+              {!tpl.showPrincipalRemark && tpl.showStamp && (
+                <div style={{ padding: '12px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.05em' }}>Official School Seal</span>
+                  <div style={{ width: 64, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {tpl.stampUrl ? (
+                      <img src={tpl.stampUrl} alt="Stamp" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                    ) : (
+                      <AutoStamp schoolName={schoolSettings.name || "School"} date={new Date().toLocaleDateString('en-GB')} color={tpl.accentColor || "#1e40af"} />
+                    )}
+                  </div>
                 </div>
               )}
 

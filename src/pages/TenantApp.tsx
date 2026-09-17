@@ -241,13 +241,20 @@ export default function TenantApp() {
           });
         }
         lastSerialized.current = json;
-        // Broadcast sync-ping to other tabs/devices on this tenant
+        // Broadcast sync-ping to other tabs/devices on this tenant.
+        // Only send when the WebSocket is fully SUBSCRIBED to avoid the
+        // "falling back to REST" deprecation warning from Supabase Realtime.
+        // If the channel isn't ready yet, we skip the broadcast — the 90s
+        // heartbeat and window focus/online listeners act as the safety net.
         if (session && realtimeChannel.current) {
-          realtimeChannel.current.send({
-            type: "broadcast",
-            event: "sync_ping",
-            payload: { rev: result.rev, tenantId: session.tenantId },
-          });
+          const state = (realtimeChannel.current as any).state as string | undefined;
+          if (state === "joined" || state === "SUBSCRIBED") {
+            realtimeChannel.current.send({
+              type: "broadcast",
+              event: "sync_ping",
+              payload: { rev: result.rev, tenantId: session.tenantId },
+            });
+          }
         }
         setSyncPhase("synced");
         setLastSyncAt(Date.now());
