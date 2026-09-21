@@ -46,8 +46,6 @@ const SCHOOL_ROLES = ["school_admin", "principal", "head_teacher"] as const;
 const TEACHER_ROLES = ["school_admin", "principal", "head_teacher", "teacher"] as const;
 const STUDENT_ROLES = ["student"] as const;
 
-import { RouteMeta } from "@/components/RouteMeta";
-
 function Unauthorized() {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", flexDirection: "column", gap: "1rem" }}>
@@ -65,7 +63,6 @@ const App = () => (
       <Analytics />
       <PWAReloadPrompt />
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <RouteMeta />
         <AuthProvider>
           <Routes>
             <Route path="/" element={<SchoolLock />} />
