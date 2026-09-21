@@ -9478,7 +9478,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {(isAdmin ? ([
-                      ["Students",     studentList.length,                                                          "border-l-blue-500"],
+                      ["Students",     Object.values(classRolls).flat().filter((s: RollStudent) => !s.suggested).length, "border-l-blue-500"],
                       ["Records (Term)", termEntries.length,                                                         "border-l-emerald-500"],
                       ["Active Staff", `${staffList.filter(s => s.status === "active").length}/${staffList.length}`,"border-l-indigo-500"],
                     ] as const) : ([
