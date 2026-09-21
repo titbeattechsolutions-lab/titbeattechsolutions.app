@@ -2,6 +2,7 @@
 import { useState, useMemo, useRef, useCallback, memo, useReducer, createContext, useContext, useEffect } from "react";
 import { setAppState, DB_KEY } from "@/lib/app-storage";
 import { useAuth } from "@/contexts/AuthContext";
+import { useStudentsPaged } from "@/hooks/useSchoolQuery";
 import { logAuthEvent } from "@/lib/auth-logger";
 import { syncActivityLog } from "@/lib/activity-sync";
 import ReportCardSupabaseActions from "./ReportCardSupabaseActions";
@@ -8667,6 +8668,33 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
     return Object.values(m);
   }, [termEntries]);
 
+  // Fetch live Supabase active student count for the dashboard widget.
+  // Page 0, no filters — we only need the `total` from the response.
+  const { data: _liveStudentData } = useStudentsPaged(0, { status: "active" }, tenantId);
+
+  // Merged dashboard student total: relational (Supabase) count +
+  // legacy-only roll students that haven't been synced to Supabase yet.
+  // This matches the same logic used in StudentsDirectoryTab.totalStudents.
+  const dashboardStudentCount = useMemo(() => {
+    const relationalCount = _liveStudentData?.total ?? 0;
+    const relationalNames = new Set(
+      (_liveStudentData?.students || []).map(
+        (s: any) => `${s.first_name} ${s.last_name}`.toLowerCase()
+      )
+    );
+    let legacyOnly = 0;
+    for (const [, students] of Object.entries(classRolls)) {
+      for (const s of students as RollStudent[]) {
+        if (s.suggested) continue;
+        const first = s.name.split(" ")[0] || "";
+        const last = s.name.split(" ").slice(1).join(" ") || "";
+        const full = `${first} ${last}`.toLowerCase();
+        if (!relationalNames.has(full)) legacyOnly++;
+      }
+    }
+    return relationalCount + legacyOnly;
+  }, [_liveStudentData, classRolls]);
+
   const filteredStudents = useMemo(() =>
     studentList.filter(s =>
       s.name.toLowerCase().includes(rpSearch.toLowerCase()) &&
@@ -9478,7 +9506,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {(isAdmin ? ([
-                      ["Students",     Object.values(classRolls).flat().filter((s: RollStudent) => !s.suggested).length, "border-l-blue-500"],
+                      ["Students",     dashboardStudentCount,                                                          "border-l-blue-500"],
                       ["Records (Term)", termEntries.length,                                                         "border-l-emerald-500"],
                       ["Active Staff", `${staffList.filter(s => s.status === "active").length}/${staffList.length}`,"border-l-indigo-500"],
                     ] as const) : ([
