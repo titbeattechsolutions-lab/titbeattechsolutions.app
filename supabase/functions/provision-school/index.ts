@@ -265,7 +265,7 @@ Deno.serve(async (req) => {
               "Authorization": `Bearer ${resendApiKey}`,
             },
             body: JSON.stringify({
-              from: Deno.env.get("EMAIL_FROM") || "TitbeatTech <onboarding@resend.dev>",
+              from: Deno.env.get("RESEND_FROM_EMAIL") || Deno.env.get("EMAIL_FROM") || "TitbeatTech <onboarding@resend.dev>",
               to: admin.email.toLowerCase(),
               subject: `Your TitbeatTech school account is ready — ${school.name}`,
               html: emailHtml,
