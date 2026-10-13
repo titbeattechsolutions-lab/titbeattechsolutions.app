@@ -34,3 +34,14 @@ supabase/.branches/
 *.tsbuildinfo
 build.log
 
+# Scratch scripts and temporary test files
+*.cjs
+scratch/
+test-*.js
+get-*.js
+upload-test.js
+verify*.js
+verify-*.ts
+reportsheet.txt
+lighthouse-*.json
+

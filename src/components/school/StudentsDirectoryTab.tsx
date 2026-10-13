@@ -4,8 +4,6 @@ import { Users, GraduationCap, DoorOpen, Ban, RotateCcw, Loader2, Search, Filter
 import { useStudentsPaged, useChangeStudentStatus, useClasses, STUDENT_PAGE_SIZE } from "@/hooks/useSchoolQuery";
 import { getStudents } from "@/supabase/schoolService";
 import { useApp } from "./School_Management_App";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import { ALL_CLASSES } from "@/lib/school-constants";
 
 export function StudentsDirectoryTab({ tenantId }: { tenantId?: string }) {
@@ -15,6 +13,7 @@ export function StudentsDirectoryTab({ tenantId }: { tenantId?: string }) {
   const [classFilter, setClassFilter] = useState("all");
   const [termFilter, setTermFilter] = useState("all");
   const [isExporting, setIsExporting] = useState(false);
+  const [showMidTermPromotionWarning, setShowMidTermPromotionWarning] = useState(false);
   
   const { data, isLoading, error } = useStudentsPaged(page, { 
     status: statusFilter,
@@ -41,11 +40,12 @@ export function StudentsDirectoryTab({ tenantId }: { tenantId?: string }) {
       }
     }
 
-    // Preserve curriculum order: map ALL_CLASSES first, then append any remaining ones
+    // Preserve curriculum order: map activeClasses first, then append any remaining ones
+    const activeClasses = appCtx?.state?.schoolSettings?.activeClasses?.length ? appCtx.state.schoolSettings.activeClasses : ALL_CLASSES;
     const orderedList: any[] = [];
     const usedNames = new Set<string>();
 
-    for (const className of ALL_CLASSES) {
+    for (const className of activeClasses) {
       const dbClass = list.find(c => c.name.toLowerCase() === className.toLowerCase());
       if (dbClass) {
         orderedList.push(dbClass);
@@ -249,6 +249,9 @@ export function StudentsDirectoryTab({ tenantId }: { tenantId?: string }) {
       alert("No student records available to export for the selected filter.");
       return null;
     }
+
+    const { default: jsPDF } = await import("jspdf");
+    const { default: autoTable } = await import("jspdf-autotable");
 
     const doc = new jsPDF();
     doc.setFontSize(16);
@@ -519,7 +522,18 @@ export function StudentsDirectoryTab({ tenantId }: { tenantId?: string }) {
           {(appCtx?.isAdmin !== false && (appCtx?.isAdmin || appCtx?.can?.("manageRecords") || appCtx?.isAdmin === undefined)) && (
             <>
               <button 
-                onClick={() => window.dispatchEvent(new CustomEvent("open-promotion-wizard"))}
+                onClick={() => {
+                  const currentTerm = appCtx?.state?.schoolSettings?.term;
+                  // End-of-year promotion (Third Term → First Term) is the expected
+                  // flow — pass straight through to the wizard.
+                  // Mid-term promotion (1st or 2nd term) is unusual and could be
+                  // accidental, so show a confirmation dialog first.
+                  if (currentTerm === "First Term" || currentTerm === "Second Term") {
+                    setShowMidTermPromotionWarning(true);
+                  } else {
+                    window.dispatchEvent(new CustomEvent("open-promotion-wizard"));
+                  }
+                }}
                 className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all text-sm font-bold shadow-sm shadow-indigo-500/20 active:scale-95"
               >
                 <GraduationCap size={18} /> Bulk Promote
@@ -744,6 +758,47 @@ export function StudentsDirectoryTab({ tenantId }: { tenantId?: string }) {
           </div>
         )}
       </div>
+
+      {/* ── Mid-Term Promotion Warning Dialog ─────────────────────────── */}
+      {showMidTermPromotionWarning && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                <ShieldAlert className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-black text-slate-900 text-base">Promote Mid-Term?</h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  The school is currently in <span className="font-bold text-slate-700">{appCtx?.state?.schoolSettings?.term || "an active term"}</span>.
+                  Promotion is normally done at the end of the <span className="font-bold text-slate-700">Third Term</span>.
+                </p>
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-3 font-semibold">
+                  ⚠ Running promotion now will move students to their next class immediately. This action is reversible via Promotion History &amp; Undo, but should be done with care.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setShowMidTermPromotionWarning(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-sm hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowMidTermPromotionWarning(false);
+                  window.dispatchEvent(new CustomEvent("open-promotion-wizard"));
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm transition-colors shadow-sm"
+              >
+                Yes, Proceed Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ─────────────────────────────────────────────────────────────── */}
     </div>
   );
 }

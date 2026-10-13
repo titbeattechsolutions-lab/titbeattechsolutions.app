@@ -95,6 +95,16 @@ export async function drainSessionEventQueue(): Promise<void> {
         // Keep in queue for next reconnect
         remaining.push(evt);
         console.warn("[session-queue] RPC error, event kept:", error.message);
+      } else {
+        // Also log to login_logs table so provider-level dashboards see staff logins/logouts
+        import("@/lib/auth-logger").then(({ logAuthEvent }) => {
+          logAuthEvent({
+            authType: "staff",
+            eventType: evt.action,
+            staffId: evt.staffMemberId,
+            sessionToken: evt.sessionToken,
+          }).catch(() => {});
+        }).catch(() => {});
       }
       // On success: event is NOT added back → effectively removed
     } catch {

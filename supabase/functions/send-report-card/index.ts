@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-tenant-session",
 };
 
-const ALLOWED_ROLES = ["school_admin", "principal", "head_teacher", "teacher"];
+const ALLOWED_ROLES = ["super_admin", "school_admin", "administrator", "admin", "principal", "head_teacher", "teacher"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
         console.error("Session lookup error:", sessionErr);
       }
 
-      const role = session?.session_staff_role ?? "school_admin";
+      const role = (session?.session_staff_role ?? "school_admin").toLowerCase();
 
       if (!session || !ALLOWED_ROLES.includes(role)) {
          return Response.json(
@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
           .select("role, school_id")
           .eq("id", user.id)
           .maybeSingle();
-        if (!profile || !ALLOWED_ROLES.includes(profile.role)) {
+        if (!profile || !ALLOWED_ROLES.includes((profile.role || "").toLowerCase())) {
           return Response.json(
             { error: "Insufficient permissions" },
             { status: 200, headers: corsHeaders }
@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
     }
 
     // ── 2. Parse request body ─────────────────────────────────────────────────
-    const { reportCardId, schoolId, overrideEmail } = await req.json();
+    const reqBody = await req.json(); const { reportCardId, schoolId, overrideEmail, base64Pdf } = reqBody;
     if (!reportCardId || !schoolId) {
       return Response.json(
         { error: "reportCardId and schoolId are required" },
@@ -116,7 +116,9 @@ Deno.serve(async (req) => {
 
     // ── 4. Fetch guardian email ───────────────────────────────────────────────
     let guardianEmail: string | null = overrideEmail ?? null;
-    
+    // Declare admission number early — used inside guardian lookup below (line 127)
+    let studentAdmissionNo: string = (rc as any).admission_no ?? "";
+
     if (!guardianEmail && rc.student_id) {
       const { data: student } = await admin
         .from("students")
@@ -176,8 +178,9 @@ Deno.serve(async (req) => {
     const schoolLogo  = school?.logo  ?? null;
     const schoolCode  = school?.code  ?? "";
 
-    // ── 6b. Capture student admission_no (fallback to report_card field)
-    let studentAdmissionNo: string = (rc as any).admission_no ?? "";
+    // ── 6b. studentAdmissionNo declared above (before guardian lookup) ───────
+    // Overwrite with report_card field if guardian lookup didn't set it already
+    if (!studentAdmissionNo) studentAdmissionNo = (rc as any).admission_no ?? "";
 
     // ── 6c. Generate result checker token & store it ──────────────────────────
     const appUrl = Deno.env.get("APP_URL") ?? "https://myschoolgradeflow.netlify.app";
@@ -279,7 +282,7 @@ Deno.serve(async (req) => {
             </td>
             <td style="padding:8px 0 0;">
               <span style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Academic Year</span><br/>
-              <span style="font-size:14px;font-weight:700;color:#1e293b;">${rc.academic_year}</span>
+              <span style="font-size:14px;font-weight:700;color:#1e293b;">${rc.academic_year}</span><br/><br/>${base64Pdf ? `&#128196; <b style="color:#059669;">Please find the official report sheet attached to this email as a PDF.</b>` : ""}
             </td>
           </tr>
         </table>
@@ -394,6 +397,10 @@ Deno.serve(async (req) => {
         reply_to: schoolEmail || undefined,
         subject: `${schoolName} — ${rc.student_name} Report Card — ${termLabel} ${rc.academic_year}`,
         html,
+        attachments: base64Pdf ? [{
+          filename: `${rc.student_name.replace(/\s+/g, '_')}_Report_Card.pdf`,
+          content: base64Pdf
+        }] : undefined
       }),
     });
 

@@ -162,9 +162,11 @@ export default function SchoolDetailPage() {
     setLoading(true);
     
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const [sRes, bRes] = await Promise.all([
+    const [sRes, bRes, countsRes] = await Promise.all([
       (supabase as any).from("schools").select("*, tenants(tenant_code, ndpr_consent_granted, ndpr_consent_date)").eq("id", schoolId).single(),
-      (supabase as any).from("billing").select("plan,status,trial_ends_at,current_period_start,current_period_end").eq("school_id", schoolId).maybeSingle()
+      (supabase as any).from("billing").select("plan,status,trial_ends_at,current_period_start,current_period_end").eq("school_id", schoolId).maybeSingle(),
+      // Fetch live, deduplicated student count from the RPC (avoids stale column reads)
+      (supabase as any).rpc("get_student_counts_by_school")
     ]);
     
     setLoading(false);
@@ -177,6 +179,12 @@ export default function SchoolDetailPage() {
       schoolData.code = schoolData.tenants?.tenant_code || schoolData.code;
       schoolData.ndpr_consent_granted = schoolData.tenants?.ndpr_consent_granted || false;
       schoolData.ndpr_consent_date = schoolData.tenants?.ndpr_consent_date || null;
+
+      // Patch current_students with the live accurate count from the RPC
+      if (!countsRes.error && countsRes.data) {
+        const liveCount = (countsRes.data as any[]).find((r: any) => r.school_id === schoolId);
+        if (liveCount) schoolData.current_students = liveCount.student_count;
+      }
       
       // Fetch pending deletion request for this tenant
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

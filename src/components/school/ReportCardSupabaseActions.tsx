@@ -1,3 +1,4 @@
+import { A4_WIDTH_PX, A4_HEIGHT_PX } from "@/lib/school-constants";
 // @ts-nocheck
 /**
  * ReportCardSupabaseActions
@@ -36,8 +37,9 @@ export default function ReportCardSupabaseActions({
   tenantId,
   classTeacher,
   canPrint = true,
-  dispatch,
-  onExportExcel,
+  canSend = false,
+  dispatch,
+  isAdmin,
 }: {
   activeReport: any;
   curC: any;
@@ -45,8 +47,9 @@ export default function ReportCardSupabaseActions({
   tenantId: string | null;
   classTeacher?: any;
   canPrint?: boolean;
-  dispatch?: any;
-  onExportExcel?: () => void;
+  canSend?: boolean;
+  dispatch?: any;
+  isAdmin?: boolean;
 }) {
   const { toast } = useToast();
   const { role } = useAuth();
@@ -103,6 +106,7 @@ export default function ReportCardSupabaseActions({
         const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         let studentDbId = activeReport.studentId || "";
         let studentAdmissionNo = activeReport.admissionNo || "";
+        let foundClassId: string | null = null;
 
         // If the ID is a local AUTO- id or not a real UUID, force fallback lookup
         if (studentDbId && !UUID_RE.test(studentDbId)) {
@@ -563,6 +567,89 @@ export default function ReportCardSupabaseActions({
   };
 
   // ─── Send to Parent ───────────────────────────────────────────────────────
+  
+  const handleExportPDF = async () => {
+    try {
+      const element = document.getElementById("report-print-area");
+      if (!element) throw new Error("Report view not found");
+
+      toast({ title: "Generating PDF..." });
+
+      // 1. Snapshot original styles
+      const originalStyle = element.getAttribute("style") || "";
+      const originalClass = element.className;
+
+      // 2. Find the inner content-scale div (direct child .relative.z-10)
+      //    This is the innerRef div that applies transform:scale for overflow handling
+      const innerScaleDiv = element.querySelector(".relative.z-10");
+      const innerOrigTransform = innerScaleDiv ? innerScaleDiv.style.transform : "";
+      const innerOrigHeight    = innerScaleDiv ? innerScaleDiv.style.height    : "";
+      const innerOrigWidth     = innerScaleDiv ? innerScaleDiv.style.width     : "";
+
+      // 3. Neutralise UI chrome and enforce true A4 pixel dimensions
+      element.className = element.className
+        .replace(/rounded-2xl|shadow-lg|border-slate-200|border/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      element.style.width     = A4_WIDTH_PX + "px";
+      element.style.height    = A4_HEIGHT_PX + "px";
+      element.style.margin    = "0";
+      element.style.boxShadow = "none";
+      element.style.overflow  = "hidden";
+
+      // 4. Neutralise the inner content-scale transform
+      if (innerScaleDiv) {
+        innerScaleDiv.style.transform = "none";
+        innerScaleDiv.style.height    = "100%";
+        innerScaleDiv.style.width     = "100%";
+      }
+
+      // 5. Wait two animation frames so browser repaints at 1:1 size
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      const html2canvas = (await import("html2canvas")).default;
+      const { jsPDF } = await import("jspdf");
+
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        width: A4_WIDTH_PX,
+        height: A4_HEIGHT_PX,
+        windowWidth: A4_WIDTH_PX,
+        windowHeight: A4_HEIGHT_PX,
+        scrollX: 0,
+        scrollY: 0,
+      });
+
+      // 6. Restore all original styles
+      element.setAttribute("style", originalStyle);
+      element.className = originalClass;
+      if (innerScaleDiv) {
+        innerScaleDiv.style.transform = innerOrigTransform;
+        innerScaleDiv.style.height    = innerOrigHeight;
+        innerScaleDiv.style.width     = innerOrigWidth;
+      }
+
+      // 7. Build PDF using actual captured dimensions — no force-stretch
+      //    canvas is at scale:2, so logical CSS pixels = canvas.width / 2
+      const pxW = canvas.width  / 2;
+      const pxH = canvas.height / 2;
+      const imgData = canvas.toDataURL("image/png", 1.0);
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "px",
+        format: [pxW, pxH],
+      });
+      pdf.addImage(imgData, "PNG", 0, 0, pxW, pxH);
+      pdf.save(activeReport.name.replace(/\s+/g, "_") + "_Report.pdf");
+      toast({ title: "PDF Exported ✓" });
+    } catch (e) {
+      toast({ title: "Export failed", description: e.message, variant: "destructive" });
+    }
+  };
+
   const handleSendConfirm = useCallback(async () => {
     if (!savedId && !activeReport) return;
     setSending(true);
@@ -587,13 +674,91 @@ export default function ReportCardSupabaseActions({
 
       if (!rcId) throw new Error("Report card not saved — please save first.");
 
+      let base64Pdf: string | undefined = undefined;
+      try {
+        const element = document.getElementById("report-print-area");
+        if (element) {
+          toast({ title: "Generating PDF attachment..." });
+
+          // Snapshot originals
+          const originalStyle = element.getAttribute("style") || "";
+          const originalClass = element.className;
+
+          // Find inner content-scale div
+          const innerScaleDiv = element.querySelector(".relative.z-10");
+          const innerOrigTransform = innerScaleDiv ? innerScaleDiv.style.transform : "";
+          const innerOrigHeight    = innerScaleDiv ? innerScaleDiv.style.height    : "";
+          const innerOrigWidth     = innerScaleDiv ? innerScaleDiv.style.width     : "";
+
+          // Enforce true A4 dimensions & neutralise transforms
+          element.className = element.className
+            .replace(/rounded-2xl|shadow-lg|border-slate-200|border/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+          element.style.width     = A4_WIDTH_PX + "px";
+          element.style.height    = A4_HEIGHT_PX + "px";
+          element.style.margin    = "0";
+          element.style.boxShadow = "none";
+          element.style.overflow  = "hidden";
+
+          if (innerScaleDiv) {
+            innerScaleDiv.style.transform = "none";
+            innerScaleDiv.style.height    = "100%";
+            innerScaleDiv.style.width     = "100%";
+          }
+
+          // Wait for repaint
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+          const html2canvas = (await import("html2canvas")).default;
+          const { jsPDF } = await import("jspdf");
+
+          const canvas = await html2canvas(element, {
+            scale: 2,
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: "#ffffff",
+            width: A4_WIDTH_PX,
+            height: A4_HEIGHT_PX,
+            windowWidth: A4_WIDTH_PX,
+            windowHeight: A4_HEIGHT_PX,
+            scrollX: 0,
+            scrollY: 0,
+          });
+
+          // Restore original styles
+          element.setAttribute("style", originalStyle);
+          element.className = originalClass;
+          if (innerScaleDiv) {
+            innerScaleDiv.style.transform = innerOrigTransform;
+            innerScaleDiv.style.height    = innerOrigHeight;
+            innerScaleDiv.style.width     = innerOrigWidth;
+          }
+
+          // Build PDF using actual canvas dimensions
+          const pxW = canvas.width  / 2;
+          const pxH = canvas.height / 2;
+          const imgData = canvas.toDataURL("image/png", 1.0);
+          const pdf = new jsPDF({
+            orientation: "portrait",
+            unit: "px",
+            format: [pxW, pxH],
+          });
+          pdf.addImage(imgData, "PNG", 0, 0, pxW, pxH);
+
+          base64Pdf = pdf.output("datauristring").split(",")[1];
+        }
+      } catch (err) {
+        console.warn("Failed to generate PDF attachment:", err);
+      }
+
       const raw = sessionStorage.getItem("schoolapp_tenant_session_v2");
       const token = raw ? JSON.parse(raw).sessionToken : null;
       const headers: Record<string, string> = {};
       if (token) headers["x-tenant-session"] = token;
 
       const { data, error } = await supabase.functions.invoke("send-report-card", {
-        body: { reportCardId: rcId, schoolId, overrideEmail: guardianEmail, appUrl: window.location.origin },
+        body: { reportCardId: rcId, schoolId, overrideEmail: guardianEmail, appUrl: window.location.origin, base64Pdf },
         headers
       });
 
@@ -652,14 +817,14 @@ export default function ReportCardSupabaseActions({
         </Button>
 
         {/* Export Excel */}
-        {canPrint && onExportExcel && (
+        {canPrint && (
           <Button
             variant="outline"
             size="sm"
             className="h-10 text-xs font-black uppercase"
-            onClick={onExportExcel}
+            onClick={handleExportPDF}
           >
-            📊 Export Excel
+            📄 Export PDF
           </Button>
         )}
 
@@ -677,7 +842,7 @@ export default function ReportCardSupabaseActions({
         )}
 
         {/* Send to Parent */}
-        {canPrint && ["school_admin", "principal", "head_teacher"].includes(role || "") && (
+        {canSend && (
           <Button
             variant="default"
             size="sm"
@@ -830,15 +995,6 @@ export default function ReportCardSupabaseActions({
             Report card for <span className="font-bold text-slate-800">{activeReport.name}</span> has been securely saved to the cloud.
           </p>
           <div className="flex flex-col gap-3">
-            {["school_admin", "principal", "head_teacher"].includes(role || "") && (
-              <Button 
-                className="w-full h-14 text-lg font-bold bg-[#25D366] hover:bg-[#1ebd5a] text-white rounded-xl shadow-lg"
-                onClick={handleWhatsAppShare}
-              >
-                <MessageCircle className="mr-2 h-6 w-6" />
-                Share via WhatsApp
-              </Button>
-            )}
             <Button 
               variant="outline"
               className="w-full h-14 text-lg font-bold text-slate-600 rounded-xl"

@@ -1,3 +1,4 @@
+import { A4_WIDTH_PX, A4_HEIGHT_PX } from "@/lib/school-constants";
 import { useState, useEffect, useCallback, useId } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
@@ -19,6 +20,7 @@ interface ReportTemplateConfig {
   showStamp: boolean;
   showBehavioural?: boolean;
   tableStyle: "grid" | "striped" | "minimal";
+  transparentOverlay?: boolean;
   stampUrl?: string | null;
 }
 
@@ -236,7 +238,7 @@ export default function ResultChecker() {
         allowTaint: true,
         scrollX: 0,
         scrollY: 0,
-        windowWidth: 1000,
+        windowWidth: A4_WIDTH_PX,
         backgroundColor: '#ffffff'
       });
       
@@ -499,17 +501,26 @@ export default function ResultChecker() {
 
         {/* Report Sheet Mirror */}
         {result && (
-          <div id="report-print-area" className="bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-lg relative w-full" style={{ maxWidth: '800px', fontFamily: tpl.fontFamily === 'Helvetica' ? 'Helvetica, Arial, sans-serif' : tpl.fontFamily === 'Times' ? '"Times New Roman", Times, serif' : tpl.fontFamily === 'Courier' ? 'Courier, monospace' : 'Georgia, serif' }}>
+          
+          <div className="flex flex-col items-center w-full">
+            {hasOverflow && (
+              <div className={`w-full max-w-[${A4_WIDTH_PX}px] mb-2 bg-amber-50 text-amber-800 text-xs p-2 rounded border border-amber-200 text-center font-bold`}>
+                Warning: Data overflows single page. Shrink limited to preserve legibility.
+              </div>
+            )}
+            <div style={{ width: '100%', maxWidth: '${A4_WIDTH_PX}px', margin: '0 auto', overflow: 'hidden' }}>
+              <div style={{ transform: `scale(calc(min(100vw - 40px, ${A4_WIDTH_PX}px) / A4_WIDTH_PX))`, transformOrigin: 'top left' }}>
+                <div id="report-print-area" className="bg-white overflow-hidden relative" style={{ width: '${A4_WIDTH_PX}px', height: '${A4_HEIGHT_PX}px', fontFamily: tpl.fontFamily === 'Helvetica' ? 'Helvetica, Arial, sans-serif' : tpl.fontFamily === 'Times' ? '"Times New Roman", Times, serif' : tpl.fontFamily === 'Courier' ? 'Courier, monospace' : 'Georgia, serif' }}>
             {tpl.uploadedFile && (
               <div className="absolute inset-0 w-full h-full z-0 pointer-events-none" style={{
                 backgroundImage: `url(${tpl.uploadedFile})`,
-                backgroundSize: 'cover',
+                backgroundSize: '100% 100%' /* Forced stretch to preserve safe zone percentages */,
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat',
               }} />
             )}
             
-            <div className="relative z-10 h-full flex flex-col">
+            <div ref={innerRef} className="relative z-10 flex flex-col" style={{ transform: `scale(${scale})`, transformOrigin: 'top left', height: `${100/scale}%`, width: `${100/scale}%` }}>
               <div className="h-1.5" style={{ backgroundColor: tpl.accentColor }} />
               
               {/* Header */}
@@ -560,7 +571,7 @@ export default function ResultChecker() {
                 <p style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.05em', marginBottom: 8 }}>Academic Performance</p>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, borderTop: `2px solid ${tpl.headerColor}`, borderBottom: `2px solid ${tpl.headerColor}` }}>
                   <thead>
-                    <tr style={{ backgroundColor: tpl.headerColor, color: "#fff" }}>
+                    <tr style={{ backgroundColor: tpl.transparentOverlay ? "transparent" : tpl.headerColor, color: tpl.transparentOverlay ? "transparent" : "#fff" }}>
                       {headers.map((h, i) => (
                         <th key={i} style={{ padding: "9px 10px", textAlign: i === 0 ? "left" : "center", fontWeight:800, fontSize:9, letterSpacing:"0.1em", textTransform:"uppercase", borderRight: i < headers.length - 1 ? "1px solid rgba(255,255,255,0.2)" : "none" }}>{h}</th>
                       ))}
@@ -706,6 +717,9 @@ export default function ResultChecker() {
               )}
 
               <div className="h-1.5" style={{ backgroundColor: tpl.accentColor, height: 6 }} />
+            </div>
+                </div>
+              </div>
             </div>
           </div>
         )}

@@ -103,6 +103,7 @@ export function exportToPDF(data: ReportData) {
   // Scores table
   const tableBody = data.records.map((r) => {
     const g = getGradeInfo(r.total);
+    const caDisplay = r.caScore !== undefined ? String(r.caScore) : "—";
     return [r.subject, caDisplay, String(r.examScore), String(r.total), g.grade, g.remark];
   });
 

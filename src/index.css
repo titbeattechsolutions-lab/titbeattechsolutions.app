@@ -447,6 +447,10 @@ body.auth-mode {
   aside, header, button, .no-print {
     display: none !important;
   }
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
   main {
     padding: 0 !important;
     margin: 0 !important;

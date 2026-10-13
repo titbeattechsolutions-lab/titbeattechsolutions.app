@@ -95,7 +95,14 @@ export function normalizeClassName(rawName: string): NormalizationResult {
     };
   }
 
-  str = str.replace(/jss\s*(\d).*/, "jss $1").replace(/ss\s*(\d).*/, "ss $1");
+  // Strip arm suffixes so "JSS 1A", "SS 2 Science", "Primary 3 Gold", "Nursery 2B"
+  // all resolve to their base curriculum level for subject/promotion lookups.
+  str = str
+    .replace(/jss\s*(\d).*/, "jss $1")
+    .replace(/ss\s*(\d).*/, "ss $1")
+    .replace(/primary\s*(\d).*/, "primary $1")
+    .replace(/nursery\s*(\d).*/, "nursery $1")
+    .replace(/basic\s*(\d).*/, "basic $1");
   const cleaned = str.replace(/\s+/g, " ").trim();
 
   const idx = STANDARD_PROGRESSION.indexOf(cleaned);

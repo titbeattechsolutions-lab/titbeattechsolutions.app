@@ -40,9 +40,15 @@ export const ATT_STATUSES = [
   { key: "excused", label: "Excused", icon: "📋", color: "primary" },
 ] as const;
 
+import { normalizeClassName } from "@/lib/promotionUtils";
+
 export function getSubjectsForClass(cls: string): string[] {
   for (const cat of Object.values(CURRICULUM)) {
     if (cat.classes.includes(cls)) return cat.subjects;
+  }
+  const { normalized } = normalizeClassName(cls);
+  for (const cat of Object.values(CURRICULUM)) {
+    if (cat.classes.includes(normalized)) return cat.subjects;
   }
   return [];
 }
@@ -51,5 +57,12 @@ export function getCategoryForClass(cls: string): string {
   for (const [cat, data] of Object.entries(CURRICULUM)) {
     if (data.classes.includes(cls)) return cat;
   }
+  const { normalized } = normalizeClassName(cls);
+  for (const [cat, data] of Object.entries(CURRICULUM)) {
+    if (data.classes.includes(normalized)) return cat;
+  }
   return "";
 }
+
+export const A4_WIDTH_PX = 794;
+export const A4_HEIGHT_PX = 1123;

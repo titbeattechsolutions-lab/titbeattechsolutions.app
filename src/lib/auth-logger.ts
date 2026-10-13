@@ -66,6 +66,24 @@ export async function logAuthEvent({
       console.warn("Failed to log auth event:", error);
       // Don't throw - auth should succeed even if logging fails
     }
+
+    // NEW: Send email notification via edge function if it's a superadmin login
+    if (authType === "super_admin" && eventType === "login") {
+      try {
+        await supabase.functions.invoke("alert-superadmin-login", {
+          body: {
+            action: "login",
+            role: "superadmin",
+            user_name: "System Superadmin",
+            ip_address: ip || "Unknown",
+            device: ua,
+            created_at: new Date().toISOString()
+          }
+        });
+      } catch (err) {
+        console.warn("Failed to invoke superadmin login alert function:", err);
+      }
+    }
   } catch (e) {
     console.warn("Error logging auth event:", e);
     // Silently fail - don't block auth flows

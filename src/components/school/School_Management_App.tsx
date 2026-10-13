@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { A4_WIDTH_PX, A4_HEIGHT_PX } from "@/lib/school-constants";
 import { useState, useMemo, useRef, useCallback, memo, useReducer, createContext, useContext, useEffect } from "react";
 import { setAppState, DB_KEY } from "@/lib/app-storage";
 import { useAuth } from "@/contexts/AuthContext";
@@ -31,8 +31,6 @@ import { registerLocalBiometric, hasLocalBiometric, verifyLocalBiometric, isLoca
 import { enqueueSessionEvent } from "@/lib/session-event-queue";
 import { cacheAdminPinHash, verifyAdminPinOffline, hasAdminPinCache } from "@/lib/admin-pin-cache";
 import { Joyride, CallBackProps, STATUS, Step, EVENTS, ACTIONS, TooltipRenderProps } from 'react-joyride';
-import { jsPDF } from "jspdf";
-
 // ─── Upgrade Imports (CDN-based, no bundler needed) ──────────────────────────
 // Firebase, jsPDF and SheetJS are loaded dynamically at runtime to keep this
 // file self-contained. We declare the globals here for TypeScript.
@@ -66,6 +64,7 @@ const PERMS_META = [
   { key:"scoreEntry",    label:"Score Entry",    desc:"Enter CA & exam scores" },
   { key:"viewReports",   label:"View Reports",   desc:"Access student reports" },
   { key:"printReports",  label:"Print Reports",  desc:"Print or export reports" },
+  { key:"sendReports",   label:"Email Reports",  desc:"Email report cards to parents" },
   { key:"manageRecords", label:"Manage Records", desc:"Delete or edit grades" },
   { key:"fees",          label:"Fees Access",    desc:"View and manage school fees and payments" },
   { key:"payroll",       label:"Payroll Access", desc:"Manage staff salaries and payroll processing" },
@@ -161,6 +160,7 @@ interface ReportTemplateConfig {
   showStamp: boolean;
   showBehavioural?: boolean;
   tableStyle: "grid" | "striped" | "minimal";
+  transparentOverlay?: boolean;
 }
 interface SchoolSettings {
   name: string;
@@ -607,7 +607,7 @@ async function exportReportToPDF(report: any, curC: any, attRate: number | null,
       doc.rect(x, y, remW, 28);
       doc.setFontSize(7); doc.setFont("helvetica", "bold"); doc.setTextColor(148, 163, 184);
       doc.text(title.toUpperCase(), x + 3, y + 5);
-      doc.setFontSize(8); doc.setFont("helvetica", "normalitalic"); doc.setTextColor(71, 85, 105);
+      doc.setFontSize(8); doc.setFont("helvetica", "italic"); doc.setTextColor(71, 85, 105);
       const wrapped = doc.splitTextToSize(remark || "No remark entered.", remW - 6);
       doc.text(wrapped.slice(0, 2), x + 3, y + 11);
       doc.setFontSize(7); doc.setFont("helvetica", "bold"); doc.setTextColor(...accRGB);
@@ -924,15 +924,17 @@ const getGrade = (s: number, scale?: any[]) => {
     const band = sortedScale.find(b => s >= Number(b.min));
     if (band) return { grade: band.grade, remark: band.remark, color: "#3b82f6", bg: "#dbeafe" };
   }
-  if (s >= 75) return { grade:"A1", remark:"Excellent",  color:"#059669", bg:"#d1fae5" };
-  if (s >= 70) return { grade:"B2", remark:"Very Good",  color:"#10b981", bg:"#d1fae5" };
-  if (s >= 65) return { grade:"B3", remark:"Good",       color:"#2563eb", bg:"#dbeafe" };
-  if (s >= 60) return { grade:"C4", remark:"Credit",     color:"#3b82f6", bg:"#dbeafe" };
-  if (s >= 55) return { grade:"C5", remark:"Credit",     color:"#6366f1", bg:"#e0e7ff" };
-  if (s >= 50) return { grade:"C6", remark:"Credit",     color:"#8b5cf6", bg:"#ede9fe" };
-  if (s >= 45) return { grade:"D7", remark:"Pass",       color:"#d97706", bg:"#fef3c7" };
-  if (s >= 40) return { grade:"E8", remark:"Pass",       color:"#f59e0b", bg:"#fef3c7" };
-  return           { grade:"F9", remark:"Fail",       color:"#dc2626", bg:"#fee2e2" };
+  // 3-tier semantic palette: green (pass well) / amber (pass) / red (fail)
+  // Survives greyscale printing - three clearly distinct grey values
+  if (s >= 75) return { grade:"A1", remark:"Excellent", color:"#065f46", bg:"#d1fae5" }; // emerald-dark
+  if (s >= 70) return { grade:"B2", remark:"Very Good", color:"#065f46", bg:"#d1fae5" }; // emerald-dark
+  if (s >= 65) return { grade:"B3", remark:"Good",      color:"#065f46", bg:"#d1fae5" }; // emerald-dark
+  if (s >= 60) return { grade:"C4", remark:"Credit",    color:"#92400e", bg:"#fef3c7" }; // amber-dark
+  if (s >= 55) return { grade:"C5", remark:"Credit",    color:"#92400e", bg:"#fef3c7" }; // amber-dark
+  if (s >= 50) return { grade:"C6", remark:"Credit",    color:"#92400e", bg:"#fef3c7" }; // amber-dark
+  if (s >= 45) return { grade:"D7", remark:"Pass",      color:"#92400e", bg:"#fef3c7" }; // amber-dark
+  if (s >= 40) return { grade:"E8", remark:"Pass",      color:"#92400e", bg:"#fef3c7" }; // amber-dark
+  return          { grade:"F9", remark:"Fail",      color:"#991b1b", bg:"#fee2e2" };     // red-dark
 };
 
 
@@ -1250,7 +1252,9 @@ function appReducer(state: AppState, action: any): AppState {
         attendance: mergedAttendance, entries: mergedEntries, bin: mergedBin,
           classSessions: action.payload.classSessions || state.classSessions || [],
           virtualClasses: action.payload.virtualClasses || state.virtualClasses || [],
-          virtualAttendance: {...(state.virtualAttendance || {}), ...(action.payload.virtualAttendance || {})}
+          virtualAttendance: {...(state.virtualAttendance || {}), ...(action.payload.virtualAttendance || {})},
+          salaryStructures: { ...(state.salaryStructures || {}), ...(action.payload.salaryStructures || {}) },
+          payrollRecords: { ...(state.payrollRecords || {}), ...(action.payload.payrollRecords || {}) }
         };
       }
     case "HARD_RESET": {
@@ -1358,7 +1362,7 @@ const SchoolLogo = ({ logoUrl, size = "md", className = "" }: { logoUrl: string 
   const sz: Record<string, string> = { lg:"w-16 h-16", sm:"w-8 h-8", xs:"w-6 h-6", md:"w-10 h-10" };
   const ic: Record<string, number> = { lg:32, sm:18, xs:14, md:22 };
   if (logoUrl) return (
-    <img src={logoUrl} alt="Logo" className={`${sz[size] || sz.md} rounded-xl object-contain bg-white border border-slate-100 flex-shrink-0 ${className}`} />
+    <img crossOrigin="anonymous" src={logoUrl} alt="Logo" className={`${sz[size] || sz.md} rounded-xl object-contain bg-white border border-slate-100 flex-shrink-0 ${className}`} />
   );
   return (
     <div className={`${sz[size] || sz.md} bg-blue-600 rounded-xl flex items-center justify-center text-white flex-shrink-0 ${className}`}>
@@ -1719,7 +1723,7 @@ const STEPS = [
   { id:"classes",     label:"Classes",     icon:"📚", desc:"Assigned classes" },
 ];
 
-export function generateStaffCode(name: string, existingCodes: string[]): string {
+function generateStaffCode(name: string, existingCodes: string[]): string {
   const nameClean = name
     .replace(/\b(mr|mrs|ms|miss|dr|prof|rev|pastor)\.?\b/gi, '')
     .replace(/[^a-zA-Z\s-]/g, '')
@@ -1743,7 +1747,7 @@ const blankStaff = (): Omit<StaffMember, "id" | "createdAt" | "updatedAt"> => ({
   name: "", staffCode: "", role: "Teacher", pin: "", status: "active",
   assignedClasses: [],
   assignedSubjects: [],
-  permissions: { scoreEntry:true, viewReports:true, printReports:false, manageRecords:false },
+  permissions: { scoreEntry:true, viewReports:true, printReports:false, manageRecords:false, sendReports:false },
 });
 
 const StaffDialog = memo(({ staff, mode, onSave, onClose, tenantId }: { staff?: StaffMember; mode: "add" | "edit"; onSave: (s: StaffMember) => void; onClose: () => void; tenantId?: string }) => {
@@ -2385,7 +2389,7 @@ const DEFAULT_REPORT_TEMPLATE: ReportTemplateConfig = {
   uploadedFileName: null,
   headerColor: "#0f172a",
   accentColor: "#2563eb",
-  fontFamily: "Georgia",
+  fontFamily: "Arial",
   showLogo: true,
   showMotto: true,
   showAttendance: true,
@@ -3842,8 +3846,6 @@ const ResultCheckerPanel = memo(({ tenantId, schoolSettings, dispatch, appState,
 
   const isEnabled = schoolSettings?.features?.result_checker === true;
   const classes = ALL_CLASSES;
-  const classRolls = appState?.classRolls || {};
-  const entries = appState?.entries || [];
   
   const fetchTokens = useCallback(async () => {
     try {
@@ -4857,7 +4859,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
       if (tenantId) {
         const session = loadTenantSession();
         if (session) {
-          rpcFetchCloudDeletionStatus(session.sessionToken).then((data) => setDelReq(data));
+          rpcFetchCloudDeletionStatus(session).then((data) => setDelReq(data));
         }
       }
     }, [tenantId]);
@@ -4869,7 +4871,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
       if (!session) return;
       
       try {
-        const data = await rpcRequestCloudDeletion(session.sessionToken);
+        const data = await rpcRequestCloudDeletion(session);
         setDelReq(data);
         showToast("Account deletion requested. Pending Super Admin approval.", "warning");
       } catch (error: any) {
@@ -4886,7 +4888,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
       if (!session) return;
       
       try {
-        await rpcCancelCloudDeletion(session.sessionToken);
+        await rpcCancelCloudDeletion(session);
         setDelReq(null);
         showToast("Deletion request cancelled.", "success");
       } catch (error: any) {
@@ -4926,22 +4928,47 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
     if (!f) return;
     if (!f.type.startsWith("image/")) return showToast("Invalid image", "error");
     if (f.size > 2097152) return showToast("Image must be under 2MB", "error");
-    const r = new FileReader();
-    r.onload = async ev => { 
-      const base64 = ev.target?.result as string;
-      dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { ...schoolSettings, logoUrl: base64 } });
-      setDraft(prev => ({ ...prev, logoUrl: base64 }));
-      if (tenantId) {
-        try {
-          const { updateSchoolProfile } = await import("@/supabase/schoolService");
-          await updateSchoolProfile(tenantId, { logo: base64 });
-        } catch (err) {
-          console.error("Failed to sync logo to backend", err);
-        }
-      }
-      showToast("Logo uploaded"); 
-    };
-    r.readAsDataURL(f);
+    
+    const targetInput = e.target;
+    targetInput.disabled = true;
+    showToast("Uploading logo to cloud...", "default");
+    
+    const sessionStr = sessionStorage.getItem("schoolapp_tenant_session_v2");
+    const sessionToken = sessionStr ? JSON.parse(sessionStr).sessionToken : "";
+    
+    const formData = new FormData();
+    formData.append('file', f);
+    formData.append('sessionToken', sessionToken);
+    formData.append('tenantId', tenantId);
+    formData.append('uploadType', 'logo');
+    
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+    fetch(`${SUPABASE_URL}/functions/v1/upload-school-asset`, {
+      method: 'POST',
+      body: formData
+    }).then(async r => {
+       if (!r.ok) {
+         const errData = await r.json().catch(() => ({}));
+         throw new Error(errData.error || "Upload failed");
+       }
+       return r.json();
+    }).then(async data => {
+       const logoUrl = data.publicUrl + "?t=" + Date.now();
+       dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { ...schoolSettings, logoUrl: logoUrl } });
+       setDraft(prev => ({ ...prev, logoUrl: logoUrl }));
+       
+       if (tenantId) {
+         try {
+           const { updateSchoolProfile } = await import("@/supabase/schoolService");
+           await updateSchoolProfile(tenantId, { logo: logoUrl });
+         } catch (err) {}
+       }
+       showToast("Logo uploaded to cloud");
+       targetInput.disabled = false; targetInput.value = "";
+    }).catch(err => {
+       showToast(`Upload Error: ${err.message}`, "error");
+       targetInput.disabled = false; targetInput.value = "";
+    });
   };
 
   const removeLogo = async () => {
@@ -5036,7 +5063,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
               </div>
               {logoUrl && (
                 <div className="bg-slate-50 rounded-xl p-4 flex items-center gap-3">
-                  <img src={logoUrl} alt="preview" className="w-12 h-12 rounded-lg object-contain border border-slate-200" />
+                  <img crossOrigin="anonymous" src={logoUrl} alt="preview" className="w-12 h-12 rounded-lg object-contain border border-slate-200" />
                   <div>
                     <p className="text-xs font-black text-slate-700 uppercase">Current Preview</p>
                     <p className="text-xs text-slate-400">This appears on all reports.</p>
@@ -5186,23 +5213,64 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
               dispatch({ type: "SET_SCHOOL_SETTINGS", payload: { reportTemplate: { ...tpl, ...patch } } });
               showToast("Template updated");
             };
-            const handleTemplateUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+            const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
               const f = e.target.files?.[0];
               if (!f) return;
-              const validTypes = [
-                "image/png",
-                "image/jpeg",
-                "image/jpg"
-              ];
+              const validTypes = ["image/png", "image/jpeg", "image/jpg"];
               if (!validTypes.includes(f.type)) return showToast("Please upload a PNG or JPG image", "error");
               if (f.size > 5242880) return showToast("File must be under 5MB", "error");
-              const r = new FileReader();
-              r.onload = ev => {
-                updateTpl({ uploadedFile: ev.target?.result as string, uploadedFileName: f.name });
-                showToast(`Template "${f.name}" uploaded`);
-              };
-              r.readAsDataURL(f);
-              e.target.value = "";
+              
+              const targetInput = e.target;
+              targetInput.disabled = true;
+              
+              // Await the aspect ratio check to guarantee correct toast sequencing
+              await new Promise<void>((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                  const ratio = img.height / img.width;
+                  if (ratio < 1.35 || ratio > 1.45) {
+                    showToast("Warning: Image isn't A4-shaped and will be stretched to fit. For best results, use a portrait A4 ratio.", "error");
+                  } else {
+                    showToast("Uploading template to cloud...", "default");
+                  }
+                  URL.revokeObjectURL(img.src);
+                  resolve();
+                };
+                img.onerror = () => {
+                  showToast("Uploading template to cloud...", "default");
+                  URL.revokeObjectURL(img.src);
+                  resolve();
+                };
+                img.src = URL.createObjectURL(f);
+              });
+              
+              const sessionStr = sessionStorage.getItem("schoolapp_tenant_session_v2");
+              const sessionToken = sessionStr ? JSON.parse(sessionStr).sessionToken : "";
+              
+              const formData = new FormData();
+              formData.append('file', f);
+              formData.append('sessionToken', sessionToken);
+              formData.append('tenantId', tenantId);
+              formData.append('uploadType', 'template');
+              
+              const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+              fetch(`${SUPABASE_URL}/functions/v1/upload-school-asset`, {
+                method: 'POST',
+                body: formData
+              }).then(async r => {
+                 if (!r.ok) {
+                   const errData = await r.json().catch(() => ({}));
+                   throw new Error(errData.error || "Upload failed");
+                 }
+                 return r.json();
+              }).then(data => {
+                 updateTpl({ uploadedFile: data.publicUrl + "?t=" + Date.now(), uploadedFileName: f.name });
+                 showToast(`Template "${f.name}" uploaded to cloud`); 
+                 targetInput.disabled = false; targetInput.value = "";
+              }).catch(err => {
+                 showToast(`Upload Error: ${err.message}`, "error"); 
+                 targetInput.disabled = false; targetInput.value = "";
+              });
             };
             const Toggle = ({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) => (
               <label className="flex items-center justify-between py-2.5 px-1 cursor-pointer group">
@@ -5240,10 +5308,27 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                       <input type="file" accept=".png,.jpg,.jpeg" className="hidden" onChange={handleTemplateUpload} />
                     </label>
                   )}
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                    <p className="text-xs text-amber-700 font-bold leading-relaxed">
-                      💡 Uploaded images act as a background letterhead overlay. Report tables will be printed securely over the image.
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col gap-3">
+                    <p className="text-xs text-amber-800 font-bold leading-relaxed">
+                      ??? <strong>Design Guidelines:</strong> To prevent data from colliding with your custom template, please ensure your design leaves the center data area completely blank.
                     </p>
+                    <div className="w-full h-32 bg-slate-100 rounded border border-slate-300 relative overflow-hidden flex flex-col justify-between">
+                       {/* Header Safe Zone */}
+                       <div className="h-1/5 w-full bg-slate-200 border-b border-dashed border-slate-400 flex items-center justify-center">
+                         <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">Your Letterhead Area</span>
+                       </div>
+                       {/* Center Data Zone */}
+                       <div className="flex-1 w-full flex items-center justify-center relative">
+                         <div className="absolute inset-2 border-2 border-amber-400 border-dashed rounded bg-amber-400/10 flex flex-col items-center justify-center">
+                            <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">Leave this area blank</span>
+                            <span className="text-[8px] font-bold text-amber-600 mt-0.5">Tables & Student Data print here</span>
+                         </div>
+                       </div>
+                       {/* Footer Safe Zone */}
+                       <div className="h-[15%] w-full bg-slate-200 border-t border-dashed border-slate-400 flex items-center justify-center">
+                         <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">Your Footer / Stamps</span>
+                       </div>
+                    </div>
                   </div>
                 </Card>
 
@@ -5264,6 +5349,7 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                     <Toggle label="Show Stamp Box" checked={tpl.showStamp} onChange={v => updateTpl({ showStamp: v })} />
                     <Toggle label="Show Behavioural Assessments" checked={tpl.showBehavioural ?? true} onChange={v => updateTpl({ showBehavioural: v })} />
                     <Toggle label="Show Resumption Date" checked={tpl.showResumptionDate} onChange={v => updateTpl({ showResumptionDate: v })} />
+                    <Toggle label="Letterhead Overlay Mode (Transparent Backgrounds)" checked={tpl.transparentOverlay ?? false} onChange={v => updateTpl({ transparentOverlay: v })} />
                   </div>
                 </Card>
 
@@ -5294,8 +5380,10 @@ const SettingsTab = memo(({ isAdmin, showToast, tenantId }: {
                       <label className="text-xs font-black uppercase text-slate-500 mb-2 block">Font Family</label>
                       <select value={tpl.fontFamily} onChange={e => updateTpl({ fontFamily: e.target.value })}
                         className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-                        <option value="Georgia">Georgia (Serif)</option>
+                        <option value="Arial">Arial (Standard Clean & Legible)</option>
                         <option value="Helvetica">Helvetica (Sans-serif)</option>
+                        <option value="Inter">Inter (Modern)</option>
+                        <option value="Georgia">Georgia (Serif)</option>
                         <option value="Times">Times New Roman (Classic)</option>
                         <option value="Courier">Courier (Monospace)</option>
                       </select>
@@ -5841,30 +5929,57 @@ function AutoStamp({ schoolName, date, color = "#1e40af" }: { schoolName: string
 
 // ─── Report Sheet ─────────────────────────────────────────────────────────────
 const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, classTeacher, linkedSignatures }: any) => {
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const [hasOverflow, setHasOverflow] = useState(false);
+
+  useEffect(() => {
+    if (innerRef.current) {
+      const scrollH = innerRef.current.scrollHeight;
+      if (scrollH > A4_HEIGHT_PX) {
+        const newScale = A4_HEIGHT_PX / scrollH;
+        setScale(newScale < 0.75 ? 0.75 : newScale);
+        setHasOverflow(newScale < 0.75);
+      } else {
+        setScale(1);
+        setHasOverflow(false);
+      }
+    }
+  }, [report, curC, schoolSettings]);
+
   const tpl: ReportTemplateConfig = schoolSettings.reportTemplate || DEFAULT_REPORT_TEMPLATE;
   const headers = tpl.showGrade
     ? ["Subject", "CA /40", "Exam /60", "Total /100", "Grade", "Remark"]
     : ["Subject", "CA /40", "Exam /60", "Total /100"];
   const studentFields = [
-    ["Student", report.name, "font-black text-blue-700"],
-    ["Class", report.class, ""],
-    ...(tpl.showPosition ? [["Position", report.position, "font-black text-emerald-700"], ["In Class", report.classCount, ""]] : []),
+    ["Student", report.name, "font-black text-black"],
+    ["Class", report.class, "font-black text-slate-950"],
+    ...(tpl.showPosition ? [["Position", report.position, "font-black text-emerald-800"], ["In Class", report.classCount, "font-black text-slate-950"]] : []),
   ];
   const remarkSections = [
     ...(tpl.showTeacherRemark ? [["teacher", "Class Teacher's Remark", "teacherSig", "teacher"] as const] : []),
     ...(tpl.showPrincipalRemark ? [["principal", "Principal's Remark", "principalSig", "principal"] as const] : []),
   ];
   return (
-    <div id="report-print-area" className="bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-lg relative" style={{ fontFamily: tpl.fontFamily === 'Helvetica' ? 'Helvetica, Arial, sans-serif' : tpl.fontFamily === 'Times' ? '"Times New Roman", Times, serif' : tpl.fontFamily === 'Courier' ? 'Courier, monospace' : 'Georgia, serif' }}>
+    
+    <div className="flex flex-col items-center w-full">
+      {hasOverflow && (
+        <div className={`w-full max-w-[${A4_WIDTH_PX}px] mb-2 bg-amber-50 text-amber-800 text-xs p-2 rounded border border-amber-200 text-center font-bold`}>
+                Warning: Data overflows single page. Shrink limited to preserve legibility.
+              </div>
+      )}
+      <div style={{ width: '100%', maxWidth: '${A4_WIDTH_PX}px', margin: '0 auto', overflow: 'hidden' }}>
+        <div style={{ transform: `scale(calc(min(100vw - 40px, ${A4_WIDTH_PX}px) / A4_WIDTH_PX))`, transformOrigin: 'top left' }}>
+          <div id="report-print-area" className="bg-white overflow-hidden relative" style={{ width: `${A4_WIDTH_PX}px`, height: `${A4_HEIGHT_PX}px`, fontFamily: (!tpl.fontFamily || tpl.fontFamily === 'Arial' || tpl.fontFamily === 'Inter') ? 'Arial, Helvetica, sans-serif' : tpl.fontFamily === 'Helvetica' ? 'Helvetica, Arial, sans-serif' : tpl.fontFamily === 'Times' ? '"Times New Roman", Times, serif' : tpl.fontFamily === 'Courier' ? 'Courier, monospace' : tpl.fontFamily === 'Georgia' ? 'Georgia, serif' : `"${tpl.fontFamily}", Arial, sans-serif` }}>
       {tpl.uploadedFile && (
         <div className="absolute inset-0 w-full h-full z-0 pointer-events-none" style={{
           backgroundImage: `url(${tpl.uploadedFile})`,
-          backgroundSize: 'cover',
+          backgroundSize: '100% 100%' /* Forced stretch to preserve safe zone percentages */,
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
         }} />
       )}
-      <div className="relative z-10 h-full flex flex-col">
+      <div ref={innerRef} className="relative z-10 flex flex-col" style={{ transform: `scale(${scale})`, transformOrigin: 'top left', height: `${100/scale}%`, width: `${100/scale}%`, padding: '12px', boxSizing: 'border-box' }}>
       <div className="h-1.5" style={{ backgroundColor: tpl.accentColor }} />
       <div className="px-8 pt-7 pb-5 border-b-2 flex items-center justify-between gap-4" style={{ borderColor: tpl.headerColor }}>
         <div className="flex items-center gap-4 min-w-0">
@@ -5876,68 +5991,68 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
         </div>
         <div className="text-right flex-shrink-0">
           <span className="inline-block text-white text-xs font-black uppercase tracking-widest px-4 py-1.5 rounded-full" style={{ backgroundColor: tpl.headerColor }}>Report Sheet</span>
-          <p className="text-xs text-slate-500 font-bold mt-1.5">{schoolSettings.session} · {schoolSettings.term}</p>
+          <p className="text-xs text-slate-600 font-black mt-1.5">{schoolSettings.session} · {schoolSettings.term}</p>
         </div>
       </div>
-      <div className="px-8 py-3.5 border-b border-slate-100" style={{ display: "grid", gridTemplateColumns: `repeat(${studentFields.length}, 1fr)`, gap: "0.75rem", backgroundColor: "rgba(248, 250, 252, 0.75)" }}>
+      <div className="px-8 py-3.5 border-b border-slate-200" style={{ display: "grid", gridTemplateColumns: `repeat(${studentFields.length}, 1fr)`, gap: "0.75rem", backgroundColor: tpl.transparentOverlay ? "transparent" : "rgba(248, 250, 252, 0.9)", borderColor: tpl.transparentOverlay ? "transparent" : "" }}>
         {studentFields.map(([l, v, x]) => (
           <div key={l as string}>
-            <p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-0.5">{l}</p>
-            <p className={`text-sm font-black uppercase text-slate-900 ${x}`}>{v}</p>
+            <p className="text-[11px] font-black uppercase text-slate-600 tracking-wider mb-1" style={{ visibility: tpl.transparentOverlay ? "hidden" : "visible" }}>{l}</p>
+            <p className={`text-base font-black uppercase tracking-tight ${x}`}>{v}</p>
           </div>
         ))}
       </div>
       <div className="px-8 pt-5 pb-3">
-        <p className="text-xs font-black uppercase text-slate-400 tracking-wide mb-2">Academic Performance</p>
-        <table className="w-full border-collapse text-xs" style={{ borderTop: `2px solid ${tpl.headerColor}`, borderBottom: `2px solid ${tpl.headerColor}` }}>
+        <p className="text-xs font-black uppercase text-slate-800 tracking-wider mb-2" style={{ visibility: tpl.transparentOverlay ? "hidden" : "visible" }}>Academic Performance</p>
+        <table className="w-full border-collapse text-xs" style={{ borderTop: tpl.transparentOverlay ? "none" : `2px solid ${tpl.headerColor}`, borderBottom: tpl.transparentOverlay ? "none" : `2px solid ${tpl.headerColor}` }}>
           <thead>
-            <tr style={{ backgroundColor: tpl.headerColor, color: "#fff" }}>
+            <tr style={{ backgroundColor: tpl.transparentOverlay ? "transparent" : tpl.headerColor, color: tpl.transparentOverlay ? "transparent" : "#fff" }}>
               {headers.map((h, i) => (
-                <th key={i} style={{ padding: report.records.length > 12 ? "6px 8px" : "9px 10px", textAlign: i === 0 ? "left" : "center", fontWeight:800, fontSize:"9px", letterSpacing:"0.1em", textTransform:"uppercase", borderRight: i < headers.length - 1 ? "1px solid rgba(255,255,255,0.2)" : "none" }}>{h}</th>
+                <th key={i} style={{ padding: report.records.length > 12 ? "7px 8px" : "10px 10px", textAlign: i === 0 ? "left" : "center", fontWeight: 900, fontSize: report.records.length > 12 ? "10px" : "11px", letterSpacing: "0.08em", textTransform: "uppercase", borderRight: i < headers.length - 1 ? "1px solid rgba(255,255,255,0.25)" : "none" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {report.records.map((r: any, i: number) => {
               const g = getGrade(r.total, schoolSettings?.grading_scale);
-              const bg = tpl.tableStyle === "striped" ? (i % 2 === 0 ? "transparent" : "rgba(248,250,252,0.65)") : "transparent";
-              const border = tpl.tableStyle === "minimal" ? "none" : "1px solid #e2e8f0";
-              const pad = report.records.length > 12 ? "4px 8px" : "8px 10px";
+              const bg = tpl.tableStyle === "striped" ? (i % 2 === 0 ? "transparent" : "rgba(248,250,252,0.85)") : "transparent";
+              const border = tpl.tableStyle === "minimal" ? "none" : "1px solid #cbd5e1";
+              const pad = report.records.length > 12 ? "5px 8px" : "8px 10px";
               return (
                 <tr key={i} style={{ background: bg }}>
-                  <td style={{ padding: pad, borderRight: border, borderBottom: border, fontWeight:700, textTransform:"uppercase", fontSize:"10px" }}>{r.subject}</td>
-                  <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign:"center", fontWeight:700 }}>{r.caScore}</td>
-                  <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign:"center", fontWeight:700 }}>{r.examScore}</td>
-                  <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign:"center", fontWeight:900, fontSize:"12px" }}>{r.total}</td>
-                  {tpl.showGrade && <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign:"center", fontWeight:900, color:g.color }}>{g.grade}</td>}
-                  {tpl.showGrade && <td style={{ padding: pad, borderBottom: border, fontStyle:"italic", color:"#64748b", fontSize:"10px" }}>{g.remark}</td>}
+                  <td style={{ padding: pad, borderRight: border, borderBottom: border, fontWeight: 800, textTransform: "uppercase", fontSize: "11px", color: "#0f172a" }}>{r.subject}</td>
+                  <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign: "center", fontWeight: 800, fontSize: "12px", color: "#0f172a" }}>{r.caScore}</td>
+                  <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign: "center", fontWeight: 800, fontSize: "12px", color: "#0f172a" }}>{r.examScore}</td>
+                  <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign: "center", fontWeight: 900, fontSize: "13px", color: "#0f172a" }}>{r.total}</td>
+                  {tpl.showGrade && <td style={{ padding: pad, borderRight: border, borderBottom: border, textAlign: "center", fontWeight: 900, fontSize: "13px", color: g.color }}>{g.grade}</td>}
+                  {tpl.showGrade && <td style={{ padding: pad, borderBottom: border, fontWeight: 800, color: "#1e293b", fontSize: "11px", textTransform: "capitalize" }}>{g.remark}</td>}
                 </tr>
               );
             })}
           </tbody>
           <tfoot>
             <tr style={{ background: tpl.headerColor }}>
-              <td colSpan={tpl.showGrade ? 3 : 3} style={{ padding: report.records.length > 12 ? "6px 8px" : "9px 10px", color:"#94a3b8", fontWeight:800, fontSize:"9px", textTransform:"uppercase", letterSpacing:"0.1em" }}>Cumulative Total</td>
-              <td style={{ padding: report.records.length > 12 ? "6px 8px" : "9px 10px", textAlign:"center", color:"#fff", fontWeight:900, fontSize:"14px" }}>{report.summary.total}<span style={{ fontSize:"9px", opacity:0.5 }}>/{report.summary.obtainable}</span></td>
-              {tpl.showGrade && <td style={{ padding: report.records.length > 12 ? "6px 8px" : "9px 10px", textAlign:"center", color:"#34d399", fontWeight:900, fontSize:"12px" }}>{report.summary.avg}%</td>}
-              {tpl.showGrade && <td style={{ padding: report.records.length > 12 ? "6px 8px" : "9px 10px", color:"#94a3b8", fontWeight:800, fontSize:"9px", textTransform:"uppercase" }}>Avg.</td>}
+              <td colSpan={tpl.showGrade ? 3 : 3} style={{ padding: report.records.length > 12 ? "7px 8px" : "10px 10px", color: "#f8fafc", fontWeight: 900, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em" }}>Cumulative Total</td>
+              <td style={{ padding: report.records.length > 12 ? "7px 8px" : "10px 10px", textAlign: "center", color: "#ffffff", fontWeight: 900, fontSize: "15px" }}>{report.summary.total}<span style={{ fontSize: "11px", opacity: 0.85, fontWeight: 800 }}>/{report.summary.obtainable}</span></td>
+              {tpl.showGrade && <td style={{ padding: report.records.length > 12 ? "7px 8px" : "10px 10px", textAlign: "center", color: "#34d399", fontWeight: 900, fontSize: "14px" }}>{report.summary.avg}%</td>}
+              {tpl.showGrade && <td style={{ padding: report.records.length > 12 ? "7px 8px" : "10px 10px", color: "#f8fafc", fontWeight: 900, fontSize: "11px", textTransform: "uppercase" }}>Avg.</td>}
             </tr>
           </tfoot>
         </table>
       </div>
       {tpl.showAttendance && (
         <div className="px-8 pt-4 pb-3">
-          <p className="text-[10px] font-black uppercase text-slate-400 tracking-wide mb-1.5">Attendance</p>
+          <p className="text-xs font-black uppercase text-slate-800 tracking-wider mb-2">Attendance</p>
           <div className="grid grid-cols-4 gap-2">
             {([
-              ["Days Opened",  curC.daysOpen    || "—", "bg-slate-100 text-slate-800"],
-              ["Days Present", curC.daysPresent || "—", "bg-emerald-50 text-emerald-800"],
-              ["Days Absent",  curC.daysAbsent  || "—", "bg-red-50 text-red-700"],
-              ["Rate", attRate !== null ? `${attRate}%` : "—", attRate === null ? "bg-slate-100 text-slate-800" : attRate >= 75 ? "bg-emerald-100 text-emerald-900" : "bg-red-100 text-red-900"],
+              ["Days Opened",  curC.daysOpen    || "—", "bg-slate-100 text-slate-900 border border-slate-200"],
+              ["Days Present", curC.daysPresent || "—", "bg-emerald-50 text-emerald-950 border border-emerald-200"],
+              ["Days Absent",  curC.daysAbsent  || "—", "bg-red-50 text-red-950 border border-red-200"],
+              ["Rate", attRate !== null ? `${attRate}%` : "—", attRate === null ? "bg-slate-100 text-slate-900 border border-slate-200" : attRate >= 75 ? "bg-emerald-100 text-emerald-950 border border-emerald-300" : "bg-red-100 text-red-950 border border-red-300"],
             ] as const).map(([l, v, c]) => (
               <div key={l} className={`${c} rounded-xl p-3 text-center`}>
-                <p className="text-[10px] font-black uppercase opacity-60 mb-0.5">{l}</p>
-                <p className="text-xl font-black">{v}</p>
+                <p className="text-[11px] font-black uppercase tracking-wider mb-1 opacity-90">{l}</p>
+                <p className="text-2xl font-black tracking-tight">{v}</p>
               </div>
             ))}
           </div>
@@ -5945,16 +6060,16 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
       )}
       {tpl.showBehavioural && (
         <div className="px-8 pt-4 pb-3">
-          <p className="text-[10px] font-black uppercase text-slate-400 tracking-wide mb-2">Affective & Psychomotor Domains</p>
+          <p className="text-xs font-black uppercase text-slate-800 tracking-wider mb-2">Affective & Psychomotor Domains</p>
           <div className="grid grid-cols-4 gap-2">
             {[...AFFECTIVE_TRAITS, ...PSYCHOMOTOR_SKILLS].map(t => (
-              <div key={t.key} className="flex items-center justify-between text-[10px] border border-slate-300 rounded px-2 py-1" style={{ fontFamily:tpl.fontFamily }}>
-                <span className="text-slate-700 truncate mr-2">{t.label}</span>
-                <span className="font-bold flex-shrink-0" style={{ color: tpl.accentColor }}>{curC[t.key] || "—"}</span>
+              <div key={t.key} className="flex items-center justify-between text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-slate-50/70" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+                <span className="font-bold text-slate-900 truncate mr-2">{t.label}</span>
+                <span className="font-black text-sm flex-shrink-0" style={{ color: curC[t.key] ? tpl.accentColor : '#64748b' }}>{curC[t.key] || "—"}</span>
               </div>
             ))}
           </div>
-          <p className="text-[8px] text-slate-400 mt-2 font-bold uppercase tracking-wide">Key: A = Excellent, B = Good, C = Fair, D = Poor, E = Unacceptable</p>
+          <p className="text-[10px] text-slate-700 mt-2.5 font-black uppercase tracking-wide">Key: A = Excellent, B = Good, C = Fair, D = Poor, E = Unacceptable</p>
         </div>
       )}
       {remarkSections.length > 0 && (
@@ -5966,25 +6081,25 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
             const isAutoLinked = !curC[sf] && (!!staffJsonSig || !!linkedTeacherSig);
 
             return (
-            <div key={f} className="border border-slate-200 rounded-xl p-4">
-              <p className="text-[10px] font-black uppercase text-slate-400 tracking-wide mb-2">{l}</p>
-              <div className="min-h-10 text-sm text-slate-700 italic border-b border-dashed border-slate-200 pb-2 mb-3">
-                {curC[f] || <span className="text-slate-300 not-italic text-[10px]">No remark entered</span>}
+            <div key={f} className="border-2 border-slate-200 rounded-xl p-4 bg-white">
+              <p className="text-xs font-black uppercase text-slate-800 tracking-wider mb-2">{l}</p>
+              <div className="min-h-10 text-sm font-bold text-slate-900 border-b border-dashed border-slate-300 pb-2 mb-3">
+                {curC[f] ? curC[f] : <span className="text-slate-500 font-bold not-italic text-xs">No remark entered</span>}
               </div>
               <div className="flex items-end justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-black uppercase text-slate-400 mb-1">
+                  <p className="text-xs font-black uppercase text-slate-700 mb-1">
                     {role === "teacher" ? "Class Teacher" : "Principal"} {(isAutoLinked && role !== "teacher") && <span className="text-[9px] text-slate-400 italic normal-case tracking-normal ml-1">(auto-applied)</span>}
                   </p>
                   {sigValue && typeof sigValue === "string" && sigValue.startsWith("data:image") ? (
                     <img src={sigValue} alt="signature" style={{ maxHeight: "48px", maxWidth: "100%", objectFit: "contain" }} />
                   ) : sigValue ? (
-                    <p className="italic text-base" style={{ fontFamily:`${tpl.fontFamily},serif`, color: tpl.accentColor }}>{sigValue}</p>
+                    <p className="font-bold italic text-base" style={{ fontFamily: 'Arial, Helvetica, sans-serif', color: tpl.accentColor }}>{sigValue}</p>
                   ) : (
-                    <p className="italic text-[10px] text-slate-300">_____________________</p>
+                    <p className="font-bold text-slate-300 text-xs">_____________________</p>
                   )}
                   {((role === "teacher" && classTeacher) || (role === "principal" && schoolSettings.principalName)) && (
-                    <p className="text-[11px] font-bold text-slate-800 uppercase tracking-wide mt-1.5">
+                    <p className="text-xs font-black text-slate-900 uppercase tracking-wide mt-1.5">
                       {role === "teacher" ? classTeacher?.name : schoolSettings.principalName}
                     </p>
                   )}
@@ -6002,11 +6117,14 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
       )}
       {tpl.showResumptionDate && (
         <div className="px-8 py-3 flex items-center justify-between" style={{ backgroundColor: tpl.headerColor }}>
-          <p className="text-xs font-black uppercase tracking-widest text-slate-500">Next Term Resumption</p>
+          <p className="text-xs font-black uppercase tracking-widest text-slate-200">Next Term Resumption</p>
           <p className="text-sm font-black text-white uppercase">{schoolSettings.resumptionDate}</p>
         </div>
       )}
-      <div className="h-1.5" style={{ backgroundColor: tpl.accentColor }} />
+            <div className="h-1.5" style={{ backgroundColor: tpl.accentColor }} />
+      </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -6014,7 +6132,7 @@ const ReportSheet = memo(({ report, curC, attRate, schoolLogo, schoolSettings, c
 // ─────────────────────────────────────────────────────────────────────────────
 // ATTENDANCE TAB
 // ─────────────────────────────────────────────────────────────────────────────
-const AttendanceTab = memo(() => {
+const AttendanceTab = memo(({ isAdmin, availableClasses }: { isAdmin: boolean; availableClasses: string[] }) => {
   const { state, dispatch, showToast, currentActor, tenantId, tenantPlan } = useApp();
   const { attendance, classRolls, entries } = state;
   const [attTab, setAttTab] = useState<"roll" | "mark" | "history">("roll");
@@ -6417,9 +6535,17 @@ const AttendanceTab = memo(() => {
         <div className="space-y-5">
           <Card id="tour-roll-card" className="p-5 space-y-4">
             <p className="text-xs font-black uppercase text-slate-400 tracking-wide">Select Class to Manage Roll</p>
+              {!isAdmin && availableClasses.length === 0 && (
+                <div className="rounded-xl bg-red-50 border-2 border-red-200 px-4 py-3 flex items-center gap-3">
+                  <AlertTriangle size={16} className="text-red-600 flex-shrink-0" />
+                  <p className="text-xs font-bold text-red-800">
+                    You have no assigned classes. Please ask your school admin to assign you a class.
+                  </p>
+                </div>
+              )}
             <Sel value={rollClass} onChange={(e: any) => handleRollClassChange(e.target.value)}>
               <option value="">Choose a class…</option>
-              {ALL_CLASSES.map(c => <option key={c}>{c}</option>)}
+              {availableClasses.map(c => <option key={c}>{c}</option>)}
             </Sel>
             {rollClass && (
               <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
@@ -6652,7 +6778,7 @@ const AttendanceTab = memo(() => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Sel value={markClass} onChange={(e: any) => handleMarkClassChange(e.target.value)}>
                 <option value="">Select class…</option>
-                {ALL_CLASSES.map(c => <option key={c}>{c}</option>)}
+                {availableClasses.map(c => <option key={c}>{c}</option>)}
               </Sel>
               <Inp type="date" value={markDate} onChange={(e: any) => handleMarkDateChange(e.target.value)} max={today()} />
             </div>
@@ -6776,7 +6902,7 @@ const AttendanceTab = memo(() => {
               <select value={hClass} onChange={e => setHClass(e.target.value)}
                 className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-blue-500 outline-none">
                 <option value="">All Classes</option>
-                {ALL_CLASSES.map(c => <option key={c}>{c}</option>)}
+                {availableClasses.map(c => <option key={c}>{c}</option>)}
               </select>
               <input type="date" value={hDate} onChange={e => setHDate(e.target.value)}
                 className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-blue-500 outline-none" />
@@ -6954,7 +7080,7 @@ const TERM_LABEL_TO_SUPABASE: Record<string, string> = {
 
 function TimetableView({
   isAdmin, currentActor, staffList, classRolls, timetable, classSessions, dispatch, showToast,
-  tenantId, schoolSettings,
+  tenantId, schoolSettings, availableClasses,
 }: {
   isAdmin: boolean;
   currentActor: string;
@@ -6965,6 +7091,7 @@ function TimetableView({
   showToast: (msg: string, type?: string) => void;
   tenantId?: string;
   schoolSettings: SchoolSettings;
+  availableClasses: string[];
 }) {
   // Helper: Get subjects for a class from curriculum
   const getSubjectsForClass = (cls: string): string[] => {
@@ -6977,15 +7104,7 @@ function TimetableView({
 
 
   // Get all classes - same as score entry form
-  const allClasses = useMemo(() => {
-    const fromRolls = Object.keys(classRolls);
-    const fromCells = Object.keys(timetable.cells).map(k => {
-      const parts = k.split("|");
-      return parts.length > 3 ? parts[1] : parts[0];
-    });
-    const extra = [...new Set([...fromRolls, ...fromCells].filter(Boolean).filter(c => !ALL_CLASSES.includes(c) && !["class", "ca", "exam"].includes(c)))];
-    return [...ALL_CLASSES, ...extra];
-  }, [classRolls, timetable.cells]);
+  const allClasses = availableClasses;
 
   const [activeClass, setActiveClass] = useState<string>(allClasses[0] || "");
   const [ttType, setTtType] = useState<"class"|"ca"|"exam">("class");
@@ -7675,8 +7794,8 @@ function InboxView({
 
 
 
-function RankingsTab({ entries, schoolSettings, can, isAdmin }: { entries: Entry[]; schoolSettings: SchoolSettings; can: (p:string)=>boolean; isAdmin: boolean }) {
-  const [rankClass, setRankClass] = useState(ALL_CLASSES[0]);
+function RankingsTab({ entries, schoolSettings, can, isAdmin, availableClasses }: { entries: Entry[]; schoolSettings: SchoolSettings; can: (p:string)=>boolean; isAdmin: boolean; availableClasses: string[] }) {
+  const [rankClass, setRankClass] = useState(availableClasses[0] || ALL_CLASSES[0]);
   const [rankType, setRankType] = useState<"total"|"subject"|"cumulative">("total");
   const [rankSubject, setRankSubject] = useState("");
 
@@ -7758,7 +7877,7 @@ function RankingsTab({ entries, schoolSettings, can, isAdmin }: { entries: Entry
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-black uppercase tracking-wider text-slate-400">Class</label>
             <select value={rankClass} onChange={e => setRankClass(e.target.value)} className="w-48 px-3 py-2 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold outline-none">
-              {ALL_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+              {availableClasses.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -7946,8 +8065,9 @@ function useReminderChecker(appState: AppState, dispatch: any, isAdmin: boolean,
 }
 
 function VirtualHubView({
-  isAdmin, currentActor, virtualClasses, virtualAttendance, dispatch, showToast
+  isAdmin, currentActor, virtualClasses, virtualAttendance, dispatch, showToast, availableClasses
 }: {
+  availableClasses: string[];
   isAdmin: boolean;
   currentActor: string;
   virtualClasses: VirtualClass[];
@@ -8142,7 +8262,7 @@ function VirtualHubView({
               className="w-full sm:w-40 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:border-indigo-500 outline-none transition-all"
             >
               <option value="ALL">All Classes ({ALL_CLASSES.length})</option>
-              {ALL_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+              {availableClasses.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
 
@@ -8179,7 +8299,7 @@ function VirtualHubView({
             </Field>
             <Field label="Target Class">
               <select value={form.targetClass} onChange={e=>setForm({...form, targetClass: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold focus:border-indigo-500 outline-none transition-all">
-                {ALL_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+                {availableClasses.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
             <Field label="Scheduled Time (Required)">
@@ -8464,6 +8584,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
 
   const [scoreForm, setScoreForm] = useState({ studentName:"", studentClass:"", subject:"", caScore:"", ca1Score:"", ca2Score:"", examScore:"" });
   const [isSplitCA, setIsSplitCA] = useState(false);
+  const [filterPendingExams, setFilterPendingExams] = useState(false);
 
   // CA-only drafts: stored separately until exam scores are ready, then promoted to entries.
   type CADraft = { id: string; studentName: string; studentClass: string; subject: string; caScore: number; ca1Score?: number; ca2Score?: number; term: string; session: string; enteredBy: string; createdAt: string };
@@ -8476,6 +8597,16 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
   const { entries, bin, logs, attendance, classRolls, staffList, schoolSettings } = appState;
   const isAdmin = !auth.user;
   const can = useCallback((p: string) => isAdmin || (auth.user?.permissions?.[p] ?? false), [isAdmin, auth.user]);
+
+  const availableClasses = useMemo(() => {
+    return isAdmin ? ALL_CLASSES : (auth.user?.assignedClasses ?? ALL_CLASSES);
+  }, [isAdmin, auth.user]);
+
+  const hasClassAccess = useCallback((cls: string) => {
+    if (isAdmin) return true;
+    return availableClasses.includes(cls);
+  }, [isAdmin, availableClasses]);
+
 
   // ─── Dynamic App Tour Logic ────────────────────────────────────────────────
   const tourSteps = useMemo(() => {
@@ -8662,6 +8793,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
   const studentList = useMemo(() => {
     const m: Record<string, { name: string; class: string; id: string }> = {};
     termEntries.forEach(e => {
+      if (!hasClassAccess(e.studentClass)) return;
       const k = `${e.studentName}||${e.studentClass}`;
       if (!m[k]) m[k] = { name: e.studentName, class: e.studentClass, id: k };
     });
@@ -8725,7 +8857,10 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
         const uniqueDates = new Set(classAtt.map(a => a.date));
         const studentAtt = classAtt.filter(a => a.studentName.toLowerCase() === activeReport.name.toLowerCase());
         const presentCount = studentAtt.filter(a => a.status?.toLowerCase() === "present" || a.status?.toLowerCase() === "late").length;
-        const absentCount = studentAtt.filter(a => a.status?.toLowerCase() === "absent" || a.status?.toLowerCase() === "excused").length;
+        // Count explicit absences + unrecorded days (student had no entry for a day school was open)
+        const explicitAbsent = studentAtt.filter(a => a.status?.toLowerCase() === "absent" || a.status?.toLowerCase() === "excused").length;
+        const unrecordedDays = uniqueDates.size - studentAtt.length;
+        const absentCount = explicitAbsent + (unrecordedDays > 0 ? unrecordedDays : 0);
         return {
           ...c,
           daysOpen: String(uniqueDates.size),
@@ -8813,6 +8948,10 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
           action: "login",
           occurredAt: new Date().toISOString(),
         });
+      // Immediately flush to Supabase — don't wait for offline→online cycle
+      import("@/lib/session-event-queue").then(({ drainSessionEventQueue }) =>
+        drainSessionEventQueue().catch(() => {})
+      ).catch(() => {});
         return;
       }
 
@@ -8839,6 +8978,10 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
           action: "login",
           occurredAt: new Date().toISOString(),
         });
+        // Immediately flush to Supabase
+        import("@/lib/session-event-queue").then(({ drainSessionEventQueue }) =>
+          drainSessionEventQueue().catch(() => {})
+        ).catch(() => {});
       }
       return;
     }
@@ -8892,6 +9035,10 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
         action: "login",
         occurredAt: new Date().toISOString(),
       });
+      // Immediately flush to Supabase
+      import("@/lib/session-event-queue").then(({ drainSessionEventQueue }) =>
+        drainSessionEventQueue().catch(() => {})
+      ).catch(() => {});
     }
     if (s.status === "restricted") showToast("Account restricted — limited access.", "warning");
   }, [loginId, loginPass, staffList, showToast, appState.schoolSettings]);
@@ -9013,8 +9160,10 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
 
   // Drafts visible in current term/session only.
   const termDrafts = useMemo(() => caDrafts.filter(d =>
-    d.term === schoolSettings.term && d.session === schoolSettings.session
-  ), [caDrafts, schoolSettings.term, schoolSettings.session]);
+    d.term === schoolSettings.term && d.session === schoolSettings.session && hasClassAccess(d.studentClass)
+  ), [caDrafts, schoolSettings.term, schoolSettings.session, hasClassAccess]);
+
+  const pendingExamClasses = useMemo(() => [...new Set(termDrafts.map(d => d.studentClass))], [termDrafts]);
 
   const openReport = useCallback((student: { name: string; class: string; id: string }) => {
     const inTerm = (e: Entry) =>
@@ -9233,7 +9382,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                       const s = staffList.find(st => st.staffCode?.toLowerCase() === loginId.toLowerCase());
                       if (s) {
                         if (s.status === "revoked") return setLoginErr("Your access has been revoked.");
-                        setAuth({ loggedIn: true, user: { id: s.id, name: s.name, role: s.role, status: s.status } });
+                        setAuth({ loggedIn: true, user: s });
                         logSignIn(s.name, s.role);
                       }
                     }
@@ -9659,6 +9808,14 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                       <p className="text-white font-black uppercase tracking-widest text-sm">Score Submission</p>
                     </div>
                     <div className="p-6 space-y-5">
+                      {!isAdmin && availableClasses.length === 0 && (
+                        <div className="rounded-xl bg-red-50 border-2 border-red-200 px-4 py-3 flex items-center gap-3">
+                          <AlertTriangle size={16} className="text-red-600 flex-shrink-0" />
+                          <p className="text-xs font-bold text-red-800">
+                            You have no assigned classes. Please ask your school admin to assign you a class to enter scores.
+                          </p>
+                        </div>
+                      )}
                       <div className="space-y-1.5">
                         <label className="block text-xs font-black uppercase text-slate-400 tracking-wide">Student Name</label>
                         <input
@@ -9676,13 +9833,27 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                         )}
                       </div>
                       <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2 flex items-center justify-end mb-2">
+                          <label className="flex items-center gap-2 cursor-pointer text-[10px] font-black uppercase text-slate-400">
+                            <input type="checkbox" checked={filterPendingExams} onChange={(e) => {
+                              const checked = e.target.checked;
+                              setFilterPendingExams(checked);
+                              if (checked && scoreForm.studentClass && !pendingExamClasses.includes(scoreForm.studentClass)) {
+                                setScoreForm(f => ({ ...f, studentClass: "", subject: "" }));
+                              }
+                            }} className="rounded text-amber-500 focus:ring-amber-500" />
+                            Only show classes with pending exams
+                          </label>
+                        </div>
                         <Sel
                           label="Class"
                           value={scoreForm.studentClass}
                           onChange={(e: any) => setScoreForm(f => ({ ...f, studentClass: e.target.value, subject: "" }))}
                         >
                           <option value="">Select class</option>
-                          {(auth.user?.assignedClasses?.length ? auth.user.assignedClasses : ALL_CLASSES).map(c => <option key={c}>{c}</option>)}
+                          {(filterPendingExams ? availableClasses.filter(c => pendingExamClasses.includes(c)) : availableClasses).map(c => (
+                            <option key={c} value={c}>{pendingExamClasses.includes(c) && !filterPendingExams ? '?? ' : ''}{c}</option>
+                          ))}
                         </Sel>
                         <Sel
                           label="Subject"
@@ -9762,8 +9933,9 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                         </div>
                       </div>
                       {/* Score preview */}
-                      {(scoreForm.caScore !== "" || scoreForm.examScore !== "") && (() => {
-                        const t = (+scoreForm.caScore || 0) + (+scoreForm.examScore || 0);
+                      {(scoreForm.caScore !== "" || scoreForm.ca1Score !== "" || scoreForm.ca2Score !== "" || scoreForm.examScore !== "") && (() => {
+                        const computedCa = isSplitCA ? ((+scoreForm.ca1Score || 0) + (+scoreForm.ca2Score || 0)) : (+scoreForm.caScore || 0);
+                        const t = computedCa + (+scoreForm.examScore || 0);
                         const g = getGrade(t, schoolSettings?.grading_scale);
                         return (
                           <div className="bg-slate-50 rounded-xl p-4 text-center border-2 border-slate-100">
@@ -9794,7 +9966,8 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                         </Btn>
                         <Btn variant="primary" onClick={() => {
                           // CA completeness check: warn if exam present but CA missing/zero
-                          if (scoreForm.examScore !== "" && (computedCa === 0) && !draftMatch) {
+                          const computedCaValue = isSplitCA ? ((+scoreForm.ca1Score || 0) + (+scoreForm.ca2Score || 0)) : (+scoreForm.caScore || 0);
+                          if (scoreForm.examScore !== "" && (computedCaValue === 0) && !draftMatch) {
                             if (!window.confirm("CA score is empty. Continue saving with CA = 0?")) return;
                           }
                           if (draftMatch && scoreForm.caScore === "" && scoreForm.examScore !== "") {
@@ -9895,7 +10068,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                         <select value={dbClass} onChange={e => setDbClass(e.target.value)}
                           className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-blue-500 outline-none">
                           <option value="">All Classes</option>
-                          {ALL_CLASSES.map(c => <option key={c}>{c}</option>)}
+                          {availableClasses.map(c => <option key={c}>{c}</option>)}
                         </select>
                         <select value={dbTerm} onChange={e => setDbTerm(e.target.value)}
                           className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-blue-500 outline-none">
@@ -10026,7 +10199,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
 
               {/* RANKINGS */}
               {activeTab === "rankings" && (isAdmin || can("rankings")) && (
-                <RankingsTab entries={entries} schoolSettings={schoolSettings} can={can} isAdmin={isAdmin} />
+                <RankingsTab entries={entries} schoolSettings={schoolSettings} can={can} isAdmin={isAdmin} availableClasses={availableClasses} />
               )}
 
               {/* STUDENTS DIRECTORY */}
@@ -10062,7 +10235,7 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                       <select value={rpClass} onChange={e => setRpClass(e.target.value)}
                         className="px-4 py-3 bg-white border-2 border-slate-100 rounded-xl text-sm font-semibold focus:border-blue-500 outline-none shadow-sm">
                         <option value="All">All Classes</option>
-                        {ALL_CLASSES.map(c => <option key={c}>{c}</option>)}
+                        {availableClasses.map(c => <option key={c}>{c}</option>)}
                       </select>
                     </div>
                     {filteredStudents.length === 0
@@ -10330,15 +10503,12 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                           curC={curC}
                           schoolSettings={schoolSettings}
                           tenantId={tenantId}
+                          isAdmin={isAdmin}
                           canPrint={can("printReports") || isAdmin}
+                          canSend={can("sendReports") || isAdmin}
                           dispatch={dispatch}
                            classTeacher={classTeacher}
-                          onExportExcel={async () => {
-                            if (can("printReports") || isAdmin) {
-                              await exportSingleStudentExcel(activeReport, curC, attRate, schoolSettings);
-                              showToast("Excel exported");
-                            }
-                          }}
+                          
                         />
                       </div>
                     </Card>
@@ -10351,19 +10521,21 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
               {/* ATTENDANCE */}
               {activeTab === "virtual_hub" && (
                 <VirtualHubView
-                  isAdmin={isAdmin}
-                  currentActor={currentActor}
-                  virtualClasses={appState.virtualClasses || []}
-                  virtualAttendance={appState.virtualAttendance || {}}
-                  dispatch={dispatch}
-                  showToast={showToast}
-                />
+                    isAdmin={isAdmin}
+                    currentActor={currentActor}
+                    virtualClasses={appState.virtualClasses || []}
+                    virtualAttendance={appState.virtualAttendance || {}}
+                    dispatch={dispatch}
+                    showToast={showToast}
+                    availableClasses={availableClasses}
+                  />
               )}
-              {activeTab === "attendance" && (can("scoreEntry") || isAdmin) && <AttendanceTab />}
+              {activeTab === "attendance" && (can("scoreEntry") || isAdmin) && <AttendanceTab isAdmin={isAdmin} availableClasses={availableClasses} />}
 
               {/* TIMETABLE */}
               {activeTab === "timetable" && (
                 <TimetableView
+                  availableClasses={availableClasses}
                   isAdmin={isAdmin}
                   currentActor={currentActor}
                   staffList={staffList}
@@ -10711,6 +10883,10 @@ export default function App({ onTenantSignOut, tenantId, tenantSchoolName, tenan
                     action: "logout",
                     occurredAt: new Date().toISOString(),
                   });
+                  // Immediately flush logout to Supabase
+                  import("@/lib/session-event-queue").then(({ drainSessionEventQueue }) =>
+                    drainSessionEventQueue().catch(() => {})
+                  ).catch(() => {});
                 }
 
                 // 3. Destroy local state (guaranteed to run even if logger fails)

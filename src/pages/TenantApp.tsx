@@ -182,9 +182,10 @@ export default function TenantApp() {
         if (!data.schoolSettings) data.schoolSettings = {};
         (data.schoolSettings as any).name = s.schoolName;
 
+        data._updatedAt = Date.now();
         const json = JSON.stringify(data);
 
-        await setAppState(json);
+        const res = await setAppState(json); if (!res.success) toast({ title: "Storage Error", description: res.error, variant: "destructive" });
         lastSerialized.current = json;
         localRev.current = (data._rev as number) ?? 0;
 
@@ -232,14 +233,8 @@ export default function TenantApp() {
 
       if (result.success) {
         localRev.current = result.rev as number;
-        const json = JSON.stringify({ ...cleanData, _rev: result.rev });
-        const { usedIdb } = await setAppState(json);
-        if (usedIdb) {
-          toast({
-            title: "Storage notice",
-            description: "Your school data is large — saved to device storage (IndexedDB). Performance is unaffected.",
-          });
-        }
+        const json = JSON.stringify({ ...cleanData, _rev: result.rev, _updatedAt: Date.now() });
+        const res = await setAppState(json); if (!res.success) toast({ title: "Storage Error", description: res.error, variant: "destructive" });
         lastSerialized.current = json;
         // Broadcast sync-ping to other tabs/devices on this tenant.
         // Only send when the WebSocket is fully SUBSCRIBED to avoid the
@@ -288,8 +283,9 @@ export default function TenantApp() {
         const remoteRev = (r._rev as number) ?? 0;
 
         if (remoteRev > localRev.current) {
-          const json = JSON.stringify(r);
-          await setAppState(json);
+          const rWithTs = { ...r, _updatedAt: Date.now() };
+          const json = JSON.stringify(rWithTs);
+          const res = await setAppState(json); if (!res.success) toast({ title: "Storage Error", description: res.error, variant: "destructive" });
           lastSerialized.current = json;
           localRev.current = remoteRev;
 
@@ -529,4 +525,10 @@ export default function TenantApp() {
     </div>
   );
 }
+
+
+
+
+
+
 

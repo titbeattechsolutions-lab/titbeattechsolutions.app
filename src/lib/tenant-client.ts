@@ -154,7 +154,7 @@ export async function checkTenantStatus(
 
 export async function requestCloudDeletion(session: TenantSession): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await (supabase as any).rpc("request_tenant_deletion", {
+    const { error } = await (supabase as any).rpc("request_tenant_deletion_v2", {
       _session_token: session.sessionToken,
     });
     if (error) return { success: false, error: error.message };
@@ -166,7 +166,7 @@ export async function requestCloudDeletion(session: TenantSession): Promise<{ su
 
 export async function cancelCloudDeletion(session: TenantSession): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await (supabase as any).rpc("cancel_tenant_deletion", {
+    const { error } = await (supabase as any).rpc("cancel_tenant_deletion_v2", {
       _session_token: session.sessionToken,
     });
     if (error) return { success: false, error: error.message };
@@ -178,11 +178,12 @@ export async function cancelCloudDeletion(session: TenantSession): Promise<{ suc
 
 export async function fetchCloudDeletionStatus(session: TenantSession): Promise<{ status: string | null; requestedAt: string | null }> {
   try {
-    const { data, error } = await (supabase as any).rpc("fetch_deletion_request_status", {
+    const { data, error } = await (supabase as any).rpc("get_tenant_deletion_request_v2", {
       _session_token: session.sessionToken,
     });
-    if (error || !data || data.length === 0) return { status: null, requestedAt: null };
-    return { status: data[0]?.status ?? null, requestedAt: data[0]?.requested_at ?? null };
+    if (error || !data) return { status: null, requestedAt: null };
+    // get_tenant_deletion_request_v2 returns a single record object, not an array
+    return { status: data.status ?? null, requestedAt: data.created_at ?? null };
   } catch {
     return { status: null, requestedAt: null };
   }
