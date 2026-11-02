@@ -1,8 +1,8 @@
 import { A4_WIDTH_PX, A4_HEIGHT_PX } from "@/lib/school-constants";
-import { useState, useEffect, useCallback, useId } from "react";
+import { useState, useEffect, useCallback, useId, useRef } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ----------------------------------------
 interface ReportTemplateConfig {
   uploadedFile: string | null;
   uploadedFileName: string | null;
@@ -84,8 +84,8 @@ const gradeColor = (g: string | null) => {
   return "#dc2626";
 };
 
-// ── Main Component ─────────────────────────────────────────────────────────────
-// ── AutoStamp Component ─────────────────────────────────────────────────────────────
+// ----------------------------------------
+// ----------------------------------------
 function AutoStamp({ schoolName, date, color = "#1e40af" }: { schoolName: string; date: string; color?: string }) {
   const sn = (schoolName || "SCHOOL NAME").toUpperCase();
   const fs = sn.length > 45 ? 3.5 : sn.length > 35 ? 4.2 : sn.length > 28 ? 5.2 : sn.length > 20 ? 6.5 : 7.8;
@@ -301,7 +301,7 @@ export default function ResultChecker() {
   }
 
   const traits = result?.report_card?.traits || {};
-  const classCount = traits.classCount ? `${traits.classCount}` : "�";
+  const classCount = traits.classCount ? `${traits.classCount}` : "—";
   const headers = tpl.showGrade
     ? ["Subject", "CA", "Exam", "Total", "Grade", "Remark"]
       : ["Subject", "CA", "Exam", "Total"];
@@ -324,6 +324,12 @@ export default function ResultChecker() {
   const attRate = result?.report_card?.days_open && result?.report_card?.days_present 
     ? Math.round((result.report_card.days_present / result.report_card.days_open) * 100) 
     : null;
+
+  // Layout helpers for the report sheet preview
+  const innerRef = useRef(null);
+  const hasOverflow = false;
+  const viewportW = typeof window !== 'undefined' ? Math.min(window.innerWidth - 40, A4_WIDTH_PX) : A4_WIDTH_PX;
+  const scale = Math.min(1, viewportW / A4_WIDTH_PX);
 
   return (
     <>
@@ -460,7 +466,7 @@ export default function ResultChecker() {
 
               <button id="rc-submit-btn" className="rc-btn" type="submit" disabled={loading || !admissionNo.trim() || !token.trim()}>
                 {loading ? (
-                  <><div className="rc-spinner" /> Verifying…</>
+                  <><div className="rc-spinner" /> Verifying...</>
                 ) : (
                   <>🔍 View Result</>
                 )}
@@ -488,7 +494,7 @@ export default function ResultChecker() {
               onClick={() => setResult(null)}
               style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "8px 16px", color: "#94a3b8", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif" }}
             >
-              ← Back
+              &larr; Back
             </button>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button className="print-btn" onClick={handlePrint}>🖨️ Print Result</button>
@@ -508,9 +514,9 @@ export default function ResultChecker() {
                 Warning: Data overflows single page. Shrink limited to preserve legibility.
               </div>
             )}
-            <div style={{ width: '100%', maxWidth: '${A4_WIDTH_PX}px', margin: '0 auto', overflow: 'hidden' }}>
-              <div style={{ transform: `scale(calc(min(100vw - 40px, ${A4_WIDTH_PX}px) / A4_WIDTH_PX))`, transformOrigin: 'top left' }}>
-                <div id="report-print-area" className="bg-white overflow-hidden relative" style={{ width: '${A4_WIDTH_PX}px', height: '${A4_HEIGHT_PX}px', fontFamily: tpl.fontFamily === 'Helvetica' ? 'Helvetica, Arial, sans-serif' : tpl.fontFamily === 'Times' ? '"Times New Roman", Times, serif' : tpl.fontFamily === 'Courier' ? 'Courier, monospace' : 'Georgia, serif' }}>
+            <div style={{ width: '100%', maxWidth: `${A4_WIDTH_PX}px`, margin: '0 auto', overflow: 'hidden', height: `${Math.round(A4_HEIGHT_PX * scale)}px` }}>
+              <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: `${A4_WIDTH_PX}px` }}>
+                <div id="report-print-area" className="bg-white overflow-hidden relative" style={{ width: `${A4_WIDTH_PX}px`, height: `${A4_HEIGHT_PX}px`, fontFamily: tpl.fontFamily === 'Helvetica' ? 'Helvetica, Arial, sans-serif' : tpl.fontFamily === 'Times' ? '"Times New Roman", Times, serif' : tpl.fontFamily === 'Courier' ? 'Courier, monospace' : 'Georgia, serif' }}>
             {tpl.uploadedFile && (
               <div className="absolute inset-0 w-full h-full z-0 pointer-events-none" style={{
                 backgroundImage: `url(${tpl.uploadedFile})`,
@@ -520,7 +526,7 @@ export default function ResultChecker() {
               }} />
             )}
             
-            <div ref={innerRef} className="relative z-10 flex flex-col" style={{ transform: `scale(${scale})`, transformOrigin: 'top left', height: `${100/scale}%`, width: `${100/scale}%` }}>
+            <div ref={innerRef} className="relative z-10 flex flex-col" style={{ height: '100%', width: '100%' }}>
               <div className="h-1.5" style={{ backgroundColor: tpl.accentColor }} />
               
               {/* Header */}
